@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Simulation Game</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="game-canvas"></canvas>
+        <div id="ui-overlay">
+            <div id="player-stats">
+                <h3>Player Stats</h3>
+                <div id="hp-bar">HP: <span id="hp-value">100/100</span></div>
+                <div id="ap-bar">AP: <span id="ap-value">100</span></div>
+            </div>
+            <div id="party-panel">
+                <h3>Party</h3>
+                <div id="party-members"></div>
+            </div>
+            <div id="controls-help">
+                <h3>Controls</h3>
+                <p>WASD/Arrow Keys: Move Player</p>
+                <p>Mouse: Select Party Members</p>
+                <p>Right Click: Party Commands</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Socket.IO client -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    
+    <!-- Game scripts -->
+    <script src="js/network.js"></script>
+    <script src="js/interpolation.js"></script>
+    <script src="js/renderer.js"></script>
+    <script src="js/input.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
