@@ -6,16 +6,57 @@ import time
 import sys
 import os
 import socket
+import subprocess
+import platform
 
-# Disable GPU acceleration for WebKit (fixes black screen on some Linux systems)
-os.environ['WEBKIT_DISABLE_COMPOSITING_MODE'] = '1'
-os.environ['WEBKIT_DISABLE_DMABUF_RENDERER'] = '1'
-
-# Add the project root to the Python path
+# Add the project root to the Python path early
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from backend.independant_logger import Logger
+
+# Initialize logger
+logger = Logger(
+    log_name="main",
+    log_file="main.log",
+    log_level=20,  # INFO
+).get_logger()
+
+
+# Conditionally disable GPU acceleration for Nouveau drivers (fixes black screen issues)
+def should_disable_gpu():
+    """Check if GPU acceleration should be disabled based on driver."""
+    # Only check on Linux systems
+    if platform.system() != "Linux":
+        return False
+
+    try:
+        # Check if using Nouveau (open-source NVIDIA driver)
+        result = subprocess.run(
+            ["lspci", "-k"], capture_output=True, text=True, timeout=2
+        )
+        output = result.stdout.lower()
+
+        # Look for Nouveau driver in use
+        if "nouveau" in output and ("vga" in output or "nvidia" in output):
+            logger.warning(
+                "Nouveau GPU driver detected - disabling GPU acceleration for stability"
+            )
+            return True
+
+    except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as e:
+        # If we can't determine, err on the side of compatibility
+        logger.info(f"Could not detect GPU driver ({e}), enabling GPU acceleration")
+        return False
+
+    return False
+
+
+# Disable GPU acceleration if needed
+if should_disable_gpu():
+    os.environ["WEBKIT_DISABLE_COMPOSITING_MODE"] = "1"
+    os.environ["WEBKIT_DISABLE_DMABUF_RENDERER"] = "1"
+
 from backend.app import app, socketio
-from backend.game_loop import GameLoop
 
 
 def is_server_ready(host="127.0.0.1", port=5000, timeout=10):
@@ -37,10 +78,11 @@ def is_server_ready(host="127.0.0.1", port=5000, timeout=10):
 
 def start_server():
     """Start the Flask-SocketIO server in a separate thread."""
-    print("Starting game server...")
+    logger.info("Starting game server...")
 
-    # Get the game loop instance and start it
-    game_loop = GameLoop(socketio)
+    # Use the existing global game_loop instance from backend.app
+    from backend.app import game_loop
+    
     game_thread = threading.Thread(target=game_loop.run, daemon=True)
     game_thread.start()
 
@@ -52,27 +94,28 @@ def start_server():
 
 def main():
     """Main application entry point."""
-    print("Real-Time Simulation Game")
-    print("=" * 50)
+    logger.info("=" * 50)
+    logger.info("Real-Time Simulation Game")
+    logger.info("=" * 50)
 
     # Start the Flask server in a separate thread
     server_thread = threading.Thread(target=start_server, daemon=True)
     server_thread.start()
 
     # Wait for the server to be ready
-    print("Waiting for server to start...")
+    logger.info("Waiting for server to start...")
     if not is_server_ready():
-        print("ERROR: Server failed to start within timeout period!")
-        print("Try running the backend directly: python backend/app.py")
+        logger.error("ERROR: Server failed to start within timeout period!")
+        logger.error("Try running the backend directly: python backend/app.py")
         return
 
-    print("Server is ready!")
+    logger.info("Server is ready!")
     time.sleep(0.5)  # Brief additional delay for stability
 
     # Create the webview window
-    print("Opening game window...")
+    logger.info("Opening game window...")
     window = webview.create_window(
-        title="Real-Time Simulation Game",
+        title="Untitled",
         url="http://127.0.0.1:5000",
         width=1280,
         height=720,
@@ -85,7 +128,7 @@ def main():
     # Start the webview with debug mode and hardware acceleration disabled
     webview.start(debug=True, http_server=False, private_mode=False)
 
-    print("Game window closed. Exiting...")
+    logger.info("Game window closed. Exiting...")
 
 
 if __name__ == "__main__":

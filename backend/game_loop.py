@@ -4,6 +4,14 @@ import time
 from typing import List, Dict, Any
 from backend.config import TICK_RATE, TICK_DURATION
 from backend.simulation.world import World
+from backend.independant_logger import Logger
+
+# Initialize logger
+logger = Logger(
+    log_name="backend.game_loop",
+    log_file="game_loop.log",
+    log_level=20,  # INFO
+).get_logger()
 
 
 class GameLoop:
@@ -28,22 +36,27 @@ class GameLoop:
     def process_player_actions(self):
         """Process all queued player actions."""
         while self.player_action_queue:
+            if self.tick_start + TICK_DURATION < time.time():
+                break
             action = self.player_action_queue.pop(0)
             self.world.process_player_action(action)
 
     def process_party_commands(self):
         """Process all queued party commands."""
         while self.party_command_queue:
+            if self.tick_start + TICK_DURATION < time.time():
+                break
             command = self.party_command_queue.pop(0)
             self.world.process_party_command(command)
 
     def run(self):
         """Main game loop."""
         self.running = True
-        print("Game loop started")
+        logger.info("Game loop started")
 
         while self.running:
             tick_start = time.time()
+            self.tick_start = tick_start
 
             # Process input
             self.process_player_actions()

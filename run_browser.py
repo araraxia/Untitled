@@ -10,15 +10,23 @@ import webbrowser
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from backend.app import app, socketio
-from backend.game_loop import GameLoop
+from backend.independant_logger import Logger
+
+# Initialize logger
+logger = Logger(
+    log_name="run_browser",
+    log_file="browser.log",
+    log_level=20,  # INFO
+).get_logger()
 
 
 def start_server():
     """Start the Flask-SocketIO server in a separate thread."""
-    print("Starting game server...")
+    logger.info("Starting game server...")
 
-    # Get the game loop instance and start it
-    game_loop = GameLoop(socketio)
+    # Use the existing global game_loop instance from backend.app
+    from backend.app import game_loop
+    
     game_thread = threading.Thread(target=game_loop.run, daemon=True)
     game_thread.start()
 
@@ -30,23 +38,24 @@ def start_server():
 
 def main():
     """Main application entry point."""
-    print("Real-Time Simulation Game - Browser Mode")
-    print("=" * 50)
+    logger.info("=" * 50)
+    logger.info("Real-Time Simulation Game - Browser Mode")
+    logger.info("=" * 50)
 
     # Start the Flask server in a separate thread
     server_thread = threading.Thread(target=start_server, daemon=True)
     server_thread.start()
 
     # Wait for server to start
-    print("Waiting for server to start...")
+    logger.info("Waiting for server to start...")
     time.sleep(2)
 
     # Open in default browser
-    print("Opening in browser...")
+    logger.info("Opening in browser...")
     webbrowser.open("http://127.0.0.1:5000")
 
-    print("\nGame is running at: http://127.0.0.1:5000")
-    print("Press Ctrl+C to stop the server")
+    logger.info("\nGame is running at: http://127.0.0.1:5000")
+    logger.info("Press Ctrl+C to stop the server")
 
     try:
         # Keep the main thread alive

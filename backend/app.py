@@ -4,6 +4,14 @@ from flask import Flask, render_template, send_from_directory
 from flask_socketio import SocketIO, emit
 import os
 from backend.config import HOST, PORT, DEBUG
+from backend.independant_logger import Logger
+
+# Initialize logger
+logger = Logger(
+    log_name="backend.app",
+    log_file="app.log",
+    log_level=20,  # INFO
+).get_logger()
 
 # Get the absolute path to the project root
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -40,9 +48,9 @@ def serve_js(filename):
 @socketio.on("connect")
 def handle_connect():
     """Handle client connection."""
-    print("Client connected")
+    logger.info("Client connected")
     emit("connection_response", {"status": "connected"})
-    
+
     # Send the full initial game state to the newly connected client
     full_state = game_loop.world.get_full_state()
     emit("initial_state", full_state)
@@ -51,7 +59,7 @@ def handle_connect():
 @socketio.on("disconnect")
 def handle_disconnect():
     """Handle client disconnection."""
-    print("Client disconnected")
+    logger.info("Client disconnected")
 
 
 @socketio.on("player_action")
@@ -74,6 +82,6 @@ if __name__ == "__main__":
     game_thread.start()
 
     # Start the Flask-SocketIO server
-    print(f"Starting server on {HOST}:{PORT}")
-    print(f"Frontend path: {FRONTEND_PATH}")
+    logger.info(f"Starting server on {HOST}:{PORT}")
+    logger.info(f"Frontend path: {FRONTEND_PATH}")
     socketio.run(app, host=HOST, port=PORT, debug=DEBUG, allow_unsafe_werkzeug=True)
