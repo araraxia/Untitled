@@ -42,6 +42,10 @@ def handle_connect():
     """Handle client connection."""
     print("Client connected")
     emit("connection_response", {"status": "connected"})
+    
+    # Send the full initial game state to the newly connected client
+    full_state = game_loop.world.get_full_state()
+    emit("initial_state", full_state)
 
 
 @socketio.on("disconnect")

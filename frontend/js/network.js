@@ -20,6 +20,11 @@ function initNetwork() {
         console.log('Connection response:', data);
     });
     
+    socket.on('initial_state', (data) => {
+        console.log('Received initial state:', data);
+        handleInitialState(data);
+    });
+    
     socket.on('state_update', (data) => {
         handleStateUpdate(data);
     });

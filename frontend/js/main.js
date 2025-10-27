@@ -14,20 +14,70 @@ const gameState = {
 function init() {
     console.log('Initializing game...');
     
+    // Show loading indicator
+    document.body.style.cursor = 'wait';
+    
     // Initialize renderer
     initRenderer();
+    console.log('Renderer initialized');
     
     // Initialize network connection
     initNetwork();
+    console.log('Network connection initializing...');
     
     // Initialize input handlers
     initInput();
+    console.log('Input handlers initialized');
     
     // Initialize UI
     initUI();
+    console.log('UI initialized');
     
     // Start render loop
     requestAnimationFrame(renderLoop);
+    console.log('Game loop started');
+    
+    // Reset cursor after initialization
+    setTimeout(() => {
+        document.body.style.cursor = 'default';
+    }, 1000);
+}
+
+// Handle initial state from server
+function handleInitialState(data) {
+    console.log('Processing initial state...', data);
+    
+    // Hide loading indicator
+    const loadingIndicator = document.getElementById('loading-indicator');
+    if (loadingIndicator) {
+        loadingIndicator.style.display = 'none';
+    }
+    
+    // Set up the game world
+    if (data.world) {
+        gameState.worldSize = data.world;
+    }
+    
+    // Initialize all entities
+    if (data.entities) {
+        gameState.entities = {};
+        for (const [entityId, entityData] of Object.entries(data.entities)) {
+            gameState.entities[entityId] = entityData;
+            
+            // Find the player entity
+            if (entityData.type === 'player') {
+                gameState.player = entityData;
+                // Center camera on player
+                gameState.camera.x = entityData.x - (window.innerWidth / 2);
+                gameState.camera.y = entityData.y - (window.innerHeight / 2);
+            }
+            
+            // Initialize interpolation for this entity
+            initEntityInterpolation(entityId, entityData);
+        }
+    }
+    
+    console.log('Initial state processed. Entities:', Object.keys(gameState.entities).length);
 }
 
 // Main render loop (60fps)
@@ -48,6 +98,11 @@ function renderLoop(timestamp) {
 
 // Handle state updates from server
 function handleStateUpdate(data) {
+    // Hide loading indicator once we receive first state
+    const loadingIndicator = document.getElementById('loading-indicator');
+    if (loadingIndicator) {
+        loadingIndicator.style.display = 'none';
+    }
     const { tick, delta } = data;
     
     // Update entities
