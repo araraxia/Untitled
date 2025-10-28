@@ -1,3 +1,10 @@
+@font-face {
+    font-family: 'PressStart2P';
+    src: url('/assets/fonts/PressStart2P-Regular.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+}
+
 * {
     margin: 0;
     padding: 0;
@@ -5,7 +12,7 @@
 }
 
 body {
-    font-family: 'Arial', sans-serif;
+    font-family: 'PressStart2P', monospace;
     background-color: #1a1a1a;
     color: #ffffff;
     overflow: hidden;

@@ -45,6 +45,12 @@ def serve_js(filename):
     return send_from_directory(os.path.join(FRONTEND_PATH, "js"), filename)
 
 
+@app.route("/assets/<path:filename>")
+def serve_assets(filename):
+    """Serve asset files (fonts, images, audio, etc.)."""
+    return send_from_directory(os.path.join(FRONTEND_PATH, "assets"), filename)
+
+
 @socketio.on("connect")
 def handle_connect():
     """Handle client connection."""
