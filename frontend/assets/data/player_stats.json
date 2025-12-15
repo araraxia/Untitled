@@ -1,1 +1,90 @@
-{}
+{
+    "name": "",
+    "race": "",
+    "height": 0,
+    "weight": 0,
+    "age": 0,
+    "dob": "",
+    "gender": "",
+    "hair_style": "",
+    "hair_color": "",
+    "left_eye_color": "",
+    "left_eye_type": "",
+    "right_eye_color": "",
+    "right_eye_type": "",
+    "experience": 0,
+    "level": 1,
+    "modifiers": {
+        "action_speed": 1.0,
+        "carrying_capacity": 1.0,
+        "walking_speed": 1.0,
+        "running_speed": 1.0,
+        "crawling_speed": 1.0,
+        "jumping_ability": 1.0,
+        "strenght": {},
+        "dexterity": {},
+        "intelligence": {},
+        "perception": {},
+        "willpower": {},
+        "charisma": {}
+    },
+    "stats": {
+        "fame": 0,
+        "virtue": 0,
+        "infamy": 0
+    },
+    "skills": {},
+    "abilities": {},
+    "health": {
+        "head": {
+            "left_eye": {},
+            "right_eye": {},
+            "mouth": {},
+            "tongue": {},
+            "skull": {},
+            "brain": {}
+        },
+        "torso": {
+            "chest": {},
+            "stomach": {},
+            "groin": {},
+            "left_shoulder": {},
+            "right_shoulder": {},
+            "upper_back": {},
+            "lower_back": {},
+            "heart": {},
+            "lung_left": {},
+            "lung_right": {},
+            "neck": {}
+        },
+        "left_arm": {
+            "left_forearm": {},
+            "left_upper_arm": {},
+            "left_hand": {
+                "left_fingers": {}
+            }
+        },
+        "right_arm": {
+            "right_forearm": {},
+            "right_upper_arm": {},
+            "right_hand": {
+                "right_fingers": {}
+            }
+        },
+        "left_hip": {},
+        "right_hip": {},
+        "left_leg": {
+            "left_thigh": {},
+            "left_knee": {},
+            "left_calf": {},
+            "left_foot": {}
+        },
+        "right_leg": {
+            "right_thigh": {},
+            "right_knee": {},
+            "right_calf": {},
+            "right_foot": {}
+        }
+    },
+    "equipment": []
+}
