@@ -22,10 +22,16 @@ class World:
         # Initialize with a player character
         self._initialize_player()
 
-    def _initialize_player(self):
+    def _initialize_player(self, x_pos: float = -1, y_pos: float = -1):
         """Create the initial player character."""
+        # Spawn player in the center of the world if no position provided
+        if x_pos < 0:
+            x_pos = WORLD_WIDTH // 2
+        if y_pos < 0:
+            y_pos = WORLD_HEIGHT // 2
+        
         self.player = PlayerCharacter(
-            entity_id="player_1", x=WORLD_WIDTH // 2, y=WORLD_HEIGHT // 2
+            entity_id="player_1", x=x_pos, y=y_pos
         )
         self.add_entity(self.player)
 

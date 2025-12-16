@@ -62,6 +62,8 @@ from backend.app import app, socketio
 def is_server_ready(host="127.0.0.1", port=5000, timeout=10):
     """Check if the server is ready to accept connections."""
     start_time = time.time()
+
+    # Loop until timeout or server is ready
     while time.time() - start_time < timeout:
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
