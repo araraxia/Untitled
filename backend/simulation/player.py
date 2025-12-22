@@ -28,6 +28,17 @@ class PlayerCharacter(Entity):
             self.vx = direction.get("x", 0) * speed
             self.vy = direction.get("y", 0) * speed
             self.state = "moving" if (self.vx != 0 or self.vy != 0) else "idle"
+
+            # Update facing direction based on movement
+            if self.vy < 0:
+                self.facing = "up"
+            elif self.vy > 0:
+                self.facing = "down"
+            elif self.vx < 0:
+                self.facing = "left"
+            elif self.vx > 0:
+                self.facing = "right"
+
             self.is_dirty = True
 
         elif action_type == "attack":

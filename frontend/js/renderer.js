@@ -3,6 +3,12 @@
  */
 
 let canvas, ctx;
+let playerImages = {
+    up: null,
+    down: null,
+    left: null,
+    right: null
+};
 
 function initRenderer() {
     canvas = document.getElementById('game-canvas');
@@ -12,7 +18,26 @@ function initRenderer() {
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
     
+    // Load player images
+    loadPlayerImages();
+    
     console.log('Renderer initialized');
+}
+
+function loadPlayerImages() {
+    const directions = ['up', 'down', 'left', 'right'];
+    
+    directions.forEach(direction => {
+        const img = new Image();
+        img.src = `assets/images/sprites/player_${direction}.png`;
+        img.onerror = () => {
+            console.warn(`Player ${direction} image not found, will render as circle`);
+        };
+        img.onload = () => {
+            console.log(`Player ${direction} image loaded successfully`);
+        };
+        playerImages[direction] = img;
+    });
 }
 
 function resizeCanvas() {
@@ -68,24 +93,45 @@ function drawEntity(entity, camera) {
     const x = (entity.displayX || entity.x) - camera.x;
     const y = (entity.displayY || entity.y) - camera.y;
     
-    // Draw entity as a circle
-    ctx.beginPath();
-    ctx.arc(x, y, 16, 0, Math.PI * 2);
-    
-    // Color based on entity type
+    // Draw player as image, others as circles
     if (entity.id && entity.id.startsWith('player_')) {
-        ctx.fillStyle = '#4CAF50';
+        // Get the appropriate image based on facing direction
+        const facing = entity.facing || 'down';
+        const playerImage = playerImages[facing];
+        
+        if (playerImage && playerImage.complete) {
+            // Draw player image centered at position
+            const imageSize = 32;
+            ctx.drawImage(playerImage, x - imageSize / 2, y - imageSize / 2, imageSize, imageSize);
+        } else {
+            // Fallback to circle if image not loaded
+            ctx.beginPath();
+            ctx.arc(x, y, 16, 0, Math.PI * 2);
+            ctx.fillStyle = '#4CAF50';
+            ctx.fill();
+        }
+        
+        // Draw state indicator for player
+        if (entity.state === 'moving') {
+            ctx.strokeStyle = '#FFC107';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(x, y, 18, 0, Math.PI * 2);
+            ctx.stroke();
+        }
     } else {
+        // Draw non-player entities as circles
+        ctx.beginPath();
+        ctx.arc(x, y, 16, 0, Math.PI * 2);
         ctx.fillStyle = '#2196F3';
-    }
-    
-    ctx.fill();
-    
-    // Draw state indicator
-    if (entity.state === 'moving') {
-        ctx.strokeStyle = '#FFC107';
-        ctx.lineWidth = 2;
-        ctx.stroke();
+        ctx.fill();
+        
+        // Draw state indicator
+        if (entity.state === 'moving') {
+            ctx.strokeStyle = '#FFC107';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
     }
     
     // Draw health bar if HP is defined

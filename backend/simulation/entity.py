@@ -13,6 +13,7 @@ class Entity:
         self.vx = 0.0  # velocity x
         self.vy = 0.0  # velocity y
         self.state = "idle"
+        self.facing = "down"  # direction entity is facing: up, down, left, right
         self.is_dirty = True
 
     def update(self, delta_time: float):
@@ -32,6 +33,7 @@ class Entity:
             "vx": self.vx,
             "vy": self.vy,
             "state": self.state,
+            "facing": self.facing,
         }
 
     def receive_command(self, command: Dict[str, Any]):
