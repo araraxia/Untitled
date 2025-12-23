@@ -1,6 +1,7 @@
 {
     "name": "",
-    "race": "",
+    "race": "human",
+    "model_version": "00",
     "height": 0,
     "weight": 0,
     "age": 0,

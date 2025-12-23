@@ -2,6 +2,14 @@
  * Client-side interpolation for smooth rendering
  */
 
+function initEntityInterpolation(entityId, entityData) {
+    // Initialize display position for new entities
+    if (entityData.x !== undefined && entityData.y !== undefined) {
+        entityData.displayX = entityData.x;
+        entityData.displayY = entityData.y;
+    }
+}
+
 function updateInterpolation(deltaTime) {
     const interpolationSpeed = 10; // Higher = faster interpolation
     

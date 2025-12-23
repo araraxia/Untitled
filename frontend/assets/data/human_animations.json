@@ -1,0 +1,72 @@
+{
+    "base_model_path": "images/sprites/human/base",
+    "stand": {
+        "default_sprite_sheet": "char_a_p1_0bas_humn.png",
+        "default_sprite_version": "v00",
+        "duration_type": "fixed",
+        "frame_width": 64,
+        "frame_height": 64,
+        "frame_count": 1,
+        "frame_duration": 1000,
+        "down": {
+            "start_frame_index": 0
+        },
+        "up": {
+            "start_frame_index": 8
+        },
+        "left": {
+            "start_frame_index": 16,
+            "flip_x": true
+        },
+        "right": {
+            "start_frame_index": 16,
+            "flip_x": false
+        }
+    },
+    "walk": {
+        "default_sprite_sheet": "char_a_p1_0bas_humn.png",
+        "default_sprite_version": "v00",
+        "duration_type": "fixed",
+        "frame_width": 64,
+        "frame_height": 64,
+        "frame_count": 6,
+        "frame_duration": 100,
+        "down": {
+            "start_frame_index": 32
+        },
+        "up": {
+            "start_frame_index": 40
+        },
+        "left": {
+            "start_frame_index": 48,
+            "flip_x": true
+        },
+        "right": {
+            "start_frame_index": 48,
+            "flip_x": false
+        }
+    },
+    "example_variable_frame_duration": {
+        "default_sprite_sheet": "example_sprite.png",
+        "default_sprite_version": "v00",
+        "duration_type": "variable",
+        "frame_width": 128,
+        "frame_height": 128,
+        "frame_count": 16,
+        "frame_duration": [100, 80, 120, 100, 90, 110, 100, 100, 130, 70, 100, 100, 90, 110, 100, 100],
+        "down": {
+            "start_frame_index": 0
+        },
+        "up": {
+            "start_frame_index": 4
+        },
+        "left": {
+            "start_frame_index": 8,
+            "flip_x": true
+        },
+        "right": {
+            "start_frame_index": 8,
+            "flip_x": false
+        }
+    }
+}

@@ -3,6 +3,7 @@
  */
 
 let canvas, ctx;
+let entityRenderer;
 let playerImages = {
     up: null,
     down: null,
@@ -10,7 +11,7 @@ let playerImages = {
     right: null
 };
 
-function initRenderer() {
+async function initRenderer() {
     canvas = document.getElementById('game-canvas');
     ctx = canvas.getContext('2d');
     
@@ -18,7 +19,11 @@ function initRenderer() {
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
     
-    // Load player images
+    // Initialize entity renderer
+    entityRenderer = new EntityRenderer(ctx);
+    await entityRenderer.loadAnimationData('assets/data/human_animations.json');
+    
+    // Load player images (legacy support, will be replaced by sprite system)
     loadPlayerImages();
     
     console.log('Renderer initialized');
@@ -53,9 +58,9 @@ function render(gameState, deltaTime) {
     // Draw grid
     drawGrid(gameState.camera);
     
-    // Draw entities
-    for (const [entityId, entity] of Object.entries(gameState.entities)) {
-        drawEntity(entity, gameState.camera);
+    // Draw entities using EntityRenderer
+    if (entityRenderer) {
+        entityRenderer.renderEntities(gameState, deltaTime);
     }
     
     // Draw debug info
@@ -88,74 +93,11 @@ function drawGrid(camera) {
     }
 }
 
+// Legacy function - kept for backwards compatibility but no longer used
 function drawEntity(entity, camera) {
-    // Use interpolated position
-    const x = (entity.displayX || entity.x) - camera.x;
-    const y = (entity.displayY || entity.y) - camera.y;
-    
-    // Draw player as image, others as circles
-    if (entity.id && entity.id.startsWith('player_')) {
-        // Get the appropriate image based on facing direction
-        const facing = entity.facing || 'down';
-        const playerImage = playerImages[facing];
-        
-        if (playerImage && playerImage.complete) {
-            // Draw player image centered at position
-            const imageSize = 32;
-            ctx.drawImage(playerImage, x - imageSize / 2, y - imageSize / 2, imageSize, imageSize);
-        } else {
-            // Fallback to circle if image not loaded
-            ctx.beginPath();
-            ctx.arc(x, y, 16, 0, Math.PI * 2);
-            ctx.fillStyle = '#4CAF50';
-            ctx.fill();
-        }
-        
-        // Draw state indicator for player
-        if (entity.state === 'moving') {
-            ctx.strokeStyle = '#FFC107';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.arc(x, y, 18, 0, Math.PI * 2);
-            ctx.stroke();
-        }
-    } else {
-        // Draw non-player entities as circles
-        ctx.beginPath();
-        ctx.arc(x, y, 16, 0, Math.PI * 2);
-        ctx.fillStyle = '#2196F3';
-        ctx.fill();
-        
-        // Draw state indicator
-        if (entity.state === 'moving') {
-            ctx.strokeStyle = '#FFC107';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-        }
-    }
-    
-    // Draw health bar if HP is defined
-    if (entity.hp !== undefined) {
-        const barWidth = 32;
-        const barHeight = 4;
-        const barX = x - barWidth / 2;
-        const barY = y - 24;
-        
-        // Background
-        ctx.fillStyle = '#333';
-        ctx.fillRect(barX, barY, barWidth, barHeight);
-        
-        // Health
-        const healthPercent = entity.hp / entity.max_hp;
-        ctx.fillStyle = healthPercent > 0.5 ? '#4CAF50' : '#F44336';
-        ctx.fillRect(barX, barY, barWidth * healthPercent, barHeight);
-    }
-    
-    // Draw entity ID
-    ctx.fillStyle = '#fff';
-    ctx.font = '10px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText(entity.id, x, y + 30);
+    // This function is now handled by EntityRenderer
+    // Kept here for reference or fallback purposes
+    console.warn('Legacy drawEntity called - should use EntityRenderer instead');
 }
 
 function drawDebugInfo(gameState) {

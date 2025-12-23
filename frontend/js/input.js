@@ -81,13 +81,21 @@ function processInput() {
         dy *= 0.707;
     }
     
+    // Determine facing direction for animation
+    let facing = null;
+    if (dy < 0) facing = 'up';
+    else if (dy > 0) facing = 'down';
+    else if (dx < 0) facing = 'left';
+    else if (dx > 0) facing = 'right';
+    
     // Send movement command if moving
     if (dx !== 0 || dy !== 0) {
         sendPlayerAction('move', {
-            direction: { x: dx, y: dy }
+            direction: { x: dx, y: dy },
+            facing: facing // Include facing direction for animation
         });
     } else {
-        // Stop moving
+        // Stop moving - keep last facing direction
         sendPlayerAction('move', {
             direction: { x: 0, y: 0 }
         });

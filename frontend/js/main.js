@@ -11,14 +11,14 @@ const gameState = {
 };
 
 // Initialize game
-function init() {
+async function init() {
     console.log('Initializing game...');
     
     // Show loading indicator
     document.body.style.cursor = 'wait';
     
-    // Initialize renderer
-    initRenderer();
+    // Initialize renderer (wait for it to load animations)
+    await initRenderer();
     console.log('Renderer initialized');
     
     // Initialize network connection
@@ -38,9 +38,7 @@ function init() {
     console.log('Game loop started');
     
     // Reset cursor after initialization
-    setTimeout(() => {
-        document.body.style.cursor = 'default';
-    }, 1000);
+    document.body.style.cursor = 'default';
 }
 
 // Handle initial state from server
@@ -62,6 +60,10 @@ function handleInitialState(data) {
     if (data.entities) {
         gameState.entities = {};
         for (const [entityId, entityData] of Object.entries(data.entities)) {
+            // Ensure entity has required properties for animation system
+            if (!entityData.state) entityData.state = 'idle';
+            if (!entityData.facing) entityData.facing = 'down';
+            
             gameState.entities[entityId] = entityData;
             
             // Find the player entity
@@ -83,14 +85,15 @@ function handleInitialState(data) {
 // Main render loop (60fps)
 let lastFrameTime = 0;
 function renderLoop(timestamp) {
-    const deltaTime = (timestamp - lastFrameTime) / 1000;
+    const deltaTime = (timestamp - lastFrameTime) / 1000; // seconds for interpolation
+    const deltaTimeMs = timestamp - lastFrameTime; // milliseconds for animations
     lastFrameTime = timestamp;
     
     // Update interpolation
     updateInterpolation(deltaTime);
     
-    // Render frame
-    render(gameState, deltaTime);
+    // Render frame (pass milliseconds for animation system)
+    render(gameState, deltaTimeMs);
     
     // Continue loop
     requestAnimationFrame(renderLoop);
@@ -116,6 +119,10 @@ function handleStateUpdate(data) {
             const entity = gameState.entities[entityId];
             entity.prevX = entity.x || entityData.x;
             entity.prevY = entity.y || entityData.y;
+            
+            // Ensure entity has required properties for animation system
+            if (entityData.state === undefined) entityData.state = 'idle';
+            if (entityData.facing === undefined && !entity.facing) entityData.facing = 'down';
             
             // Update with new state
             Object.assign(entity, entityData);

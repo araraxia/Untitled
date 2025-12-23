@@ -4,6 +4,7 @@ All assets will be credited. If I can pay artists/creators for used assets in th
 ## Notable Asset Makers
 - [BDragon1727](https://bdragon1727.itch.io/) Makes some really cool effects, banners, frames, environment assets. #1 Candidate
 - [ToffeeCraft](https://toffeecraft.itch.io/) UI, Vegitation, cats
+- [Seliel the Shaper](https://seliel-the-shaper.itch.io/) GBA JRPG assets
 
 ## Potential Asset Sources
 - https://itch.io/game-assets/free/tag-pixel-art
