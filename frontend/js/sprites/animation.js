@@ -11,6 +11,7 @@ class Animation {
      * @param {boolean} [loop=true] - Whether the animation should loop
      */
     constructor(name, startFrame, frameCount, frameTime, loop = true) {
+        console.log('[Animation] Constructor called - name:', name, 'startFrame:', startFrame, 'frameCount:', frameCount, 'frameTime:', frameTime, 'loop:', loop);
         this.name = name;
         this.startFrame = startFrame;
         this. frameCount = frameCount;
@@ -30,6 +31,7 @@ class AnimationController {
      * @param {Object.<string, Animation>} animations - Object mapping animation names to Animation instances
      */
     constructor(spriteSheet, animations) {
+        console.log('[AnimationController] Constructor called - animationCount:', Object.keys(animations).length);
         this.spriteSheet = spriteSheet;
         this.animations = animations; // Object with animation names as keys
         this.currentAnimation = null;
@@ -42,6 +44,7 @@ class AnimationController {
      * @param {string} animationName - Name of the animation to play
      */
     play(animationName) {
+        console.log('[AnimationController] play called - animationName:', animationName);
         if (this.currentAnimation?. name === animationName) return;
         
         this.currentAnimation = this.animations[animationName];
@@ -56,6 +59,7 @@ class AnimationController {
      * @param {number} deltaTime - Time elapsed since last update in milliseconds
      */
     update(deltaTime) {
+        console.log('[AnimationController] update called - deltaTime:', deltaTime, 'currentFrame:', this.currentFrame);
         if (!this.currentAnimation) return;
         
         this.timeAccumulator += deltaTime;
@@ -85,6 +89,7 @@ class AnimationController {
      * @param {boolean} [flipX=false] - Whether to flip horizontally
      */
     draw(ctx, x, y, flipX = false) {
+        console.log('[AnimationController] draw called - pos:', x + ',' + y, 'frame:', this.currentFrame, 'flipX:', flipX);
         this.spriteSheet.drawFrame(ctx, this.currentFrame, x, y, flipX);
     }
 }

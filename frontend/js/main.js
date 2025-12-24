@@ -11,39 +11,50 @@ const gameState = {
 };
 
 // Initialize game
+/**
+ * Initialize all game systems and start the game loop
+ * @returns {Promise<void>}
+ */
 async function init() {
-    console.log('Initializing game...');
+    console.log('[Main] Initializing game...');
     
     // Show loading indicator
     document.body.style.cursor = 'wait';
     
     // Initialize renderer (wait for it to load animations)
     await initRenderer();
-    console.log('Renderer initialized');
+    console.log('[Main] Renderer initialized');
     
     // Initialize network connection
     initNetwork();
-    console.log('Network connection initializing...');
+    console.log('[Main] Network connection initializing...');
     
     // Initialize input handlers
     initInput();
-    console.log('Input handlers initialized');
+    console.log('[Main] Input handlers initialized');
     
     // Initialize UI
     initUI();
-    console.log('UI initialized');
+    console.log('[Main] UI initialized');
     
     // Start render loop
     requestAnimationFrame(renderLoop);
-    console.log('Game loop started');
+    console.log('[Main] Game loop started');
     
     // Reset cursor after initialization
     document.body.style.cursor = 'default';
 }
 
 // Handle initial state from server
+/**
+ * Process initial game state received from the server
+ * @param {Object} data - Initial state data from server
+ * @param {Object} [data.world] - World size configuration
+ * @param {Object} [data.entities] - Initial entity states
+ * @returns {void}
+ */
 function handleInitialState(data) {
-    console.log('Processing initial state...', data);
+    console.log('[Main] Processing initial state...', data);
     
     // Hide loading indicator
     const loadingIndicator = document.getElementById('loading-indicator');
@@ -79,11 +90,16 @@ function handleInitialState(data) {
         }
     }
     
-    console.log('Initial state processed. Entities:', Object.keys(gameState.entities).length);
+    console.log('[Main] Initial state processed. Entities:', Object.keys(gameState.entities).length);
 }
 
 // Main render loop (60fps)
 let lastFrameTime = 0;
+/**
+ * Main render loop called by requestAnimationFrame
+ * @param {number} timestamp - High-resolution timestamp from requestAnimationFrame
+ * @returns {void}
+ */
 function renderLoop(timestamp) {
     const deltaTime = (timestamp - lastFrameTime) / 1000; // seconds for interpolation
     const deltaTimeMs = timestamp - lastFrameTime; // milliseconds for animations
@@ -100,6 +116,15 @@ function renderLoop(timestamp) {
 }
 
 // Handle state updates from server
+/**
+ * Process state update delta from the server
+ * @param {Object} data - State update data
+ * @param {number} data.tick - Server tick number
+ * @param {Object} data.delta - Changes to apply
+ * @param {Object} [data.delta.entities] - Updated entity states
+ * @param {string[]} [data.delta.removed] - Entity IDs to remove
+ * @returns {void}
+ */
 function handleStateUpdate(data) {
     // Hide loading indicator once we receive first state
     const loadingIndicator = document.getElementById('loading-indicator');

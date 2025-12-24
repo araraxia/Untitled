@@ -2,10 +2,22 @@
  * UI system for overlays and menus
  */
 
+/**
+ * Initialize UI system
+ * @returns {void}
+ */
 function initUI() {
     console.log('UI initialized');
 }
 
+/**
+ * Update UI elements with current game state
+ * Updates player stats (HP, action points) and party panel
+ * @param {Object} gameState - Current game state
+ * @param {Object} [gameState.player] - Player entity data
+ * @param {Object} gameState.entities - All game entities
+ * @returns {void}
+ */
 function updateUI(gameState) {
     // Update player stats
     if (gameState.player) {
@@ -18,6 +30,12 @@ function updateUI(gameState) {
     updatePartyPanel(gameState);
 }
 
+/**
+ * Update the party members panel with current party status
+ * @param {Object} gameState - Current game state
+ * @param {Object} gameState.entities - All game entities
+ * @returns {void}
+ */
 function updatePartyPanel(gameState) {
     const partyPanel = document.getElementById('party-members');
     partyPanel.innerHTML = '';
@@ -33,11 +51,23 @@ function updatePartyPanel(gameState) {
     }
 }
 
+/**
+ * Select a party member for commanding
+ * @param {string} memberId - Entity ID of the party member
+ * @returns {void}
+ */
 function selectPartyMember(memberId) {
     selectedPartyMember = memberId;
     console.log('Selected party member:', memberId);
 }
 
+/**
+ * Display context menu with commands for a party member
+ * @param {number} x - Screen X position for menu
+ * @param {number} y - Screen Y position for menu
+ * @param {string} memberId - Entity ID of the party member to command
+ * @returns {void}
+ */
 function showCommandMenu(x, y, memberId) {
     // Remove existing menu
     const existingMenu = document.querySelector('.context-menu');

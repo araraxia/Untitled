@@ -8,6 +8,7 @@ class EntityRenderer {
      * @param {CanvasRenderingContext2D} ctx - The canvas 2D rendering context
      */
     constructor(ctx) {
+        console.log('[EntityRenderer] Constructor called');
         this.ctx = ctx;
         this.spriteSheets = {};
         this.animationControllers = {};
@@ -21,13 +22,14 @@ class EntityRenderer {
      * @returns {Promise<void>}
      */
     async loadAnimationData(animationDataPath) {
+        console.log('[EntityRenderer] loadAnimationData called - path:', animationDataPath);
         try {
             const response = await fetch(animationDataPath);
             this.animationData = await response.json();
             console.log('Animation data loaded:', animationDataPath);
             
             // Preload sprite sheets for each animation type
-            await this.preloadSpriteSheets();
+            await this.preloadSpriteAnimations();
             this.loadingComplete = true;
         } catch (error) {
             console.error('Failed to load animation data:', error);
@@ -35,10 +37,11 @@ class EntityRenderer {
     }
 
     /**
-     * Preload all sprite sheets defined in animation data
+     * Preload all sprite animations defined in animation data
      * @returns {Promise<void>}
      */
-    async preloadSpriteSheets() {
+    async preloadSpriteAnimations() {
+        console.log('[EntityRenderer] preloadSpriteSheets called');
         const promises = [];
         // Iterate over each animation type and load its sprite sheet
         for (const [animName, animConfig] of Object.entries(this.animationData)) {
@@ -81,6 +84,7 @@ class EntityRenderer {
      * @returns {AnimationController}
      */
     getAnimationController(entityId, animationType = 'stand') {
+        console.log('[EntityRenderer] getAnimationController called - entityId:', entityId, 'animationType:', animationType);
         const controllerId = `${entityId}_${animationType}`;
         
         if (!this.animationControllers[controllerId]) {
@@ -135,6 +139,7 @@ class EntityRenderer {
      * @param {number} deltaTime - Time elapsed since last update (milliseconds)
      */
     updateEntityAnimation(entityId, entity, deltaTime) {
+        console.log('[EntityRenderer] updateEntityAnimation called - entityId:', entityId, 'state:', entity.state, 'deltaTime:', deltaTime);
         // Determine animation type based on entity state
         const animationType = entity.state === 'moving' ? 'walk' : 'stand';
         const direction = entity.facing || 'down';
@@ -160,6 +165,7 @@ class EntityRenderer {
      * @param {Object} camera - Camera position {x, y}
      */
     drawEntity(entity, camera) {
+        console.log('[EntityRenderer] drawEntity called - entityId:', entity.id, 'loadingComplete:', this.loadingComplete);
         if (!this.loadingComplete) {
             // Fallback to simple circle if animations not loaded
             this.drawEntityFallback(entity, camera);
@@ -209,6 +215,7 @@ class EntityRenderer {
      * @param {Object} camera - Camera position {x, y}
      */
     drawEntityFallback(entity, camera) {
+        console.log('[EntityRenderer] drawEntityFallback called - entityId:', entity.id);
         const x = (entity.displayX || entity.x) - camera.x;
         const y = (entity.displayY || entity.y) - camera.y;
         
@@ -232,6 +239,7 @@ class EntityRenderer {
      * @param {number} y - Screen Y position
      */
     drawHealthBar(entity, x, y) {
+        console.log('[EntityRenderer] drawHealthBar called - entityId:', entity.id, 'hp:', entity.hp, 'max_hp:', entity.max_hp);
         if (entity.hp === undefined) return;
         
         const barWidth = 32;
@@ -256,6 +264,7 @@ class EntityRenderer {
      * @param {number} y - Screen Y position
      */
     drawEntityLabel(entity, x, y) {
+        console.log('[EntityRenderer] drawEntityLabel called - entityId:', entity.id);
         this.ctx.fillStyle = '#fff';
         this.ctx.font = '10px Arial';
         this.ctx.textAlign = 'center';
@@ -268,6 +277,7 @@ class EntityRenderer {
      * @param {number} deltaTime - Time elapsed since last frame (milliseconds)
      */
     renderEntities(gameState, deltaTime) {
+        console.log('[EntityRenderer] renderEntities called - entityCount:', Object.keys(gameState.entities).length, 'deltaTime:', deltaTime);
         // Update all entity animations
         for (const [entityId, entity] of Object.entries(gameState.entities)) {
             this.updateEntityAnimation(entityId, entity, deltaTime);

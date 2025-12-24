@@ -12,6 +12,7 @@ class SpriteSheet {
      * @param {number} rows - Number of rows in the sprite sheet
      */
     constructor(imagePath, frameWidth, frameHeight, columns, rows) {
+        console.log('[SpriteSheet] Constructor called - path:', imagePath, 'frameSize:', frameWidth + 'x' + frameHeight, 'grid:', columns + 'x' + rows);
         this.image = new Image();
         this.image.src = imagePath;
         this.frameWidth = frameWidth;
@@ -34,6 +35,7 @@ class SpriteSheet {
      * @param {boolean} [flipX=false] - Whether to flip the frame horizontally
      */
     drawFrame(ctx, frameIndex, x, y, flipX = false) {
+        console.log('[SpriteSheet] drawFrame called - frameIndex:', frameIndex, 'pos:', x + ',' + y, 'flipX:', flipX);
         if (!this.loaded) return;
         
         const column = frameIndex % this.columns;

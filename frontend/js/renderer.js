@@ -2,16 +2,15 @@
  * Canvas rendering system
  */
 
-let canvas, ctx;
+/** @type {HTMLCanvasElement} */
+let canvas;
+/** @type {CanvasRenderingContext2D} */
+let ctx;
+/** @type {EntityRenderer} */
 let entityRenderer;
-let playerImages = {
-    up: null,
-    down: null,
-    left: null,
-    right: null
-};
 
 async function initRenderer() {
+    console.log('[Renderer] initRenderer called');
     canvas = document.getElementById('game-canvas');
     ctx = canvas.getContext('2d');
     
@@ -23,34 +22,17 @@ async function initRenderer() {
     entityRenderer = new EntityRenderer(ctx);
     await entityRenderer.loadAnimationData('assets/data/human_animations.json');
     
-    // Load player images (legacy support, will be replaced by sprite system)
-    loadPlayerImages();
-    
     console.log('Renderer initialized');
 }
 
-function loadPlayerImages() {
-    const directions = ['up', 'down', 'left', 'right'];
-    
-    directions.forEach(direction => {
-        const img = new Image();
-        img.src = `assets/images/sprites/player_${direction}.png`;
-        img.onerror = () => {
-            console.warn(`Player ${direction} image not found, will render as circle`);
-        };
-        img.onload = () => {
-            console.log(`Player ${direction} image loaded successfully`);
-        };
-        playerImages[direction] = img;
-    });
-}
-
-function resizeCanvas() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+function resizeCanvas(width = window.innerWidth, height = window.innerHeight) {
+    console.log('[Renderer] resizeCanvas called - size:', width, 'x', height);
+    canvas.width = width;
+    canvas.height = height;
 }
 
 function render(gameState, deltaTime) {
+    console.log('[Renderer] render called - deltaTime:', deltaTime, 'entities:', Object.keys(gameState.entities || {}).length);
     // Clear canvas
     ctx.fillStyle = '#2a2a2a';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -68,6 +50,7 @@ function render(gameState, deltaTime) {
 }
 
 function drawGrid(camera) {
+    console.log('[Renderer] drawGrid called - camera:', camera);
     const gridSize = 32;
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
     ctx.lineWidth = 1;
@@ -95,12 +78,14 @@ function drawGrid(camera) {
 
 // Legacy function - kept for backwards compatibility but no longer used
 function drawEntity(entity, camera) {
+    console.log('[Renderer] drawEntity called (legacy) - entity:', entity.id);
     // This function is now handled by EntityRenderer
     // Kept here for reference or fallback purposes
     console.warn('Legacy drawEntity called - should use EntityRenderer instead');
 }
 
 function drawDebugInfo(gameState) {
+    console.log('[Renderer] drawDebugInfo called');
     ctx.fillStyle = '#fff';
     ctx.font = '12px monospace';
     ctx.textAlign = 'left';
