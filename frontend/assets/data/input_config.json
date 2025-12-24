@@ -1,0 +1,20 @@
+{
+  "movement": {
+    "up": ["w", "arrowup"],
+    "down": ["s", "arrowdown"],
+    "left": ["a", "arrowleft"],
+    "right": ["d", "arrowright"]
+  },
+  "actions": {
+    "interact": ["e"],
+    "inventory": ["i", "tab"],
+    "menu": ["escape"]
+  },
+  "mouse": {
+    "select": 0,
+    "contextMenu": 2
+  },
+  "settings": {
+    "inputPollingRate": 16
+  }
+}
