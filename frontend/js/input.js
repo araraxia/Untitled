@@ -97,7 +97,21 @@ function isActionPressed(action, category = 'movement') {
  * @returns {void}
  */
 function handleKeyDown(e) {
-    keys[e.key.toLowerCase()] = true;
+    const key = e.key.toLowerCase();
+    
+    // Check for pause toggle (only trigger once per key press)
+    if (!keys[key] && keyConfig?.actions?.pause?.includes(key)) {
+        const wasPaused = gameState.paused;
+        gameState.paused = !gameState.paused;
+        console.log(`[Input] Game ${gameState.paused ? 'PAUSED' : 'RESUMED'}`);
+        
+        // If unpausing, restart the render loop
+        if (wasPaused && !gameState.paused) {
+            requestAnimationFrame(renderLoop);
+        }
+    }
+    
+    keys[key] = true;
 }
 
 /**
@@ -167,6 +181,7 @@ function handleContextMenu(e) {
  */
 function processInput() {
     if (!keyConfig) return; // Wait for config to load
+    if (gameState.paused) return; // Don't process input when paused
     
     // Process keyboard input for player movement
     let dx = 0;

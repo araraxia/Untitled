@@ -99,4 +99,22 @@ function drawDebugInfo(gameState) {
     info.forEach((line, index) => {
         ctx.fillText(line, 10, canvas.height - 50 + (index * 15));
     });
+    
+    // Draw pause indicator
+    if (gameState.paused) {
+        ctx.save();
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        ctx.fillStyle = '#FFD700';
+        ctx.font = 'bold 48px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('PAUSED', canvas.width / 2, canvas.height / 2);
+        
+        ctx.font = '16px monospace';
+        ctx.fillStyle = '#fff';
+        ctx.fillText('Press SPACE or P to resume', canvas.width / 2, canvas.height / 2 + 40);
+        ctx.fillText('Check console for logs', canvas.width / 2, canvas.height / 2 + 65);
+        ctx.restore();
+    }
 }

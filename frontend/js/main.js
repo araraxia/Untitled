@@ -7,7 +7,8 @@ const gameState = {
     entities: {},
     player: null,
     camera: { x: 0, y: 0, zoom: 1 },
-    worldSize: { width: 1000, height: 1000 }
+    worldSize: { width: 1000, height: 1000 },
+    paused: false
 };
 
 // Initialize game
@@ -94,21 +95,34 @@ function handleInitialState(data) {
 }
 
 // Main render loop (60fps)
-let lastFrameTime = 0;
+let lastFrameTime = null;
 /**
  * Main render loop called by requestAnimationFrame
  * @param {number} timestamp - High-resolution timestamp from requestAnimationFrame
  * @returns {void}
  */
 function renderLoop(timestamp) {
+    // Initialize lastFrameTime on first frame
+    if (lastFrameTime === null) {
+        lastFrameTime = timestamp;
+        requestAnimationFrame(renderLoop);
+        return;
+    }
+    
     const deltaTime = (timestamp - lastFrameTime) / 1000; // seconds for interpolation
     const deltaTimeMs = timestamp - lastFrameTime; // milliseconds for animations
     lastFrameTime = timestamp;
     
+    // If paused, render once and stop the loop
+    if (gameState.paused) {
+        render(gameState, 0);
+        return; // Don't continue the loop
+    }
+    
     // Update interpolation
     updateInterpolation(deltaTime);
     
-    // Render frame (pass milliseconds for animation system)
+    // Render frame
     render(gameState, deltaTimeMs);
     
     // Continue loop
@@ -126,6 +140,9 @@ function renderLoop(timestamp) {
  * @returns {void}
  */
 function handleStateUpdate(data) {
+    // Skip updates when paused
+    if (gameState.paused) return;
+    
     // Hide loading indicator once we receive first state
     const loadingIndicator = document.getElementById('loading-indicator');
     if (loadingIndicator) {

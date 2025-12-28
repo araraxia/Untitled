@@ -14,7 +14,7 @@ class Animation {
         console.log('[Animation] Constructor called - name:', name, 'startFrame:', startFrame, 'frameCount:', frameCount, 'frameTime:', frameTime, 'loop:', loop);
         this.name = name;
         this.startFrame = startFrame;
-        this. frameCount = frameCount;
+        this.frameCount = frameCount;
         this.frameTime = frameTime;
         this.loop = loop;
     }
@@ -45,7 +45,7 @@ class AnimationController {
      */
     play(animationName) {
         console.log('[AnimationController] play called - animationName:', animationName);
-        if (this.currentAnimation?. name === animationName) return;
+        if (this.currentAnimation?.name === animationName) return;
         
         this.currentAnimation = this.animations[animationName];
         if (this.currentAnimation) {
@@ -65,13 +65,13 @@ class AnimationController {
         this.timeAccumulator += deltaTime;
         
         if (this.timeAccumulator >= this.currentAnimation.frameTime) {
-            this.timeAccumulator -= this.currentAnimation. frameTime;
+            this.timeAccumulator -= this.currentAnimation.frameTime;
             this.currentFrame++;
             
             const maxFrame = this.currentAnimation.startFrame + 
-                           this.currentAnimation. frameCount;
+                           this.currentAnimation.frameCount;
             
-            if (this. currentFrame >= maxFrame) {
+            if (this.currentFrame >= maxFrame) {
                 if (this.currentAnimation.loop) {
                     this.currentFrame = this.currentAnimation.startFrame;
                 } else {
