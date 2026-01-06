@@ -92,6 +92,24 @@ function isActionPressed(action, category = 'movement') {
 }
 
 /**
+ * Toggle debug pause state
+ * Pauses/unpauses the game loop and server updates
+ * Can be expanded with additional debug features
+ * @returns {void}
+ */
+function toggleDebugPause() {
+    const wasPaused = gameState.paused;
+    gameState.paused = !gameState.paused;
+    console.log(`[Input] Game ${gameState.paused ? 'PAUSED' : 'RESUMED'}`);
+    
+    // If unpausing, restart the render loop
+    if (wasPaused && !gameState.paused) {
+        lastFrameTime = performance.now(); // Reset to current time to avoid delta jump
+        requestAnimationFrame(renderLoop);
+    }
+}
+
+/**
  * Handle keyboard key press events
  * @param {KeyboardEvent} e - Keyboard event
  * @returns {void}
@@ -101,14 +119,7 @@ function handleKeyDown(e) {
     
     // Check for pause toggle (only trigger once per key press)
     if (!keys[key] && keyConfig?.actions?.pause?.includes(key)) {
-        const wasPaused = gameState.paused;
-        gameState.paused = !gameState.paused;
-        console.log(`[Input] Game ${gameState.paused ? 'PAUSED' : 'RESUMED'}`);
-        
-        // If unpausing, restart the render loop
-        if (wasPaused && !gameState.paused) {
-            requestAnimationFrame(renderLoop);
-        }
+        toggleDebugPause();
     }
     
     keys[key] = true;

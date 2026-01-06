@@ -45,7 +45,8 @@ class AnimationController {
      */
     play(animationName) {
         console.log('[AnimationController] play called - animationName:', animationName);
-        if (this.currentAnimation?.name === animationName) return;
+        // Only reset if switching to a different animation
+        if (this.currentAnimation?.name === animationName) return; // Already playing this animation
         
         this.currentAnimation = this.animations[animationName];
         if (this.currentAnimation) {
@@ -59,10 +60,13 @@ class AnimationController {
      * @param {number} deltaTime - Time elapsed since last update in milliseconds
      */
     update(deltaTime) {
-        console.log('[AnimationController] update called - deltaTime:', deltaTime, 'currentFrame:', this.currentFrame);
-        if (!this.currentAnimation) return;
+        if (!this.currentAnimation) {
+            console.log('[AnimationController] update called - NO CURRENT ANIMATION');
+            return;
+        }
         
         this.timeAccumulator += deltaTime;
+        console.log('[AnimationController] update - deltaTime:', deltaTime, 'timeAccumulator:', this.timeAccumulator, 'frameTime:', this.currentAnimation.frameTime, 'currentFrame:', this.currentFrame);
         
         if (this.timeAccumulator >= this.currentAnimation.frameTime) {
             this.timeAccumulator -= this.currentAnimation.frameTime;
@@ -71,9 +75,12 @@ class AnimationController {
             const maxFrame = this.currentAnimation.startFrame + 
                            this.currentAnimation.frameCount;
             
+            console.log('[AnimationController] Frame advanced! New frame:', this.currentFrame, 'maxFrame:', maxFrame);
+            
             if (this.currentFrame >= maxFrame) {
                 if (this.currentAnimation.loop) {
                     this.currentFrame = this.currentAnimation.startFrame;
+                    console.log('[AnimationController] Loop back to frame:', this.currentFrame);
                 } else {
                     this.currentFrame = maxFrame - 1;
                 }

@@ -116,8 +116,9 @@ class EntityRenderer {
                         frameDuration = animConfig.frame_duration;
                     }
                     
-                    animations[dir] = new Animation(
-                        `${animationType}_${dir}`,
+                    const animName = `${animationType}_${dir}`;
+                    animations[animName] = new Animation(
+                        animName,
                         dirConfig.start_frame_index,
                         animConfig.frame_count,
                         frameDuration,
@@ -148,8 +149,9 @@ class EntityRenderer {
         const controller = this.getAnimationController(entityId, animationType);
         if (!controller) return;
         
-        // Play the appropriate direction animation
-        controller.play(direction);
+        // Play the appropriate direction animation (use full animation name)
+        const animationName = `${animationType}_${direction}`;
+        controller.play(animationName);
         
         // Update animation
         controller.update(deltaTime);
