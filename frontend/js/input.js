@@ -83,6 +83,8 @@ async function loadKeyConfig() {
  * @returns {boolean} True if any key for this action is pressed
  */
 function isActionPressed(action, category = 'movement') {
+
+    // Exit early if config is missing
     if (!keyConfig || !keyConfig[category] || !keyConfig[category][action]) {
         return false;
     }
@@ -100,7 +102,16 @@ function isActionPressed(action, category = 'movement') {
 function toggleDebugPause() {
     const wasPaused = gameState.paused;
     gameState.paused = !gameState.paused;
-    console.log(`[Input] Game ${gameState.paused ? 'PAUSED' : 'RESUMED'}`);
+    
+    // Update context based on pause state
+    if (gameState.paused) {
+        gameState.previousContext = gameState.context;
+        gameState.context = GameContext.PAUSED;
+    } else {
+        gameState.context = gameState.previousContext || GameContext.IN_GAME;
+    }
+    
+    console.log(`[Input] Game ${gameState.paused ? 'PAUSED' : 'RESUMED'} - Context: ${gameState.context}`);
     
     // If unpausing, restart the render loop
     if (wasPaused && !gameState.paused) {
@@ -194,6 +205,33 @@ function processInput() {
     if (!keyConfig) return; // Wait for config to load
     if (gameState.paused) return; // Don't process input when paused
     
+    // Handle input based on current context
+    switch (gameState.context) {
+        case GameContext.IN_GAME:
+            processGameplayInput();
+            break;
+        case GameContext.MENU:
+            processMenuInput();
+            break;
+        case GameContext.INVENTORY:
+            processInventoryInput();
+            break;
+        case GameContext.DIALOGUE:
+            processDialogueInput();
+            break;
+        case GameContext.PAUSED:
+            // No input processing while paused
+            break;
+        default:
+            break;
+    }
+}
+
+/**
+ * Process input for gameplay context
+ * @returns {void}
+ */
+function processGameplayInput() {
     // Process keyboard input for player movement
     let dx = 0;
     let dy = 0;
@@ -228,4 +266,31 @@ function processInput() {
             direction: { x: 0, y: 0 }
         });
     }
+}
+
+/**
+ * Process input for menu context
+ * @returns {void}
+ */
+function processMenuInput() {
+    // TODO: Implement menu navigation
+    // Arrow keys for navigation, Enter to select, Escape to close
+}
+
+/**
+ * Process input for inventory context
+ * @returns {void}
+ */
+function processInventoryInput() {
+    // TODO: Implement inventory navigation
+    // Arrow keys for item selection, E to use, Escape to close
+}
+
+/**
+ * Process input for dialogue context
+ * @returns {void}
+ */
+function processDialogueInput() {
+    // TODO: Implement dialogue options
+    // Number keys or arrow keys to select dialogue options, Enter to confirm
 }

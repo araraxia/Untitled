@@ -2,13 +2,24 @@
  * Main game entry point
  */
 
+// Game contexts - determines what input actions do
+const GameContext = {
+    LOADING: 'loading',
+    MENU: 'menu',
+    IN_GAME: 'in_game',
+    INVENTORY: 'inventory',
+    DIALOGUE: 'dialogue',
+    PAUSED: 'paused'
+};
+
 // Game state
 const gameState = {
     entities: {},
     player: null,
     camera: { x: 0, y: 0, zoom: 1 },
     worldSize: { width: 1000, height: 1000 },
-    paused: false
+    paused: false,
+    context: GameContext.LOADING // Current game context
 };
 
 // Initialize game
@@ -41,6 +52,9 @@ async function init() {
     // Start render loop
     requestAnimationFrame(renderLoop);
     console.log('[Main] Game loop started');
+    
+    // Set context to in-game after initialization
+    gameState.context = GameContext.IN_GAME;
     
     // Reset cursor after initialization
     document.body.style.cursor = 'default';
