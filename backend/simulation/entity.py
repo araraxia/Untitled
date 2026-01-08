@@ -4,7 +4,17 @@ from typing import Dict, Any
 
 
 class Entity:
-    """Base class for all game entities."""
+    """Base class for all entities in the simulation.
+    
+    Attributes:
+        entity_id (str): Unique identifier for the entity.
+        x (float): X position of the entity.
+        y (float): Y position of the entity.
+        vx (float): Velocity in the X direction.
+        vy (float): Velocity in the Y direction.
+        state (str): Current state of the entity (e.g., "idle", "moving").
+        facing (str): Direction the entity is facing ("up", "down", "left", "right").
+    """
 
     def __init__(self, entity_id: str, x: float, y: float):
         self.entity_id = entity_id

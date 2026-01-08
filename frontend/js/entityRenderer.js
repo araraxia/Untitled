@@ -191,14 +191,6 @@ class EntityRenderer {
             
             entity._animController.draw(this.ctx, drawX, drawY, flipX);
             
-            // Draw state indicator
-            if (entity.state === 'moving') {
-                this.ctx.strokeStyle = '#FFC107';
-                this.ctx.lineWidth = 2;
-                this.ctx.beginPath();
-                this.ctx.arc(x, y, 18, 0, Math.PI * 2);
-                this.ctx.stroke();
-            }
         } else {
             // Fallback if animation controller not set up
             this.drawEntityFallback(entity, camera);
