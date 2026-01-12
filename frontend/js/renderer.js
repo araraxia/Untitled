@@ -6,8 +6,8 @@
 let canvas;
 /** @type {CanvasRenderingContext2D} */
 let ctx;
-/** @type {EntityRenderer} */
-let entityRenderer;
+/** @type {Map<string, EntityRenderer>} */
+let entityRenderers = new Map();
 
 async function initRenderer() {
     console.log('[Renderer] initRenderer called');
@@ -18,11 +18,49 @@ async function initRenderer() {
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
     
-    // Initialize entity renderer
-    entityRenderer = new EntityRenderer(ctx);
-    await entityRenderer.loadAnimationData('assets/data/human_animations.json');
-    
     console.log('Renderer initialized');
+}
+
+/**
+ * Get or create an EntityRenderer for a specific entity
+ * @param {string} entityId - The entity ID
+ * @param {Array<string>} animationDataPaths - List of animation data paths from entity
+ * @returns {Promise<EntityRenderer>}
+ */
+async function getEntityRenderer(entityId, animationDataPaths) {
+    console.log('[Renderer] getEntityRenderer called - entityId:', entityId);
+    
+    if (!entityRenderers.has(entityId)) {
+        const renderer = new EntityRenderer(ctx, entityId, animationDataPaths);
+        await renderer.loadAllAnimationData();
+        entityRenderers.set(entityId, renderer);
+    }
+    
+    return entityRenderers.get(entityId);
+}
+
+/**
+ * Render all entities in the game state
+ * @param {Object} gameState - Current game state
+ * @param {number} deltaTime - Time elapsed since last frame (milliseconds)
+ */
+async function renderEntities(gameState, deltaTime) {
+    console.log('[Renderer] renderEntities called - entityCount:', Object.keys(gameState.entities).length, 'deltaTime:', deltaTime);
+    
+    // Update and draw all entity animations
+    for (const [entityId, entity] of Object.entries(gameState.entities)) {
+        // Get animation data paths from entity (fallback to default if not provided)
+        const animationDataPaths = entity.animation_data_paths || ['assets/data/human_animations.json'];
+        
+        // Get or create renderer for this entity
+        const renderer = await getEntityRenderer(entityId, animationDataPaths);
+        
+        // Update animation
+        renderer.updateEntityAnimation(entityId, entity, deltaTime);
+        
+        // Draw entity
+        renderer.drawEntity(entity, gameState.camera);
+    }
 }
 
 function resizeCanvas(width = window.innerWidth, height = window.innerHeight) {
@@ -31,7 +69,7 @@ function resizeCanvas(width = window.innerWidth, height = window.innerHeight) {
     canvas.height = height;
 }
 
-function render(gameState, deltaTime) {
+async function render(gameState, deltaTime) {
     console.log('[Renderer] render called - deltaTime:', deltaTime, 'entities:', Object.keys(gameState.entities || {}).length);
     // Clear canvas
     ctx.fillStyle = '#2a2a2a';
@@ -40,10 +78,8 @@ function render(gameState, deltaTime) {
     // Draw grid
     drawGrid(gameState.camera);
     
-    // Draw entities using EntityRenderer
-    if (entityRenderer) {
-        entityRenderer.renderEntities(gameState, deltaTime);
-    }
+    // Draw all entities
+    await renderEntities(gameState, deltaTime);
     
     // Draw debug info
     drawDebugInfo(gameState);

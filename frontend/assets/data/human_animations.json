@@ -1,5 +1,6 @@
 {
     "base_model_path": "images/sprites/human/base",
+    "relative_z_index": 1,
     "stand": {
         "default_sprite_sheet": "char_a_p1_0bas_humn.png",
         "default_sprite_version": "v00",

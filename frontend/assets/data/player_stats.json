@@ -1,18 +1,19 @@
 {
-    "name": "",
+    "uuid": "00000000-0000-0000-0000-000000000000",
+    "name": "default",
     "race": "human",
     "model_version": "00",
     "height": 0,
     "weight": 0,
     "age": 0,
-    "dob": "",
-    "gender": "",
-    "hair_style": "",
-    "hair_color": "",
-    "left_eye_color": "",
-    "left_eye_type": "",
-    "right_eye_color": "",
-    "right_eye_type": "",
+    "dob": "01/01/0001",
+    "gender": "unspecified",
+    "hair_style": 0,
+    "hair_color": 0,
+    "left_eye_color": 0,
+    "left_eye_type": 0,
+    "right_eye_color": 0,
+    "right_eye_type": 0,
     "experience": 0,
     "level": 1,
     "modifiers": {
@@ -22,7 +23,7 @@
         "running_speed": 1.0,
         "crawling_speed": 1.0,
         "jumping_ability": 1.0,
-        "strenght": {},
+        "strength": {},
         "dexterity": {},
         "intelligence": {},
         "perception": {},
@@ -87,5 +88,5 @@
             "right_foot": {}
         }
     },
-    "equipment": []
+    "equipment": {}
 }
