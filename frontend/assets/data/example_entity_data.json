@@ -88,5 +88,12 @@
             "right_foot": {}
         }
     },
-    "equipment": {}
+    "equipment": {},
+    "animation_data_paths": [],
+    "x_pos": 0,
+    "y_pos": 0,
+    "x_velocity": 0,
+    "y_velocity": 0,
+    "state": "",
+    "facing_direction": ""
 }

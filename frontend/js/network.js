@@ -19,6 +19,9 @@ function initNetwork() {
     // Connect to server
     socket = io();
     
+    // Make socket globally accessible for player selection
+    window.socket = socket;
+    
     socket.on('connect', () => {
         console.log('Connected to server');
     });
@@ -38,6 +41,21 @@ function initNetwork() {
     
     socket.on('state_update', (data) => {
         handleStateUpdate(data);
+    });
+    
+    socket.on('player_list', (data) => {
+        console.log('Received player list:', data);
+        populatePlayerList(data.players);
+    });
+    
+    socket.on('player_loaded', (data) => {
+        console.log('Player loaded:', data);
+        handleInitialState(data);
+    });
+    
+    socket.on('error', (data) => {
+        console.error('Server error:', data.message);
+        alert('Error: ' + data.message);
     });
     
     console.log('Network initialized');

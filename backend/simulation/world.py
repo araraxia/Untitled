@@ -14,26 +14,35 @@ class World:
         self.width = WORLD_WIDTH
         self.height = WORLD_HEIGHT
         self.entities: Dict[str, Entity] = {}
-        self.player: Optional[PlayerCharacter] = None
+        self.player_controller: Optional[PlayerCharacter] = None
         self.spatial_grid = SpatialGrid(WORLD_WIDTH, WORLD_HEIGHT)
         self.dirty_entities: set = set()
         self.removed_entities: set = set()
 
-        # Initialize with a player character
-        self._initialize_player()
+        # Don't auto-initialize player - wait for player selection from menu
 
-    def _initialize_player(self, x_pos: float = -1, y_pos: float = -1):
-        """Create the initial player character."""
-        # Spawn player in the center of the world if no position provided
-        if x_pos < 0:
-            x_pos = WORLD_WIDTH // 2
-        if y_pos < 0:
-            y_pos = WORLD_HEIGHT // 2
+    def load_player_controller(self, player_controller: PlayerCharacter):
+        """Load a player controller and their controlled entities into the world.
         
-        self.player = PlayerCharacter(
-            entity_id="player_1", x=x_pos, y=y_pos
-        )
-        self.add_entity(self.player)
+        Args:
+            player_controller: The PlayerCharacter controller to load
+        """
+        self.player_controller = player_controller
+        
+        # Add all controlled entities to the world
+        for entity in player_controller.get_controlled_entities():
+            if entity.entity_id not in self.entities:
+                self.add_entity(entity)
+                
+    def get_active_player_entity(self) -> Optional[Entity]:
+        """Get the currently active player-controlled entity.
+        
+        Returns:
+            The active Entity being controlled, or None
+        """
+        if self.player_controller:
+            return self.player_controller.get_active_entity()
+        return None
 
     def add_entity(self, entity: Entity):
         """Add an entity to the world."""
@@ -51,9 +60,12 @@ class World:
 
     def process_player_action(self, action: Dict[str, Any]):
         """Process a player action."""
-        if self.player:
-            self.player.execute_action(action)
-            self.dirty_entities.add(self.player.entity_id)
+        if self.player_controller:
+            self.player_controller.execute_action(action)
+            # Mark controlled entities as dirty
+            for entity in self.player_controller.get_controlled_entities():
+                if entity.entity_id in self.entities:
+                    self.dirty_entities.add(entity.entity_id)
 
     def process_party_command(self, command: Dict[str, Any]):
         """Process a party command."""

@@ -1,0 +1,99 @@
+{
+    "uuid": "00000000-0000-0000-0000-000000000001",
+    "name": "Test",
+    "race": "human",
+    "model_version": "00",
+    "height": 0,
+    "weight": 0,
+    "age": 0,
+    "dob": "01/01/0001",
+    "gender": "unspecified",
+    "hair_style": 0,
+    "hair_color": 0,
+    "left_eye_color": 0,
+    "left_eye_type": 0,
+    "right_eye_color": 0,
+    "right_eye_type": 0,
+    "experience": 0,
+    "level": 1,
+    "modifiers": {
+        "action_speed": 1.0,
+        "carrying_capacity": 1.0,
+        "walking_speed": 1.0,
+        "running_speed": 1.0,
+        "crawling_speed": 1.0,
+        "jumping_ability": 1.0,
+        "strength": {},
+        "dexterity": {},
+        "intelligence": {},
+        "perception": {},
+        "willpower": {},
+        "charisma": {}
+    },
+    "stats": {
+        "fame": 0,
+        "virtue": 0,
+        "infamy": 0
+    },
+    "skills": {},
+    "abilities": {},
+    "health": {
+        "head": {
+            "left_eye": {},
+            "right_eye": {},
+            "mouth": {},
+            "tongue": {},
+            "skull": {},
+            "brain": {}
+        },
+        "torso": {
+            "chest": {},
+            "stomach": {},
+            "groin": {},
+            "left_shoulder": {},
+            "right_shoulder": {},
+            "upper_back": {},
+            "lower_back": {},
+            "heart": {},
+            "lung_left": {},
+            "lung_right": {},
+            "neck": {}
+        },
+        "left_arm": {
+            "left_forearm": {},
+            "left_upper_arm": {},
+            "left_hand": {
+                "left_fingers": {}
+            }
+        },
+        "right_arm": {
+            "right_forearm": {},
+            "right_upper_arm": {},
+            "right_hand": {
+                "right_fingers": {}
+            }
+        },
+        "left_hip": {},
+        "right_hip": {},
+        "left_leg": {
+            "left_thigh": {},
+            "left_knee": {},
+            "left_calf": {},
+            "left_foot": {}
+        },
+        "right_leg": {
+            "right_thigh": {},
+            "right_knee": {},
+            "right_calf": {},
+            "right_foot": {}
+        }
+    },
+    "equipment": {},
+    "animation_data_paths": [],
+    "x_pos": 0,
+    "y_pos": 0,
+    "x_velocity": 0,
+    "y_velocity": 0,
+    "state": "",
+    "facing_direction": ""
+}

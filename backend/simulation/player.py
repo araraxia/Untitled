@@ -9,201 +9,200 @@ import json
 PLAYER_DIRECTORY = Path("data/players")
 
 
-class PlayerCharacter(Entity):
-    """Player character with deep action control."""
+class PlayerCharacter:
+    """Player controller that can control multiple entities simultaneously.
+
+    This class acts as a shell/controller for entities, translating player inputs
+    into actions for controlled entities. The player can manage a party of entities
+    and switch focus between them.
+    """
 
     def __init__(
         self,
-        entity_id: str = "00000000-0000-0000-0000-000000000000",
-        x: Optional[float] = None,
-        y: Optional[float] = None,
-        animation_data_paths: Optional[List[str]] = None,
+        player_id: str = "00000000-0000-0000-0000-000000000000",
     ):
         # 00000000-0000-0000-0000-000000000000 is the default ID for non-persistent players.
-        super().__init__(entity_id, x, y, animation_data_paths=animation_data_paths)
+        self.player_id = player_id
+        self.active_entity_index: int = (
+            0  # Index of currently active entity for direct manual control
+        )
+        self.controlled_entity_ids: List[str] = []  # Currently controlled entity IDs
+        self.controlled_entity_objs: List[Entity] = []  # Currently controlled entity objects
+        self.controlled_entity_history: List[str] = (
+            []
+        )  # List of entity IDs ever controlled
+        self.current_selected_entities: List[str] = []  # Currently selected entity IDs
 
-        # Basic info
-        self.name = "default"
-        self.race = "human"
-        self.model_version = "00"
-
-        # Physical attributes
-        self.height = 0
-        self.weight = 0
-        self.age = 0
-        self.dob = "01/01/0001"
-        self.gender = "unspecified"
-
-        # Appearance
-        self.hair_style = 0
-        self.hair_color = 0
-        self.left_eye_color = 0
-        self.left_eye_type = 0
-        self.right_eye_color = 0
-        self.right_eye_type = 0
-
-        # Progression
-        self.experience = 0
-        self.level = 1
-
-        # Modifiers
-        self.modifiers = {
-            "action_speed": 1.0,
-            "carrying_capacity": 1.0,
-            "walking_speed": 1.0,
-            "running_speed": 1.0,
-            "crawling_speed": 1.0,
-            "jumping_ability": 1.0,
-            "strength": {},
-            "dexterity": {},
-            "intelligence": {},
-            "perception": {},
-            "willpower": {},
-            "charisma": {},
+        # Player-specific attributes (not tied to any entity)
+        self.player_inventory = {}  # Global items by player across entities
+        self.player_stats = {
+            "total_playtime": 0.0,
+            "entities_controlled": 0,
+            "achievements": [],
         }
-
-        # Stats
-        self.stats = {"fame": 0, "virtue": 0, "infamy": 0}
-
-        # Skills and abilities
-        self.skills = {}
-        self.abilities = {}
-
-        # Health system
-        self.health = {
-            "head": {
-                "left_eye": {},
-                "right_eye": {},
-                "mouth": {},
-                "tongue": {},
-                "skull": {},
-                "brain": {},
-            },
-            "torso": {
-                "chest": {},
-                "stomach": {},
-                "groin": {},
-                "left_shoulder": {},
-                "right_shoulder": {},
-                "upper_back": {},
-                "lower_back": {},
-                "heart": {},
-                "lung_left": {},
-                "lung_right": {},
-                "neck": {},
-            },
-            "left_arm": {
-                "left_forearm": {},
-                "left_upper_arm": {},
-                "left_hand": {"left_fingers": {}},
-            },
-            "right_arm": {
-                "right_forearm": {},
-                "right_upper_arm": {},
-                "right_hand": {"right_fingers": {}},
-            },
-            "left_hip": {},
-            "right_hip": {},
-            "left_leg": {
-                "left_thigh": {},
-                "left_knee": {},
-                "left_calf": {},
-                "left_foot": {},
-            },
-            "right_leg": {
-                "right_thigh": {},
-                "right_knee": {},
-                "right_calf": {},
-                "right_foot": {},
-            },
-        }
-
-        # Combat and actions (legacy attributes)
-        self.hp = 100
-        self.max_hp = 100
-        self.action_points = 100
-        self.inventory = []
-        self.equipment = {}
         self.current_action: Optional[Any] = None
 
+    def add_controlled_entity(self, entity: Entity):
+        """Add an entity to the player's controlled party.
+
+        Args:
+            entity: The Entity to add to control
+        """
+        if entity and entity.entity_id not in self.controlled_entity_ids:
+            self.controlled_entity_ids.append(entity.entity_id)
+            self.controlled_entity_objs.append(entity)
+            if entity.entity_id not in self.controlled_entity_history:
+                self.controlled_entity_history.append(entity.entity_id)
+                self.player_stats["entities_controlled"] += 1
+
+    def remove_controlled_entity(self, entity: Entity):
+        """Remove an entity from the player's controlled party.
+
+        Args:
+            entity: The Entity to remove from control
+        """
+        if entity.entity_id in self.controlled_entity_ids:
+            self.controlled_entity_ids.remove(entity.entity_id)
+            self.controlled_entity_objs.remove(entity)
+            # Adjust active index if needed
+            if self.active_entity_index >= len(self.controlled_entity_objs):
+                self.active_entity_index = max(0, len(self.controlled_entity_objs) - 1)
+
+    def get_active_entity(self) -> Optional[Entity]:
+        """Get the currently active entity for direct control.
+
+        Returns:
+            The active Entity or None
+        """
+        if 0 <= self.active_entity_index < len(self.controlled_entity_objs):
+            return self.controlled_entity_objs[self.active_entity_index]
+        return None
+
+    def get_controlled_entities(self) -> List[Entity]:
+        """Get all entities currently controlled by this player.
+
+        Returns:
+            List of controlled entities
+        """
+        return self.controlled_entity_objs
+
+    def set_active_entity_by_index(self, index: int):
+        """Set the active entity by index in the controlled entities list.
+
+        Args:
+            index: Index of the entity to make active
+        """
+        if 0 <= index < len(self.controlled_entity_objs):
+            self.active_entity_index = index
+
+    def set_active_entity_by_id(self, entity_id: str):
+        """Set the active entity by entity ID.
+
+        Args:
+            entity_id: ID of the entity to make active
+        """
+        for i, entity in enumerate(self.controlled_entity_objs):
+            if entity.entity_id == entity_id:
+                self.active_entity_index = i
+                break
+
+    def cycle_active_entity(self, direction: int = 1):
+        """Cycle through controlled entities.
+
+        Args:
+            direction: 1 for next, -1 for previous
+        """
+        if self.controlled_entity_objs:
+            self.active_entity_index = (self.active_entity_index + direction) % len(
+                self.controlled_entity_objs
+            )
+
     def execute_action(self, action_data: Dict[str, Any]):
-        """Execute a player action."""
+        """Translate player input into an action for the active entity or party.
+
+        Args:
+            action_data: Dictionary containing action type and parameters
+                        Can include 'target_entity_id' to specify which entity should act,
+                        or 'apply_to_party' to apply to all controlled entities
+        """
         action_type = action_data.get("type")
+        target_entity_id = action_data.get("target_entity_id")
+        apply_to_party = action_data.get("apply_to_party", False)
 
-        if action_type == "move":
-            # Simple movement for now
-            direction = action_data.get("direction", {})
-            speed = 50.0  # units per second
-            self.vx = direction.get("x", 0) * speed
-            self.vy = direction.get("y", 0) * speed
-            self.state = "moving" if (self.vx != 0 or self.vy != 0) else "idle"
+        # Determine which entity(ies) to apply action to
+        if apply_to_party:
+            target_entities = self.controlled_entity_objs
+        elif target_entity_id:
+            target_entities = [
+                e for e in self.controlled_entity_objs if e.entity_id == target_entity_id
+            ]
+        else:
+            active = self.get_active_entity()
+            target_entities = [active] if active else []
 
-            # Update facing direction based on movement
-            if self.vy < 0:
-                self.facing = "up"
-            elif self.vy > 0:
-                self.facing = "down"
-            elif self.vx < 0:
-                self.facing = "left"
-            elif self.vx > 0:
-                self.facing = "right"
+        if not target_entities:
+            return
 
-            self.is_dirty = True
+        # Apply action to target entities
+        for entity in target_entities:
+            if action_type == "move":
+                # Translate movement input to entity movement
+                direction = action_data.get("direction", {})
+                speed = 50.0 * entity.modifiers.get("walking_speed", 1.0)
 
-        elif action_type == "attack":
-            # Placeholder for attack action
-            target_id = action_data.get("target_id")
-            self.state = "attacking"
-            self.is_dirty = True
+                entity.vx = direction.get("x", 0) * speed
+                entity.vy = direction.get("y", 0) * speed
+                entity.state = (
+                    "moving" if (entity.vx != 0 or entity.vy != 0) else "idle"
+                )
 
-        elif action_type == "use_item":
-            # Placeholder for item use
-            item_id = action_data.get("item_id")
-            self.state = "using_item"
-            self.is_dirty = True
+                # Update facing direction based on movement
+                if entity.vy < 0:
+                    entity.facing = "up"
+                elif entity.vy > 0:
+                    entity.facing = "down"
+                elif entity.vx < 0:
+                    entity.facing = "left"
+                elif entity.vx > 0:
+                    entity.facing = "right"
 
-    def consume_action_points(self, cost: int):
-        """Consume action points for an action."""
-        self.action_points = max(0, self.action_points - cost)
-        self.is_dirty = True
+                entity.is_dirty = True
+
+            elif action_type == "attack":
+                # Translate attack input to entity attack
+                target_id = action_data.get("target_id")
+                entity.state = "attacking"
+                entity.is_dirty = True
+
+            elif action_type == "use_item":
+                # Translate item use to entity action
+                item_id = action_data.get("item_id")
+                entity.state = "using_item"
+                entity.is_dirty = True
+
+            elif action_type == "interact":
+                # Generic interaction
+                target_id = action_data.get("target_id")
+                entity.state = "interacting"
+                entity.is_dirty = True
 
     def serialize(self) -> Dict[str, Any]:
-        """Serialize player state."""
-        base_data = super().serialize()
-        base_data.update(
-            {
-                "name": self.name,
-                "race": self.race,
-                "model_version": self.model_version,
-                "height": self.height,
-                "weight": self.weight,
-                "age": self.age,
-                "dob": self.dob,
-                "gender": self.gender,
-                "hair_style": self.hair_style,
-                "hair_color": self.hair_color,
-                "left_eye_color": self.left_eye_color,
-                "left_eye_type": self.left_eye_type,
-                "right_eye_color": self.right_eye_color,
-                "right_eye_type": self.right_eye_type,
-                "experience": self.experience,
-                "level": self.level,
-                "modifiers": self.modifiers,
-                "stats": self.stats,
-                "skills": self.skills,
-                "abilities": self.abilities,
-                "health": self.health,
-                "hp": self.hp,
-                "max_hp": self.max_hp,
-                "action_points": self.action_points,
-                "inventory": self.inventory,
-                "equipment": self.equipment,
-            }
-        )
-        return base_data
+        """Serialize player controller state.
+
+        Returns:
+            Dictionary containing player state (not entity state)
+        """
+        return {
+            "player_id": self.player_id,
+            "controlled_entity_ids": [e.entity_id for e in self.controlled_entity_objs],
+            "active_entity_index": self.active_entity_index,
+            "controlled_entities_history": self.controlled_entity_history,
+            "player_inventory": self.player_inventory,
+            "player_stats": self.player_stats,
+        }
 
     def save_to_file(self, directory: Path = PLAYER_DIRECTORY) -> str:
-        """Save player data to a JSON file named with the player UUID.
+        """Save player controller data to a JSON file named with the player ID.
 
         Args:
             directory: Directory to save the file in (default: 'data/players')
@@ -215,57 +214,23 @@ class PlayerCharacter(Entity):
         save_dir = Path(directory)
         save_dir.mkdir(parents=True, exist_ok=True)
 
-        # Prepare data to save (includes all player-specific attributes)
-        data = {
-            "uuid": self.entity_id,
-            "x": self.x,
-            "y": self.y,
-            "vx": self.vx,
-            "vy": self.vy,
-            "state": self.state,
-            "facing": self.facing,
-            "animation_data_paths": self.animation_data_paths,
-            "name": self.name,
-            "race": self.race,
-            "model_version": self.model_version,
-            "height": self.height,
-            "weight": self.weight,
-            "age": self.age,
-            "dob": self.dob,
-            "gender": self.gender,
-            "hair_style": self.hair_style,
-            "hair_color": self.hair_color,
-            "left_eye_color": self.left_eye_color,
-            "left_eye_type": self.left_eye_type,
-            "right_eye_color": self.right_eye_color,
-            "right_eye_type": self.right_eye_type,
-            "experience": self.experience,
-            "level": self.level,
-            "modifiers": self.modifiers,
-            "stats": self.stats,
-            "skills": self.skills,
-            "abilities": self.abilities,
-            "health": self.health,
-            "hp": self.hp,
-            "max_hp": self.max_hp,
-            "action_points": self.action_points,
-            "inventory": self.inventory,
-            "equipment": self.equipment,
-        }
+        # Prepare data to save (player controller data only)
+        data = self.serialize()
 
         # Save to file
-        file_path = save_dir / f"{self.entity_id}.json"
+        file_path = save_dir / f"player-{self.player_id}.json"
         with open(file_path, "w") as f:
             json.dump(data, f, indent=2)
 
         return str(file_path)
 
     @classmethod
-    def load_from_file(cls, file_path: Path) -> "PlayerCharacter":
-        """Load player data from a JSON file.
+    def load_from_file(cls, file_path: Path, entity_lookup: Optional[Dict[str, Entity]] = None) -> "PlayerCharacter":
+        """Load player controller data from a JSON file.
 
         Args:
             file_path: Path to the JSON file containing player data
+            entity_lookup: Optional dictionary mapping entity IDs to Entity objects
 
         Returns:
             PlayerCharacter: A new PlayerCharacter instance with loaded data
@@ -273,83 +238,83 @@ class PlayerCharacter(Entity):
         with open(file_path, "r") as f:
             data = json.load(f)
 
-        # Create player with basic parameters (handle both 'uuid' and 'entity_id' keys)
+        # Create player controller with basic parameters
         player = cls(
-            entity_id=data.get(
-                "uuid", data.get("entity_id", "00000000-0000-0000-0000-000000000000")
-            ),
-            x=data.get("x"),
-            y=data.get("y"),
-            animation_data_paths=data.get("animation_data_paths", []),
+            player_id=data.get("player_id", "00000000-0000-0000-0000-000000000000"),
         )
 
-        # Set Entity attributes
-        player.vx = data.get("vx", 0.0)
-        player.vy = data.get("vy", 0.0)
-        player.state = data.get("state", "idle")
-        player.facing = data.get("facing", "down")
+        # Restore controlled entity IDs
+        player.controlled_entity_ids = data.get("controlled_entity_ids", [])
+        
+        # Restore controlled entity objects if entity_lookup provided
+        if entity_lookup:
+            for entity_id in player.controlled_entity_ids:
+                if entity_id in entity_lookup:
+                    player.controlled_entity_objs.append(entity_lookup[entity_id])
 
-        # Set basic info
-        player.name = data.get("name", "default")
-        player.race = data.get("race", "human")
-        player.model_version = data.get("model_version", "00")
-
-        # Set physical attributes
-        player.height = data.get("height", 0)
-        player.weight = data.get("weight", 0)
-        player.age = data.get("age", 0)
-        player.dob = data.get("dob", "01/01/0001")
-        player.gender = data.get("gender", "unspecified")
-
-        # Set appearance
-        player.hair_style = data.get("hair_style", 0)
-        player.hair_color = data.get("hair_color", 0)
-        player.left_eye_color = data.get("left_eye_color", 0)
-        player.left_eye_type = data.get("left_eye_type", 0)
-        player.right_eye_color = data.get("right_eye_color", 0)
-        player.right_eye_type = data.get("right_eye_type", 0)
-
-        # Set progression
-        player.experience = data.get("experience", 0)
-        player.level = data.get("level", 1)
-
-        # Set modifiers (merge with defaults)
-        if "modifiers" in data:
-            player.modifiers.update(data["modifiers"])
-
-        # Set stats (merge with defaults)
-        if "stats" in data:
-            player.stats.update(data["stats"])
-
-        # Set skills and abilities
-        player.skills = data.get("skills", {})
-        player.abilities = data.get("abilities", {})
-
-        # Set health system (merge with defaults)
-        if "health" in data:
-            player.health.update(data["health"])
-
-        # Set combat attributes
-        player.hp = data.get("hp", 100)
-        player.max_hp = data.get("max_hp", 100)
-        player.action_points = data.get("action_points", 100)
-        player.inventory = data.get("inventory", [])
-        player.equipment = data.get("equipment", {})
+        # Restore player controller attributes
+        player.active_entity_index = data.get("active_entity_index", 0)
+        player.controlled_entity_history = data.get("controlled_entity_history", [])
+        player.player_inventory = data.get("player_inventory", {})
+        player.player_stats = data.get(
+            "player_stats",
+            {"total_playtime": 0.0, "entities_controlled": 0, "achievements": []},
+        )
 
         return player
 
     @classmethod
-    def load_by_uuid(
-        cls, uuid: str, directory: Path = PLAYER_DIRECTORY
+    def load_by_id(
+        cls,
+        player_id: str,
+        directory: Path = PLAYER_DIRECTORY,
+        load_entities: bool = True,
     ) -> "PlayerCharacter":
-        """Load player data using UUID to construct the file path.
+        """Load player controller data using player ID to construct the file path.
+        
+        This method will automatically load all controlled entities from their files.
 
         Args:
-            uuid: The player UUID to load
+            player_id: The player ID to load
             directory: Directory to load from (default: 'data/players')
+            load_entities: Whether to automatically load entity objects (default: True)
 
         Returns:
-            PlayerCharacter: A new PlayerCharacter instance with loaded data
+            PlayerCharacter: A new PlayerCharacter instance with loaded data and entities
         """
-        file_path = Path(directory) / f"{uuid}.json"
-        return cls.load_from_file(file_path)
+        file_path = Path(directory) / f"{player_id}.json"
+        
+        # Load player data first
+        with open(file_path, "r") as f:
+            data = json.load(f)
+        
+        # Create player controller
+        player = cls(player_id=data.get("player_id", player_id))
+        player.controlled_entity_ids = data.get("controlled_entity_ids", [])
+        player.active_entity_index = data.get("active_entity_index", 0)
+        player.controlled_entity_history = data.get("controlled_entity_history", [])
+        player.player_inventory = data.get("player_inventory", {})
+        player.player_stats = data.get(
+            "player_stats",
+            {"total_playtime": 0.0, "entities_controlled": 0, "achievements": []},
+        )
+        
+        # Load entities if requested
+        if load_entities:
+            player.load_controlled_entities()
+        
+        return player
+    
+    def load_controlled_entities(self):
+        """Load all controlled entities from their files.
+        
+        This method loads Entity objects for all entity IDs in controlled_entity_ids.
+        """
+        self.controlled_entity_objs = []
+        
+        for entity_id in self.controlled_entity_ids:
+            try:
+                entity = Entity.load_by_id(entity_id)
+                self.controlled_entity_objs.append(entity)
+            except Exception as e:
+                print(f"Warning: Failed to load entity {entity_id}: {e}")
