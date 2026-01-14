@@ -3,7 +3,7 @@
 import time
 from typing import List, Dict, Any
 from backend.config import TICK_RATE, TICK_DURATION
-from backend.simulation.world import World
+from backend.simulation.area import Area
 from backend.independant_logger import Logger
 
 # Initialize logger
@@ -19,7 +19,7 @@ class GameLoop:
 
     def __init__(self, socketio):
         self.socketio = socketio
-        self.world = World()
+        self.world = Area()
         self.running = False
         self.tick_count = 0
         self.player_action_queue: List[Dict[str, Any]] = []

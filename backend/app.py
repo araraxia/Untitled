@@ -120,11 +120,20 @@ def handle_request_player_list():
 @socketio.on("load_player")
 def handle_load_player(data):
     """Handle loading a player and their controlled entities."""
-    from pathlib import Path
     from backend.simulation.player import PlayerCharacter
     from backend.simulation.entity import Entity
     import threading
 
+
+    player_id = data.get("player_id")
+    if not player_id:
+        emit("error", {"message": "No player ID provided"})
+        return
+    player_file = DATA_PATH / "player" / f"player-{player_id}.json"
+    if not player_file.exists():
+        emit("error", {"message": f"Player file for ID {player_id} does not exist."})
+        return
+    
     # Start game loop on first player load (thread-safe)
     if not game_loop.running:
         logger.info("Starting game loop for first player load")
@@ -134,35 +143,10 @@ def handle_load_player(data):
         import time
         time.sleep(0.1)
 
-    player_id = data.get("player_id")
-    if not player_id:
-        emit("error", {"message": "No player ID provided"})
-        return
-
     try:
-        # Load or create player
-        player_file = Path("data/players") / f"{player_id}.json"
-
-        if player_file.exists():
-            # Load existing player - PlayerCharacter handles entity loading internally
-            player = PlayerCharacter.load_by_id(player_id, load_entities=True)
-            logger.info(f"Loaded existing player {player_id} with {len(player.get_controlled_entities())} entities")
-        else:
-            # Create new player with a default entity
-            from backend.config import WORLD_WIDTH, WORLD_HEIGHT
-            
-            player = PlayerCharacter(player_id=player_id)
-            
-            # Create and add default entity
-            default_entity = Entity(
-                entity_id=f"entity_{player_id[:8]}",
-                x=WORLD_WIDTH // 2,
-                y=WORLD_HEIGHT // 2,
-                animation_data_paths=["assets/data/example_human_animations.json"]
-            )
-            player.add_controlled_entity(default_entity)
-            
-            logger.info(f"Created new player {player_id} with default entity")
+        # Load existing player - PlayerCharacter handles entity loading internally
+        player = PlayerCharacter.load_by_id(player_id, load_entities=True)
+        logger.info(f"Loaded existing player {player_id} with {len(player.get_controlled_entities())} entities")
 
         # Load player controller and entities into world
         game_loop.world.load_player_controller(player)

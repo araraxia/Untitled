@@ -1,21 +1,25 @@
 """World state manager."""
 
 from typing import Dict, List, Any, Optional
-from backend.config import WORLD_WIDTH, WORLD_HEIGHT
+from backend.config import DEF_AREA_WIDTH, DEF_AREA_HEIGHT
 from backend.simulation.entity import Entity
 from backend.simulation.player import PlayerCharacter
 from backend.simulation.spatial import SpatialGrid
 
 
-class World:
+class Area:
     """Manages the game world state and entities."""
 
-    def __init__(self):
-        self.width = WORLD_WIDTH
-        self.height = WORLD_HEIGHT
+    def __init__(
+        self, area_id: Optional[str] = None, area_name: str = "Untitled Area"
+    ):
+        self.area_id = area_id
+        self.area_name = area_name
+        self.width = DEF_AREA_WIDTH  # Default world dimensions
+        self.height = DEF_AREA_HEIGHT  # Default world dimensions
         self.entities: Dict[str, Entity] = {}
         self.player_controller: Optional[PlayerCharacter] = None
-        self.spatial_grid = SpatialGrid(WORLD_WIDTH, WORLD_HEIGHT)
+        self.spatial_grid = SpatialGrid(DEF_AREA_WIDTH, DEF_AREA_HEIGHT)
         self.dirty_entities: set = set()
         self.removed_entities: set = set()
 
@@ -23,20 +27,20 @@ class World:
 
     def load_player_controller(self, player_controller: PlayerCharacter):
         """Load a player controller and their controlled entities into the world.
-        
+
         Args:
             player_controller: The PlayerCharacter controller to load
         """
         self.player_controller = player_controller
-        
+
         # Add all controlled entities to the world
         for entity in player_controller.get_controlled_entities():
             if entity.entity_id not in self.entities:
                 self.add_entity(entity)
-                
+
     def get_active_player_entity(self) -> Optional[Entity]:
         """Get the currently active player-controlled entity.
-        
+
         Returns:
             The active Entity being controlled, or None
         """
@@ -108,3 +112,11 @@ class World:
             },
             "world": {"width": self.width, "height": self.height},
         }
+
+    def save_from_file(self, file_path: str):
+        """Load world state from a file."""
+        pass  # Implementation depends on file format
+
+    def load_from_file(self, file_path: str):
+        """Save world state to a file."""
+        pass  # Implementation depends on file format
