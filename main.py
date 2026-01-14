@@ -81,13 +81,8 @@ def is_server_ready(host="127.0.0.1", port=5000, timeout=10):
 def start_server():
     """Start the Flask-SocketIO server in a separate thread."""
     logger.info("Starting game server...")
-
-    # Use the existing global game_loop instance from backend.app
-    from backend.app import game_loop
+    # Note: Game loop will start automatically when first player loads
     
-    game_thread = threading.Thread(target=game_loop.run, daemon=True)
-    game_thread.start()
-
     # Start the Flask-SocketIO server
     socketio.run(
         app, host="127.0.0.1", port=5000, debug=False, allow_unsafe_werkzeug=True

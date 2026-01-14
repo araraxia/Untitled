@@ -5,6 +5,7 @@ from flask_socketio import SocketIO, emit
 import os
 from backend.config import HOST, PORT, DEBUG
 from backend.independant_logger import Logger
+from pathlib import Path
 
 # Initialize logger
 logger = Logger(
@@ -14,10 +15,16 @@ logger = Logger(
 ).get_logger()
 
 # Get the absolute path to the project root
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FRONTEND_PATH = os.path.join(PROJECT_ROOT, "frontend")
+FILE_PATH = Path(__file__).resolve()
+PROJECT_ROOT = FILE_PATH.parent.parent
+FRONTEND_PATH = PROJECT_ROOT / "frontend"
+ASSET_PATH = FRONTEND_PATH / "assets"
+CSS_PATH = FRONTEND_PATH / "css"
+JS_PATH = FRONTEND_PATH / "js"
+DATA_PATH = ASSET_PATH / "data"
 
-app = Flask(__name__, static_folder=FRONTEND_PATH, template_folder=FRONTEND_PATH)
+
+app = Flask(__name__, static_folder=str(FRONTEND_PATH), template_folder=str(FRONTEND_PATH))
 app.config["SECRET_KEY"] = "your-secret-key-here"
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
@@ -36,19 +43,19 @@ def index():
 @app.route("/css/<path:filename>")
 def serve_css(filename):
     """Serve CSS files."""
-    return send_from_directory(os.path.join(FRONTEND_PATH, "css"), filename)
+    return send_from_directory(str(CSS_PATH), filename)
 
 
 @app.route("/js/<path:filename>")
 def serve_js(filename):
     """Serve JavaScript files."""
-    return send_from_directory(os.path.join(FRONTEND_PATH, "js"), filename)
+    return send_from_directory(str(JS_PATH), filename)
 
 
 @app.route("/assets/<path:filename>")
 def serve_assets(filename):
     """Serve asset files (fonts, images, audio, etc.)."""
-    return send_from_directory(os.path.join(FRONTEND_PATH, "assets"), filename)
+    return send_from_directory(str(ASSET_PATH), filename)
 
 
 @socketio.on("connect")
@@ -56,10 +63,7 @@ def handle_connect():
     """Handle client connection."""
     logger.info("Client connected")
     emit("connection_response", {"status": "connected"})
-
-    # Send the full initial game state to the newly connected client
-    full_state = game_loop.world.get_full_state()
-    emit("initial_state", full_state)
+    # Note: initial_state is sent after player selection in handle_load_player()
 
 
 @socketio.on("disconnect")
@@ -83,17 +87,18 @@ def handle_party_command(data):
 @socketio.on("request_player_list")
 def handle_request_player_list():
     """Handle request for list of available players."""
+    logger.info("Client requested player list")
     from pathlib import Path
     import json
 
-    player_dir = Path("data/player")
+    player_dir = DATA_PATH / "player"
     players = []
 
     if player_dir.exists():
-        logger.debug(f"Loading player list from {player_dir}")
+        logger.info(f"Loading player list from {player_dir}")
         for player_file in player_dir.glob("*.json"):
             try:
-                logger.debug(f"Loading player file: {player_file}")
+                logger.info(f"Loading player file: {player_file}")
                 with open(player_file, "r") as f:
                     player_data = json.load(f)
                     players.append(
@@ -118,6 +123,16 @@ def handle_load_player(data):
     from pathlib import Path
     from backend.simulation.player import PlayerCharacter
     from backend.simulation.entity import Entity
+    import threading
+
+    # Start game loop on first player load (thread-safe)
+    if not game_loop.running:
+        logger.info("Starting game loop for first player load")
+        game_thread = threading.Thread(target=game_loop.run, daemon=True)
+        game_thread.start()
+        # Brief pause to ensure game loop initializes
+        import time
+        time.sleep(0.1)
 
     player_id = data.get("player_id")
     if not player_id:
@@ -172,12 +187,8 @@ def handle_load_player(data):
 
 
 if __name__ == "__main__":
-    # Start the game loop in a separate thread
-    import threading
-
-    game_thread = threading.Thread(target=game_loop.run, daemon=True)
-    game_thread.start()
-
+    # Note: Game loop will start automatically when first player loads
+    
     # Start the Flask-SocketIO server
     logger.info(f"Starting server on {HOST}:{PORT}")
     logger.info(f"Frontend path: {FRONTEND_PATH}")

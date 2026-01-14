@@ -23,19 +23,25 @@ function initNetwork() {
     window.socket = socket;
     
     socket.on('connect', () => {
-        console.log('Connected to server');
+        console.log('[Network] Connected to server');
+        
+        // If we're in player select context, request the player list
+        if (gameState && gameState.context === GameContext.PLAYER_SELECT) {
+            console.log('[Network] Auto-requesting player list after connection');
+            socket.emit('request_player_list');
+        }
     });
     
     socket.on('disconnect', () => {
-        console.log('Disconnected from server');
+        console.log('[Network] Disconnected from server');
     });
     
     socket.on('connection_response', (data) => {
-        console.log('Connection response:', data);
+        console.log('[Network] Connection response:', data);
     });
     
     socket.on('initial_state', (data) => {
-        console.log('Received initial state:', data);
+        console.log('[Network] Received initial state:', data);
         handleInitialState(data);
     });
     
@@ -44,21 +50,21 @@ function initNetwork() {
     });
     
     socket.on('player_list', (data) => {
-        console.log('Received player list:', data);
+        console.log('[Network] Received player list:', data);
         populatePlayerList(data.players);
     });
     
     socket.on('player_loaded', (data) => {
-        console.log('Player loaded:', data);
+        console.log('[Network] Player loaded:', data);
         handleInitialState(data);
     });
     
     socket.on('error', (data) => {
-        console.error('Server error:', data.message);
+        console.error('[Network] Server error:', data.message);
         alert('Error: ' + data.message);
     });
     
-    console.log('Network initialized');
+    console.log('[Network] Network initialized');
 }
 
 /**
