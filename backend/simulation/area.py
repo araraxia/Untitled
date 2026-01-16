@@ -5,6 +5,8 @@ from backend.config import DEF_AREA_WIDTH, DEF_AREA_HEIGHT
 from backend.simulation.entity import Entity
 from backend.simulation.player import PlayerCharacter
 from backend.simulation.spatial import SpatialGrid
+from pathlib import Path
+import json
 
 
 class Area:
@@ -120,3 +122,33 @@ class Area:
     def load_from_file(self, file_path: str):
         """Save world state to a file."""
         pass  # Implementation depends on file format
+
+    @classmethod
+    def load_area(
+        cls, data_dir: Path, area_id: str
+    ) -> "Area":
+        """Load an area from a JSON file.
+
+        Args:
+            data_dir: Directory where area files are stored
+            area_id: ID of the area to load
+            world_id: ID of the world the area belongs to
+        """
+        area_file = data_dir / f"area-{area_id}.json"
+        if not area_file.exists():
+            raise FileNotFoundError(f"Area file {area_file} does not exist.")
+
+        with open(area_file, "r") as f:
+            data = json.load(f)
+
+        area = cls(area_id=area_id, area_name=data.get("area_name", "Untitled Area"))
+        area.width = data.get("width", DEF_AREA_WIDTH)
+        area.height = data.get("height", DEF_AREA_HEIGHT)
+
+        # Load entities
+        entities_data = data.get("entities", {})
+        for entity_id, entity_data in entities_data.items():
+            entity = Entity.deserialize(entity_data)
+            area.add_entity(entity)
+
+        return area

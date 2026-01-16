@@ -276,12 +276,7 @@ class Entity:
         entity.gender = data.get("gender", "unspecified")
 
         # Set appearance
-        entity.hair_style = data.get("hair_style", 0)
-        entity.hair_color = data.get("hair_color", 0)
-        entity.left_eye_color = data.get("left_eye_color", 0)
-        entity.left_eye_type = data.get("left_eye_type", 0)
-        entity.right_eye_color = data.get("right_eye_color", 0)
-        entity.right_eye_type = data.get("right_eye_type", 0)
+        entity.appearance = data.get("appearance", {})
 
         # Set progression
         entity.experience = data.get("experience", 0)

@@ -6,8 +6,10 @@ from backend.simulation.actions import ActionFactory
 from pathlib import Path
 import json
 
-PLAYER_DIRECTORY = Path("data/players")
-
+FILE_PATH = Path(__file__).resolve()
+ROOT_DIRECTORY = FILE_PATH.parent.parent.parent
+DATA_DIRECTORY = ROOT_DIRECTORY / "frontend" / "assets" / "data"
+PLAYER_DIRECTORY = DATA_DIRECTORY / "player"
 
 class PlayerCharacter:
     """Player controller that can control multiple entities simultaneously.
@@ -23,6 +25,8 @@ class PlayerCharacter:
     ):
         # 00000000-0000-0000-0000-000000000000 is the default ID for non-persistent players.
         self.player_id = player_id
+        self.world_id: str = ""  # Current world ID the player is in
+        self.area_id: str = ""  # Current area ID the player is in
         self.active_entity_index: int = (
             0  # Index of currently active entity for direct manual control
         )
@@ -32,6 +36,7 @@ class PlayerCharacter:
             []
         )  # List of entity IDs ever controlled
         self.current_selected_entities: List[str] = []  # Currently selected entity IDs
+        self.current_selected_entity_objs: List[Entity] = []  # Currently selected entity objects
 
         # Player-specific attributes (not tied to any entity)
         self.player_inventory = {}  # Global items by player across entities
@@ -39,6 +44,7 @@ class PlayerCharacter:
             "total_playtime": 0.0,
             "entities_controlled": 0,
             "achievements": [],
+            "last_save_timestamptz": None,
         }
         self.current_action: Optional[Any] = None
 
@@ -225,42 +231,38 @@ class PlayerCharacter:
         return str(file_path)
 
     @classmethod
-    def load_from_file(cls, file_path: Path, entity_lookup: Optional[Dict[str, Entity]] = None) -> "PlayerCharacter":
+    def load_from_file(cls, file_path: Path, load_entities: bool = True) -> "PlayerCharacter":
         """Load player controller data from a JSON file.
 
         Args:
             file_path: Path to the JSON file containing player data
-            entity_lookup: Optional dictionary mapping entity IDs to Entity objects
 
         Returns:
             PlayerCharacter: A new PlayerCharacter instance with loaded data
         """
+        # Load player data first
         with open(file_path, "r") as f:
             data = json.load(f)
-
-        # Create player controller with basic parameters
-        player = cls(
-            player_id=data.get("player_id", "00000000-0000-0000-0000-000000000000"),
-        )
-
-        # Restore controlled entity IDs
-        player.controlled_entity_ids = data.get("controlled_entity_ids", [])
         
-        # Restore controlled entity objects if entity_lookup provided
-        if entity_lookup:
-            for entity_id in player.controlled_entity_ids:
-                if entity_id in entity_lookup:
-                    player.controlled_entity_objs.append(entity_lookup[entity_id])
-
-        # Restore player controller attributes
+        # Create player controller
+        player = cls(player_id=data.get("player_id"))
+        player.world_id = data.get("world_id", "")
+        player.area_id = data.get("area_id", "")
         player.active_entity_index = data.get("active_entity_index", 0)
+        player.controlled_entity_ids = data.get("controlled_entity_ids", [])
         player.controlled_entity_history = data.get("controlled_entity_history", [])
+        player.current_selected_entities = data.get("current_selected_entities", [])
         player.player_inventory = data.get("player_inventory", {})
         player.player_stats = data.get(
             "player_stats",
             {"total_playtime": 0.0, "entities_controlled": 0, "achievements": []},
         )
-
+        player.current_action = data.get("current_action", None)
+        
+        # Load entities if requested
+        if load_entities:
+            player.load_controlled_entities()
+        
         return player
 
     @classmethod
@@ -282,28 +284,9 @@ class PlayerCharacter:
         Returns:
             PlayerCharacter: A new PlayerCharacter instance with loaded data and entities
         """
-        file_path = Path(directory) / f"{player_id}.json"
+        file_path = Path(directory) / f"player-{player_id}.json"
+        return cls.load_from_file(file_path, entity_lookup=None)
         
-        # Load player data first
-        with open(file_path, "r") as f:
-            data = json.load(f)
-        
-        # Create player controller
-        player = cls(player_id=data.get("player_id", player_id))
-        player.controlled_entity_ids = data.get("controlled_entity_ids", [])
-        player.active_entity_index = data.get("active_entity_index", 0)
-        player.controlled_entity_history = data.get("controlled_entity_history", [])
-        player.player_inventory = data.get("player_inventory", {})
-        player.player_stats = data.get(
-            "player_stats",
-            {"total_playtime": 0.0, "entities_controlled": 0, "achievements": []},
-        )
-        
-        # Load entities if requested
-        if load_entities:
-            player.load_controlled_entities()
-        
-        return player
     
     def load_controlled_entities(self):
         """Load all controlled entities from their files.

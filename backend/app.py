@@ -24,7 +24,9 @@ JS_PATH = FRONTEND_PATH / "js"
 DATA_PATH = ASSET_PATH / "data"
 
 
-app = Flask(__name__, static_folder=str(FRONTEND_PATH), template_folder=str(FRONTEND_PATH))
+app = Flask(
+    __name__, static_folder=str(FRONTEND_PATH), template_folder=str(FRONTEND_PATH)
+)
 app.config["SECRET_KEY"] = "your-secret-key-here"
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
@@ -118,22 +120,24 @@ def handle_request_player_list():
 
 
 @socketio.on("load_player")
-def handle_load_player(data):
+def handle_load_game(data):
     """Handle loading a player and their controlled entities."""
-    from backend.simulation.player import PlayerCharacter
-    from backend.simulation.entity import Entity
-    import threading
-
+    from backend.load_save import SaveManager
 
     player_id = data.get("player_id")
     if not player_id:
         emit("error", {"message": "No player ID provided"})
         return
-    player_file = DATA_PATH / "player" / f"player-{player_id}.json"
-    if not player_file.exists():
+
+    try:
+        save_manager = SaveManager(player_id=player_id, game_loop=game_loop)
+        save_manager.load_game()
+        emit("player_loaded",)
+    except FileNotFoundError:
         emit("error", {"message": f"Player file for ID {player_id} does not exist."})
-        return
-    
+
+    return
+
     # Start game loop on first player load (thread-safe)
     if not game_loop.running:
         logger.info("Starting game loop for first player load")
@@ -141,18 +145,21 @@ def handle_load_player(data):
         game_thread.start()
         # Brief pause to ensure game loop initializes
         import time
+
         time.sleep(0.1)
 
     try:
         # Load existing player - PlayerCharacter handles entity loading internally
         player = PlayerCharacter.load_by_id(player_id, load_entities=True)
-        logger.info(f"Loaded existing player {player_id} with {len(player.get_controlled_entities())} entities")
+        logger.info(
+            f"Loaded existing player {player_id} with {len(player.get_controlled_entities())} entities"
+        )
 
         # Load player controller and entities into world
-        game_loop.world.load_player_controller(player)
+        game_loop.current_area.load_player_controller(player)
 
         # Send the full game state with loaded entities
-        full_state = game_loop.world.get_full_state()
+        full_state = game_loop.current_area.get_full_state()
         full_state["player_id"] = player_id
         full_state["controlled_entity_ids"] = [
             e.entity_id for e in player.get_controlled_entities()
@@ -166,13 +173,14 @@ def handle_load_player(data):
     except Exception as e:
         logger.error(f"Error loading player {player_id}: {e}")
         import traceback
+
         logger.error(traceback.format_exc())
         emit("error", {"message": f"Failed to load player: {str(e)}"})
 
 
 if __name__ == "__main__":
     # Note: Game loop will start automatically when first player loads
-    
+
     # Start the Flask-SocketIO server
     logger.info(f"Starting server on {HOST}:{PORT}")
     logger.info(f"Frontend path: {FRONTEND_PATH}")

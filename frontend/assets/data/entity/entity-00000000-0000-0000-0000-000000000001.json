@@ -8,12 +8,14 @@
     "age": 0,
     "dob": "01/01/0001",
     "gender": "unspecified",
+    "appearance": {
     "hair_style": 0,
     "hair_color": 0,
     "left_eye_color": 0,
     "left_eye_type": 0,
     "right_eye_color": 0,
-    "right_eye_type": 0,
+    "right_eye_type": 0
+    },
     "experience": 0,
     "level": 1,
     "modifiers": {

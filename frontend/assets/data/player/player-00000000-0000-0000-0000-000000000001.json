@@ -1,6 +1,7 @@
 {
     "player_id": "00000000-0000-0000-0000-000000000001",
     "world_id": "00000000-0000-0000-0000-000000000001",
+    "area_id": "00000000-0000-0000-0000-000000000001",
     "active_entity_index": 0,
     "controlled_entity_ids": ["00000000-0000-0000-0000-000000000001"],
     "controlled_entity_history": [],
@@ -11,5 +12,6 @@
         "entities_controlled": 0,
         "achievements": [],
         "last_save_timestamptz": null
-    }
+    },
+    "current_action": null
 }

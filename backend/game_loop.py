@@ -5,6 +5,7 @@ from typing import List, Dict, Any
 from backend.config import TICK_RATE, TICK_DURATION
 from backend.simulation.area import Area
 from backend.independant_logger import Logger
+import threading
 
 # Initialize logger
 logger = Logger(
@@ -13,13 +14,22 @@ logger = Logger(
     log_level=20,  # INFO
 ).get_logger()
 
+def get_game_thread() -> threading.Thread:
+    """Get the current game thread."""
+    return threading.current_thread()
+
+def create_game_loop_thread(game_loop) -> threading.Thread:
+    """Create a new thread for the game loop."""
+    if not game_loop.running:
+        game_thread = threading.Thread(target=game_loop.run, name="GameLoopThread", daemon=True)
+        return game_thread
 
 class GameLoop:
     """Manages the main game simulation loop."""
 
     def __init__(self, socketio):
         self.socketio = socketio
-        self.world = Area()
+        self.current_area = Area()
         self.running = False
         self.tick_count = 0
         self.player_action_queue: List[Dict[str, Any]] = []
@@ -39,7 +49,7 @@ class GameLoop:
             if self.tick_start + TICK_DURATION < time.time():
                 break
             action = self.player_action_queue.pop(0)
-            self.world.process_player_action(action)
+            self.current_area.process_player_action(action)
 
     def process_party_commands(self):
         """Process all queued party commands."""
@@ -47,7 +57,7 @@ class GameLoop:
             if self.tick_start + TICK_DURATION < time.time():
                 break
             command = self.party_command_queue.pop(0)
-            self.world.process_party_command(command)
+            self.current_area.process_party_command(command)
 
     def run(self):
         """Main game loop."""
@@ -63,10 +73,10 @@ class GameLoop:
             self.process_party_commands()
 
             # Update world simulation
-            self.world.update(TICK_DURATION)
+            self.current_area.update(TICK_DURATION)
 
             # Broadcast state to clients
-            state_delta = self.world.get_state_delta()
+            state_delta = self.current_area.get_state_delta()
             if state_delta:
                 self.socketio.emit(
                     "state_update", {"tick": self.tick_count, "delta": state_delta}
