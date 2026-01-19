@@ -64,6 +64,18 @@ function initNetwork() {
         alert('Error: ' + data.message);
     });
     
+    socket.on('player_deleted', (data) => {
+        console.log('[Network] Player deleted:', data.player_id);
+        // Refresh the player list
+        socket.emit('request_player_list');
+    });
+    
+    socket.on('new_player_initialized', (data) => {
+        console.log('[Network] New player initialized:', data.player_id);
+        // Load the character creation screen
+        
+    });
+
     console.log('[Network] Network initialized');
 }
 

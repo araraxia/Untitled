@@ -152,3 +152,31 @@ class Area:
             area.add_entity(entity)
 
         return area
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize the area to a dictionary."""
+        return {
+            "area_id": self.area_id,
+            "area_name": self.area_name,
+            "width": self.width,
+            "height": self.height,
+            "entities": {
+                eid: entity.serialize() for eid, entity in self.entities.items()
+            },
+        }
+
+    def save_area_to_file(self, data_dir: Path, file_name: str = "current_area_data.json"):
+        """Save the area to a JSON file.
+
+        Args:
+            data_dir: Directory where area files are stored
+            file_name: Name of the area file to save
+                - Defaults to "current_area_data.json"
+                - Can include "{area_id}" placeholder to insert area ID
+        """
+        file_name = file_name.replace("{area_id}", self.area_id or "unknown")
+        area_file = data_dir / file_name
+        area_file.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(area_file, "w") as f:
+            json.dump(self.to_dict(), f, indent=4)

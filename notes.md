@@ -10,7 +10,26 @@ What logic applied to inputs/actions can be determined by `frontend.js.input.gam
 
 Will need to probably merge `backend.game_loop.process_party_commands` into it.
 
+## New Character Creation
+
+Starts in `playerSelect.js` > `new-player-btn`.addEventListener(`click`) > `createNewPlayer()`
+
+## Camera Position
+
+???
+
 ## Object Management
+
+### GameLoop
+
+> game_loop.py
+GameLoop thread start: create_game_loop_thread(GameLoop): -> threading.Thread
+    Creates a run thread of the given GameLoop instance
+
+GameLoop.start() - Creates a game_loop thread if one is not running.
+GameLoop.stop() - Kills existing game_loop thread if one is running.
+GameLoop.pause() - Pauses the existing game_loop thread, leaving it in an idle state but alive
+GameLoop.resume()
 
 ### World
 
@@ -20,11 +39,14 @@ Will need to probably merge `backend.game_loop.process_party_commands` into it.
 
 > area.py
 
+Area.entities: Dict[str, entity]
+
 !!! CURRENTLY WORKING HERE !!!
 
 ### PlayerCharacter
 
 > player.py
+Manages controls, determining which data to load/save, tracking player owned, controlled and selected entities.
 
 ### Entity
 

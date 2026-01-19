@@ -70,7 +70,89 @@ function showPlayerSelectionMenu() {
     
     // Set up new player button
     document.getElementById('new-player-btn').addEventListener('click', () => {
-        selectPlayer('00000000-0000-0000-0000-000000000000'); // Default player ID
+        createNewPlayer();
+    });
+}
+
+function createNewPlayer() {
+    console.log('[PlayerSelect] Creating new player');
+    // Create input dialog
+    const inputDialog = document.createElement('div');
+    inputDialog.style.cssText = `
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: #2a2a2a;
+        border: 2px solid #4CAF50;
+        border-radius: 8px;
+        padding: 20px;
+        z-index: 1001;
+        min-width: 300px;
+    `;
+    
+    inputDialog.innerHTML = `
+        <h3 style="margin: 0 0 15px 0; color: #4CAF50;">New Player</h3>
+        <input type="text" id="player-name-input" placeholder="Enter player name" style="
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 15px;
+            background: #333;
+            border: 1px solid #555;
+            border-radius: 4px;
+            color: #fff;
+            font-size: 14px;
+            box-sizing: border-box;
+        ">
+        <div style="display: flex; gap: 10px;">
+            <button id="create-confirm-btn" style="
+                flex: 1;
+                padding: 10px;
+                background: #4CAF50;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 14px;
+            ">Create</button>
+            <button id="create-cancel-btn" style="
+                flex: 1;
+                padding: 10px;
+                background: #666;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 14px;
+            ">Cancel</button>
+        </div>
+    `;
+    
+    document.body.appendChild(inputDialog);
+    
+    const input = document.getElementById('player-name-input');
+    input.focus();
+    
+    const submitName = () => {
+        const playerName = input.value.trim();
+        if (playerName) {
+            console.log('[PlayerSelect] Creating new player:', playerName);
+            if (window.socket && window.socket.connected) {
+                window.socket.emit('new_player', { player_id: playerName });
+            }
+            inputDialog.remove();
+        }
+    };
+    
+    document.getElementById('create-confirm-btn').addEventListener('click', submitName);
+    document.getElementById('create-cancel-btn').addEventListener('click', () => {
+        inputDialog.remove();
+    });
+    
+    input.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            submitName();
+        }
     });
 }
 
@@ -100,6 +182,7 @@ function populatePlayerList(players) {
             border-radius: 4px;
             cursor: pointer;
             transition: all 0.2s;
+            position: relative;
         `;
         
         playerItem.innerHTML = `
@@ -107,7 +190,39 @@ function populatePlayerList(players) {
             <div style="font-size: 12px; color: #aaa;">
                 Entities Controlled: ${player.controlled_entity_ids ? player.controlled_entity_ids.length : 0}
             </div>
+            <button class="delete-player-btn" data-player-id="${player.player_id}" style="
+                position: absolute;
+                top: 10px;
+                right: 10px;
+                padding: 5px 10px;
+                background: #d32f2f;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 12px;
+                transition: background 0.2s;
+            ">Delete</button>
         `;
+        
+        const deleteBtn = playerItem.querySelector('.delete-player-btn');
+        
+        // Delete button hover
+        deleteBtn.addEventListener('mouseenter', (e) => {
+            e.stopPropagation();
+            deleteBtn.style.background = '#b71c1c';
+        });
+        
+        deleteBtn.addEventListener('mouseleave', (e) => {
+            e.stopPropagation();
+            deleteBtn.style.background = '#d32f2f';
+        });
+        
+        // Delete button click
+        deleteBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            deletePlayer(player.player_id);
+        });
         
         playerItem.addEventListener('mouseenter', () => {
             playerItem.style.background = '#444';
@@ -224,6 +339,83 @@ function loadGameState(data) {
     // Start render loop now that game is loaded
     requestAnimationFrame(renderLoop);
     console.log('[PlayerSelect] Game render loop started');
+}
+
+/**
+ * Delete a player with confirmation dialog
+ * @param {string} playerId - The player ID to delete
+ * @returns {void}
+ */
+function deletePlayer(playerId) {
+    console.log('[PlayerSelect] Delete player requested:', playerId);
+    
+    // Create confirmation dialog
+    const confirmDialog = document.createElement('div');
+    confirmDialog.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.8);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1002;
+    `;
+    
+    confirmDialog.innerHTML = `
+        <div style="
+            background: #2a2a2a;
+            border: 2px solid #d32f2f;
+            border-radius: 8px;
+            padding: 20px;
+            max-width: 400px;
+            color: #fff;
+        ">
+            <h3 style="margin: 0 0 15px 0; color: #d32f2f;">Delete Player?</h3>
+            <p style="margin: 0 0 20px 0; color: #ccc;">
+                Are you sure you want to delete player "${playerId}"?<br>
+                <strong>This action cannot be undone.</strong>
+            </p>
+            <div style="display: flex; gap: 10px;">
+                <button id="delete-confirm-btn" style="
+                    flex: 1;
+                    padding: 10px;
+                    background: #d32f2f;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-size: 14px;
+                ">Delete</button>
+                <button id="delete-cancel-btn" style="
+                    flex: 1;
+                    padding: 10px;
+                    background: #666;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-size: 14px;
+                ">Cancel</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(confirmDialog);
+    
+    document.getElementById('delete-confirm-btn').addEventListener('click', () => {
+        console.log('[PlayerSelect] Deleting player:', playerId);
+        if (window.socket && window.socket.connected) {
+            window.socket.emit('delete_player', { player_id: playerId });
+        }
+        confirmDialog.remove();
+    });
+    
+    document.getElementById('delete-cancel-btn').addEventListener('click', () => {
+        confirmDialog.remove();
+    });
 }
 
 /**

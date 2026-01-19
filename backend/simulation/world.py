@@ -28,3 +28,25 @@ class World:
         # Load additional world attributes as needed
 
         return world
+
+    def save_to_file(self, data_dir: Path, file_name: str = "current_world_data.json"):
+        """Save the world to a JSON file.
+
+        Args:
+            data_dir: Directory where world data should be saved
+            file_name: Name of the file to save the world data
+                - use "{world_id}" in the file name to include the world ID
+        """
+        world_file = data_dir / file_name.replace("{world_id}", self.world_id or "unknown")
+        world_file.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(world_file, "w") as f:
+            json.dump(self.to_dict(), f, indent=4)
+            
+    def to_dict(self) -> dict:
+        """Serialize the world to a dictionary."""
+        return {
+            "world_id": self.world_id,
+            "world_name": self.world_name,
+            # Add additional world attributes as needed
+        }

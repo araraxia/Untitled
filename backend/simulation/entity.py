@@ -26,13 +26,16 @@ class Entity:
         entity_id: str,
         x: Optional[float] = None,
         y: Optional[float] = None,
+        z: Optional[float] = None,
         state: str = "idle",
         facing: str = "down",
         animation_data_paths: Optional[List[str]] = None,
     ):
         self.entity_id = entity_id
+        self.current_area_id: Optional[str] = None
         self.x = x if x is not None else -10000.0
         self.y = y if y is not None else -10000.0
+        self.z = z if z is not None else 0.0
         self.vx = 0.0  # velocity x
         self.vy = 0.0  # velocity y
         self.state = state  # e.g., idle, moving, attacking

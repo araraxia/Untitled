@@ -7,6 +7,8 @@ from backend.config import HOST, PORT, DEBUG
 from backend.independant_logger import Logger
 from pathlib import Path
 
+from backend.simulation import player
+
 # Initialize logger
 logger = Logger(
     log_name="backend.app",
@@ -118,6 +120,35 @@ def handle_request_player_list():
 
     emit("player_list", {"players": players})
 
+@socketio.on("new_player")
+def handle_new_game(data):
+    """Handle creating a new player and initializing their character."""
+    from backend.simulation.new_game import NewGameManager
+
+    player_name = data.get("player_name", "New_Player")
+
+    new_game_manager = NewGameManager(game_loop)
+    player_character = new_game_manager.init_new_player(player_name)
+    game_loop.player_instance = player_character
+    emit("new_player_initialized", {"player_id": player_character.player_id,})
+
+@socketio.on("delete_player")
+def handle_delete_player(data):
+    """Handle deleting a player and their data."""
+    from backend.load_save import SaveManager
+
+    player_id = data.get("player_id")
+    if not player_id:
+        emit("error", {"message": "No player ID provided"})
+        return
+
+    try:
+        save_manager = SaveManager(player_id=player_id, game_loop=game_loop)
+        save_manager.delete_player_data()
+        emit("player_deleted", {"player_id": player_id})
+        logger.info(f"Player {player_id} data deleted")
+    except FileNotFoundError:
+        emit("error", {"message": f"Player file for ID {player_id} does not exist."})
 
 @socketio.on("load_player")
 def handle_load_game(data):

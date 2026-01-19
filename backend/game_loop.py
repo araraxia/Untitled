@@ -14,38 +14,39 @@ logger = Logger(
     log_level=20,  # INFO
 ).get_logger()
 
-def get_game_thread() -> threading.Thread:
-    """Get the current game thread."""
-    return threading.current_thread()
-
-def create_game_loop_thread(game_loop) -> threading.Thread:
-    """Create a new thread for the game loop."""
-    if not game_loop.running:
-        game_thread = threading.Thread(target=game_loop.run, name="GameLoopThread", daemon=True)
-        return game_thread
-
 class GameLoop:
     """Manages the main game simulation loop."""
 
     def __init__(self, socketio):
         self.socketio = socketio
-        self.current_area = Area()
+        self.current_world = None
+        self.current_area = None
+        self.player_instance = None
         self.running = False
+        self.paused = False
         self.tick_count = 0
         self.player_action_queue: List[Dict[str, Any]] = []
         self.party_command_queue: List[Dict[str, Any]] = []
 
     def queue_player_action(self, action: Dict[str, Any]):
         """Queue a player action to be processed."""
-        self.player_action_queue.append(action)
+        if not self.current_area: return
+        
+        while self.running and not self.paused:
+            self.player_action_queue.append(action)
 
     def queue_party_command(self, command: Dict[str, Any]):
         """Queue a party command to be processed."""
-        self.party_command_queue.append(command)
+        if not self.current_area: return
+        
+        while self.running and not self.paused:
+            self.party_command_queue.append(command)
 
     def process_player_actions(self):
         """Process all queued player actions."""
-        while self.player_action_queue:
+        if not self.current_area: return
+
+        while self.player_action_queue and self.running and not self.paused:
             if self.tick_start + TICK_DURATION < time.time():
                 break
             action = self.player_action_queue.pop(0)
@@ -53,7 +54,9 @@ class GameLoop:
 
     def process_party_commands(self):
         """Process all queued party commands."""
-        while self.party_command_queue:
+        if not self.current_area: return
+
+        while self.party_command_queue and self.running and not self.paused:
             if self.tick_start + TICK_DURATION < time.time():
                 break
             command = self.party_command_queue.pop(0)
@@ -65,6 +68,10 @@ class GameLoop:
         logger.info("Game loop started")
 
         while self.running:
+            # Wait while paused
+            while self.paused:
+                time.sleep(0.1)
+
             tick_start = time.time()
             self.tick_start = tick_start
 
@@ -89,7 +96,32 @@ class GameLoop:
             elapsed = tick_end - tick_start
             sleep_time = max(0, TICK_DURATION - elapsed)
             time.sleep(sleep_time)
+            
+    def start(self):
+        """Start the game loop."""
+        if self.running:
+            logger.warning("Game loop is already running")
+            if self.current_thread and self.current_thread.is_alive():
+                return self.current_thread
+        
+        self.running = True
+        self.tick_count = 0
+        self.player_action_queue: List[Dict[str, Any]] = []
+        self.party_command_queue: List[Dict[str, Any]] = []
+        game_thread = threading.Thread(target=self.run, daemon=True)
+        game_thread.start()
+        self.current_thread = game_thread
+        return self.current_thread
+            
 
     def stop(self):
         """Stop the game loop."""
         self.running = False
+
+    def pause(self):
+        """Pause the game loop."""
+        self.paused = True
+        
+    def resume(self):
+        """Resume the game loop."""
+        self.paused = False
