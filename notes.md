@@ -52,6 +52,15 @@ Manages controls, determining which data to load/save, tracking player owned, co
 
 > entity.py
 
+## Stats and what they are intended to do
+
+### Misc
+
+- Fame:
+- Virtue:
+- Infamy:
+- Karma: A luck modifier that changes from different interactions that impact other entities. Will continuously degrade back to 0 over time.
+
 ## Misc Notes
 
 Left off defining Objects such as areas and worlds. Need to be able to load and save current world/area data. One folder per player save with unique name, contents follow consistent schema (world.json, area-0001.json, etc.)

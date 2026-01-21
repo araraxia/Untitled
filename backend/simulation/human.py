@@ -46,30 +46,37 @@ class Human:
     ## Physical
     base_physical_resistance: int = 10
     physical_resistance_variance: int = 2
-    base_stab_resistance_modifier: int = 1
-    base_slash_resistance_modifier: int = 1
-    base_blunt_resistance_modifier: int = 1
+    base_stab_resistance_modifier: float = 1
+    base_slash_resistance_modifier: float = 1
+    base_blunt_resistance_modifier: float = 1
 
     ## Magical
     base_magical_resistance: int = 10
     magical_resistance_variance: int = 2
-    fire_resistance_modifier: int = 1
-    ice_resistance_modifier: int = 1
-    lightning_resistance_modifier: int = 1
-    curse_resistance_modifier: int = 1
-    magic_illusion_resistance_modifier: int = 0.5
+    fire_resistance_modifier: float = 1
+    ice_resistance_modifier: float = 1
+    lightning_resistance_modifier: float = 1
+    curse_resistance_modifier: float = 1
+    magic_illusion_resistance_modifier: float = 0.5
 
     ## Mental
     base_mental_resistance: int = 10
     mental_resistance_variance: int = 5
-    pain_resistance_modifier: int = 1
-    mental_illusion_resistance_modifier: int = 0.5
+    pain_resistance_modifier: float = 1
+    mental_illusion_resistance_modifier: float = 0.5
 
     ## Other
     base_poison_resistance: int = 10
     poison_resistance_variance: int = 1
     base_disease_resistance: int = 10
     disease_resistance_variance: int = 10
+
+    # Other Stats
+    base_fame: int = 0
+    base_virtue: int = 0
+    base_infamy: int = 0
+    base_karma: int = 0
+
 
     def generate_attributes(self, max_attempts: int = 100) -> dict:
         """
