@@ -120,17 +120,119 @@ def handle_request_player_list():
 
     emit("player_list", {"players": players})
 
+
+@socketio.on("request_races")
+def handle_request_races():
+    """Handle request for available races."""
+    logger.info("Client requested races list")
+    from backend.simulation.new_game import NewGameManager
+
+    try:
+        new_game_manager = NewGameManager(game_loop)
+        races = new_game_manager.get_available_races()
+        emit("races_list", {"races": races})
+        logger.info(f"Sent {len(races)} races to client")
+    except Exception as e:
+        logger.error(f"Error fetching races: {e}")
+        emit("error", {"message": f"Error fetching races: {str(e)}"})
+
+
+@socketio.on("request_backgrounds")
+def handle_request_backgrounds(data):
+    """Handle request for backgrounds for a specific race."""
+    race_id = data.get("race_id", "human")
+    logger.info(f"Client requested backgrounds for race: {race_id}")
+    from backend.simulation.new_game import NewGameManager
+
+    try:
+        new_game_manager = NewGameManager(game_loop)
+        backgrounds = new_game_manager.get_backgrounds_for_race(race_id)
+        emit("backgrounds_list", {"race_id": race_id, "backgrounds": backgrounds})
+        logger.info(f"Sent {len(backgrounds)} backgrounds for race {race_id}")
+    except Exception as e:
+        logger.error(f"Error fetching backgrounds for race {race_id}: {e}")
+        emit("error", {"message": f"Error fetching backgrounds: {str(e)}"})
+
+
 @socketio.on("new_player")
 def handle_new_game(data):
     """Handle creating a new player and initializing their character."""
     from backend.simulation.new_game import NewGameManager
 
+    new_game_manager = NewGameManager(game_loop)
+
     player_name = data.get("player_name", "New_Player")
 
-    new_game_manager = NewGameManager(game_loop)
-    player_character = new_game_manager.init_new_player(player_name)
+    new_game_manager.init_new_game(save_name=player_name)
+    player_character = new_game_manager.player_character
     game_loop.player_instance = player_character
-    emit("new_player_initialized", {"player_id": player_character.player_id,})
+    emit(
+        "new_player_initialized",
+        {
+            "player_id": player_character.player_id,
+        },
+    )
+
+
+@socketio.on("new_character")
+def handle_new_character(data):
+    """Handle creating a new character for an existing player."""
+    from backend.simulation.new_game import NewGameManager
+
+    try:
+        # Get the player character that was initialized in new_player
+        player_character = game_loop.player_instance
+        if not player_character:
+            emit(
+                "error",
+                {"message": "No player initialized. Please start a new game first."},
+            )
+            return
+
+        new_game_manager = NewGameManager(game_loop)
+
+        # Extract character data from request
+        character_name = data.get("player_name", "Unnamed")
+        race_id = data.get("race_id", "human")
+        background_name = data.get("background_name")
+        personality = data.get("personality", [])
+        appearance = data.get("appearance", {})
+        stats = data.get("stats", {})
+        items = data.get("items", [])
+
+        # Create the character entity
+        entity = new_game_manager.init_new_character(
+            character_name=character_name,
+            race_id=race_id,
+            background_name=background_name,
+            personality=personality,
+            appearance=appearance,
+            stats=stats,
+            items=items,
+        )
+
+        # Save the player data
+        player_character.save_to_file()
+
+        logger.info(
+            f"Character {character_name} created for player {player_character.player_id}"
+        )
+        emit(
+            "character_created",
+            {
+                "player_id": player_character.player_id,
+                "entity_id": entity.entity_id,
+                "character_name": character_name,
+            },
+        )
+
+    except Exception as e:
+        logger.error(f"Error creating character: {e}")
+        import traceback
+
+        logger.error(traceback.format_exc())
+        emit("error", {"message": f"Failed to create character: {str(e)}"})
+
 
 @socketio.on("delete_player")
 def handle_delete_player(data):
@@ -143,12 +245,13 @@ def handle_delete_player(data):
         return
 
     try:
-        save_manager = SaveManager(player_id=player_id, game_loop=game_loop)
+        save_manager = SaveManager(socketio, player_id=player_id)
         save_manager.delete_player_data()
         emit("player_deleted", {"player_id": player_id})
         logger.info(f"Player {player_id} data deleted")
     except FileNotFoundError:
         emit("error", {"message": f"Player file for ID {player_id} does not exist."})
+
 
 @socketio.on("load_player")
 def handle_load_game(data):
@@ -163,7 +266,9 @@ def handle_load_game(data):
     try:
         save_manager = SaveManager(player_id=player_id, game_loop=game_loop)
         save_manager.load_game()
-        emit("player_loaded",)
+        emit(
+            "player_loaded",
+        )
     except FileNotFoundError:
         emit("error", {"message": f"Player file for ID {player_id} does not exist."})
 

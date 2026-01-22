@@ -72,8 +72,22 @@ function initNetwork() {
     
     socket.on('new_player_initialized', (data) => {
         console.log('[Network] New player initialized:', data.player_id);
-        // Load the character creation screen
+        console.log('[Network] Starting character creation UI');
+        // Clear all existing UI elements
+        const gameContainer = document.getElementById('game-container');
+        const playerSelectContainer = document.getElementById('player-select-container');
+        const uiElements = document.getElementById('ui-elements');
         
+        if (gameContainer) gameContainer.remove();
+        if (playerSelectContainer) playerSelectContainer.remove();
+        if (uiElements) uiElements.remove();
+        
+        // Start character creation process
+        if (typeof initCharacterCreation === 'function') {
+            initCharacterCreation();
+        } else {
+            console.error('[Network] Character creation function not available');
+        }
     });
 
     console.log('[Network] Network initialized');

@@ -74,6 +74,12 @@ class BlankBackground:
     additional_infamy: int = 0
     additional_karma: int = 0
 
+    lore_text: str = (
+        "You come from a humble background with no notable history or traits. "
+        "Your life has been ordinary, and you possess no special advantages or disadvantages. "
+        "You are a blank slate, ready to carve your own path in the world."
+    )
+
 
 @dataclass
 class TideMarkedOutcast:
@@ -98,6 +104,12 @@ class AshenChoirSurvivor:
     additional_fire_resistance_modifier: float = 0.5
     additional_mental_resistance: int = 4
     additional_karma: int = -2
+    lore_text: str = (
+        "You are one of the few who escaped the burning of the Grand Choir. "
+        "The flames that consumed your sanctuary tempered your mind and soul, "
+        "leaving you with heightened mental fortitude and resistance to fire's touch, "
+        "but also with scars that karma will not forget."
+    )
 
 
 @dataclass
@@ -107,6 +119,12 @@ class BrokenBannerHeir:
     additional_combat_sense: int = 2
     additional_fame: int = 2
     additional_infamy: int = 4
+    lore_text: str = (
+        "Once you bore a proud standard of a now-fallen house. "
+        "Your family's legacy weighs heavily upon you, fueling an indomitable will "
+        "and tactical prowess on the battlefield. Though your name carries both renown and shame, "
+        "you refuse to let the banner fall again."
+    )
 
 
 @dataclass
@@ -117,6 +135,11 @@ class ClockmakersCreation:
     additional_mental_resistance: int = 1
     additional_pain_resistance_modifier: float = 0.7
     additional_charisma: int = -4
+    lore_text: str = (
+        "Forged in brass and bound by arcane gears, you are the masterwork of a forgotten artisan. "
+        "Your mechanical precision and dulled nerves make you a formidable presence, "
+        "though your inhuman nature makes social graces nearly impossible to grasp."
+    )
 
 
 @dataclass
@@ -126,6 +149,11 @@ class OrchardWitch:
     additional_soul_power: int = 2
     poison_resistance_variance: int = 2
     disease_resistance_variance: int = 2
+    lore_text: str = (
+        "You tend to ancient groves where fruit and fungi grow in strange patterns. "
+        "Your keen senses and deep understanding of nature's darker gifts "
+        "have granted you immunity to many toxins and ailments that would fell lesser folk."
+    )
 
 
 @dataclass
@@ -135,6 +163,11 @@ class OathBoundMercenary:
     additional_willpower: int = 2
     additional_charisma: int = -2
     additional_karma: int = -6
+    lore_text: str = (
+        "Bound by an unbreakable oath to serve, you have become a weapon honed through countless battles. "
+        "Your martial prowess is undeniable, but the deeds you've committed in service "
+        "have left your soul stained and your reputation grim."
+    )
 
 
 @dataclass
@@ -143,6 +176,11 @@ class ChildOfTwoSuns:
     additional_charisma: int = 2
     additional_fire_resistance_modifier: float = 0.4
     additional_luck: int = -2
+    lore_text: str = (
+        "Born during the rare alignment when both celestial orbs blazed overhead, "
+        "you radiate an otherworldly presence that draws others to you. "
+        "Your soul burns with intense power, though fate seems to conspire against you in subtle ways."
+    )
 
 
 @dataclass
@@ -151,6 +189,11 @@ class ForbiddenNameLibrarian:
     additional_perception: int = 2
     additional_magic_illusion_resistance_modifier: float = 0.3
     additional_infamy: int = 7
+    lore_text: str = (
+        "You have read the names that should not be spoken and catalogued the texts that should not exist. "
+        "Your vast knowledge has made you invaluable to those who seek dark wisdom, "
+        "and your reputation as a trafficker of forbidden lore precedes you wherever you go."
+    )
 
 
 @dataclass
@@ -159,6 +202,11 @@ class BoneRiverNomad:
     additional_willpower: int = 2
     additional_soul_power: int = 1
     additional_poison_resistance: int = 2
+    lore_text: str = (
+        "You were born to wander the ashen banks of the Bone River, where death flows eternal. "
+        "The harsh journey has hardened your body and spirit, "
+        "granting you resilience to the toxins that seep from the cursed waters."
+    )
 
 
 @dataclass
@@ -168,6 +216,11 @@ class CrownlessPretender:
     additional_luck: int = -3
     additional_fame: int = 3
     additional_infamy: int = 3
+    lore_text: str = (
+        "You claim rightful ownership of a throne that no longer exists. "
+        "Your magnetic personality and unwavering conviction have drawn followers and enemies alike, "
+        "though fortune itself seems to mock your aspirations at every turn."
+    )
 
 
 @dataclass
@@ -176,6 +229,11 @@ class EmberMarkedMidwife:
     additional_willpower: int = 3
     additional_fire_resistance_modifier: float = 0.6
     additional_virtue: int = 2
+    lore_text: str = (
+        "Marked by sacred embers during your first delivery, you have brought countless souls into the world. "
+        "Your hands, blessed and burned, possess an uncanny warmth that soothes both mother and child. "
+        "Your selfless service has earned you a reputation of virtue among your people."
+    )
 
 
 @dataclass
@@ -185,6 +243,11 @@ class SkyFallenKnight:
     additional_combat_sense: int = 2
     additional_speed: int = -1
     additional_lightning_resistance_modifier: float = 0.8
+    lore_text: str = (
+        "You plummeted from the floating citadels above, cast down for crimes real or imagined. "
+        "The fall should have killed you, but instead you were struck by lightning and survived. "
+        "Now your body carries the scars of heaven's wrath, slower but more resilient than before."
+    )
 
 
 @dataclass
@@ -193,6 +256,11 @@ class SpiritDebtCollector:
     additional_mental_resistance: int = 4
     additional_curse_resistance_modifier: float = 0.6
     additional_karma: int = -8
+    lore_text: str = (
+        "You enforce contracts that extend beyond the grave, claiming what is owed from the living and the dead. "
+        "Your dealings with restless spirits have fortified your mind against supernatural influence, "
+        "but the work you do for coin has damned your soul beyond redemption."
+    )
 
 
 @dataclass
@@ -201,6 +269,11 @@ class PaintedBarbarian:
     additional_endurance: int = 3
     additional_charisma: int = -1
     additional_pain_resistance_modifier: float = 0.6
+    lore_text: str = (
+        "Adorned with the sacred warpaint of your tribe, you are a living weapon of ancient traditions. "
+        "Years of brutal combat have made you nearly immune to pain and incredibly resilient, "
+        "though civilized folk often mistake your warrior's demeanor for savagery."
+    )
 
 
 @dataclass
@@ -209,6 +282,11 @@ class AcademyDropout:
     additional_dexterity: int = 2
     additional_luck: int = -1
     additional_infamy: int = 4
+    lore_text: str = (
+        "You walked away from prestigious halls of learning, either by choice or necessity. "
+        "Though you retained some knowledge and nimbleness of mind, "
+        "your abrupt departure left a stain on your reputation and luck seems to elude you."
+    )
 
 
 @dataclass
@@ -217,6 +295,11 @@ class HollowEyedOracle:
     additional_intelligence: int = 2
     additional_charisma: int = -3
     additional_mental_illusion_resistance_modifier: float = 0.3
+    lore_text: str = (
+        "You have gazed into the void between moments and seen truths not meant for mortal eyes. "
+        "Your heightened perception pierces through deception with ease, "
+        "but the visions have hollowed you out, leaving little room for warmth or charm."
+    )
 
 
 @dataclass
@@ -225,6 +308,11 @@ class RuneboundSmith:
     additional_endurance: int = 2
     additional_intelligence: int = 2
     additional_luck: int = -5
+    lore_text: str = (
+        "You forge weapons and armor inscribed with ancient runes of power. "
+        "The craft demands both physical strength and intellectual mastery, "
+        "but the runic bindings you create have a terrible cost—fortune itself turns against you."
+    )
 
 
 @dataclass
@@ -233,6 +321,11 @@ class ForgottenGodChampion:
     additional_willpower: int = 2
     additional_luck: int = -3
     additional_karma: int = -4
+    lore_text: str = (
+        "You serve a deity whose name has been erased from history and memory. "
+        "Your faith grants you immense spiritual power and unbreakable resolve, "
+        "but championing a forgotten god comes at a price—both luck and karma abandon you."
+    )
 
 
 @dataclass
@@ -241,6 +334,11 @@ class SewerCrownPrince:
     additional_perception: int = 3
     additional_dexterity: int = 2
     poison_resistance_variance: int = 2
+    lore_text: str = (
+        "You rule the forgotten underbelly of the city, commanding loyalty from those who dwell in darkness. "
+        "Your time navigating treacherous tunnels has sharpened your senses and reflexes, "
+        "and exposure to countless toxins has built an unusual resistance in your blood."
+    )
 
 
 @dataclass
@@ -250,3 +348,35 @@ class LastWeatherBinder:
     additional_lightning_resistance_modifier: float = 0.6
     additional_ice_resistance_modifier: float = 0.6
     additional_endurance: int = -1
+    lore_text: str = (
+        "You are the final practitioner of an ancient art that commands storms and seasons. "
+        "Your intimate connection with elemental forces grants you protection from lightning and frost, "
+        "though channeling such raw power takes a toll on your physical stamina."
+    )
+
+
+def get_human_classes():
+    """Get predetermined background classes available for humans.
+    Returns a dict mapping display names to background class instances.
+    """
+    return {
+        "Blank Background": BlankBackground(),
+        "Tide-Marked Outcast": TideMarkedOutcast(),
+        "Ashen Choir Survivor": AshenChoirSurvivor(),
+        "Broken Banner Heir": BrokenBannerHeir(),
+        "Orchard Witch": OrchardWitch(),
+        "Oath-Bound Mercenary": OathBoundMercenary(),
+        "Child of Two Suns": ChildOfTwoSuns(),
+        "Forbidden Name Librarian": ForbiddenNameLibrarian(),
+        "Bone River Nomad": BoneRiverNomad(),
+        "Crownless Pretender": CrownlessPretender(),
+        "Ember-Marked Midwife": EmberMarkedMidwife(),
+        "Sky-Fallen Knight": SkyFallenKnight(),
+        "Spirit Debt Collector": SpiritDebtCollector(),
+        "Academy Dropout": AcademyDropout(),
+        "Hollow-Eyed Oracle": HollowEyedOracle(),
+        "Runebound Smith": RuneboundSmith(),
+        "Forgotten God Champion": ForgottenGodChampion(),
+        "Sewer Crown Prince": SewerCrownPrince(),
+        "Last Weather Binder": LastWeatherBinder(),
+    }

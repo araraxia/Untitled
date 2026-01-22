@@ -1,6 +1,8 @@
 /**
  * Character Creation System
- * Modular character creation flow: Race -> Background -> Personality -> Appearance -> Stats -> Items
+ * Modular character creation flow: Race -> Background -> Personality -> Appearance -> Items -> Name
+ * Now integrated with backend race and background system
+ * Stats are generated server-side after character creation
  */
 
 /**
@@ -13,85 +15,11 @@ const characterCreationState = {
     personality: {},
     appearance: {},
     stats: {},
-    items: []
-};
-
-/**
- * Race definitions - modular system for adding new races
- */
-const RACES = {
-    human: {
-        id: 'human',
-        name: 'Human',
-        description: 'Versatile and adaptable, humans are the most common race.',
-        backgrounds: ['soldier', 'merchant', 'farmer', 'scholar', 'craftsman'],
-        personalityTraits: ['ambitious', 'curious', 'stubborn', 'loyal', 'cautious'],
-        appearanceOptions: {
-            skinTone: ['pale', 'fair', 'olive', 'tan', 'brown', 'dark'],
-            hairColor: ['black', 'brown', 'blonde', 'red', 'gray', 'white'],
-            eyeColor: ['brown', 'blue', 'green', 'hazel', 'gray'],
-            bodyType: ['slim', 'average', 'athletic', 'stocky', 'heavy']
-        },
-        statModifiers: {
-            strength: 0,
-            dexterity: 0,
-            constitution: 0,
-            intelligence: 0,
-            wisdom: 0,
-            charisma: 0
-        },
-        baseStats: {
-            strength: 10,
-            dexterity: 10,
-            constitution: 10,
-            intelligence: 10,
-            wisdom: 10,
-            charisma: 10
-        },
-        startingItems: ['basic_clothes', 'bread', 'water_flask']
-    }
-    // Additional races can be added here following the same structure
-};
-
-/**
- * Background definitions - modular system
- */
-const BACKGROUNDS = {
-    soldier: {
-        id: 'soldier',
-        name: 'Soldier',
-        description: 'Trained in combat and military discipline.',
-        statBonuses: { strength: 2, constitution: 1 },
-        startingItems: ['sword', 'shield', 'leather_armor']
-    },
-    merchant: {
-        id: 'merchant',
-        name: 'Merchant',
-        description: 'Skilled in trade and persuasion.',
-        statBonuses: { charisma: 2, intelligence: 1 },
-        startingItems: ['coin_purse', 'fine_clothes', 'ledger']
-    },
-    farmer: {
-        id: 'farmer',
-        name: 'Farmer',
-        description: 'Hardworking and resilient.',
-        statBonuses: { constitution: 2, wisdom: 1 },
-        startingItems: ['hoe', 'seeds', 'simple_clothes']
-    },
-    scholar: {
-        id: 'scholar',
-        name: 'Scholar',
-        description: 'Learned and wise, knowledgeable in many subjects.',
-        statBonuses: { intelligence: 2, wisdom: 1 },
-        startingItems: ['book', 'quill', 'ink', 'parchment']
-    },
-    craftsman: {
-        id: 'craftsman',
-        name: 'Craftsman',
-        description: 'Skilled artisan with steady hands.',
-        statBonuses: { dexterity: 2, intelligence: 1 },
-        startingItems: ['tools', 'crafting_materials', 'workshop_key']
-    }
+    items: [],
+    characterName: '',
+    // Data loaded from backend
+    availableRaces: {},
+    availableBackgrounds: {}
 };
 
 /**
@@ -101,7 +29,24 @@ const BACKGROUNDS = {
 function initCharacterCreation() {
     console.log('[CharacterCreation] Starting character creation');
     characterCreationState.currentStep = 'race';
-    showCharacterCreationScreen();
+    
+    // Fetch available races from backend
+    if (typeof socket !== 'undefined' && socket) {
+        socket.emit('request_races');
+        socket.once('races_list', (data) => {
+            console.log('[CharacterCreation] Received races:', data.races);
+            characterCreationState.availableRaces = data.races;
+            showCharacterCreationScreen();
+        });
+        
+        socket.once('error', (error) => {
+            console.error('[CharacterCreation] Error fetching races:', error);
+            alert('Failed to load character creation data. Please refresh.');
+        });
+    } else {
+        console.error('[CharacterCreation] Socket not available');
+        alert('Critical Error in initCharacterCreation().');
+    }
 }
 
 /**
@@ -166,11 +111,11 @@ function renderCurrentStep(container) {
         case 'appearance':
             renderAppearanceSelection(container);
             break;
-        case 'stats':
-            renderStatSelection(container);
-            break;
         case 'items':
             renderItemSelection(container);
+            break;
+        case 'name':
+            renderNameInput(container);
             break;
         case 'summary':
             renderSummary(container);
@@ -192,46 +137,56 @@ function renderRaceSelection(container) {
 
     const raceOptions = container.querySelector('#race-options');
     
-    Object.values(RACES).forEach(race => {
+    Object.entries(characterCreationState.availableRaces).forEach(([raceId, race]) => {
         const raceCard = document.createElement('div');
         raceCard.className = 'race-card';
         raceCard.style.cssText = `
             padding: 20px;
             margin-bottom: 15px;
             background: #333;
-            border: 2px solid ${characterCreationState.selectedRace === race.id ? '#4CAF50' : '#555'};
+            border: 2px solid ${characterCreationState.selectedRace === raceId ? '#4CAF50' : '#555'};
             border-radius: 8px;
             cursor: pointer;
             transition: all 0.2s;
         `;
 
         raceCard.innerHTML = `
-            <h3 style="margin: 0 0 10px 0; color: ${characterCreationState.selectedRace === race.id ? '#4CAF50' : '#fff'};">${race.name}</h3>
-            <p style="color: #ccc; margin: 0;">${race.description}</p>
+            <h3 style="margin: 0 0 10px 0; color: ${characterCreationState.selectedRace === raceId ? '#4CAF50' : '#fff'};">${race.name}</h3>
+            <p style="color: #ccc; margin: 0 0 10px 0;">${race.description}</p>
+            <p style="color: #aaa; margin: 0; font-size: 12px; font-style: italic;">${race.lore_text}</p>
         `;
 
         raceCard.addEventListener('mouseenter', () => {
-            if (characterCreationState.selectedRace !== race.id) {
+            if (characterCreationState.selectedRace !== raceId) {
                 raceCard.style.borderColor = '#888';
             }
         });
 
         raceCard.addEventListener('mouseleave', () => {
-            if (characterCreationState.selectedRace !== race.id) {
+            if (characterCreationState.selectedRace !== raceId) {
                 raceCard.style.borderColor = '#555';
             }
         });
 
         raceCard.addEventListener('click', () => {
-            characterCreationState.selectedRace = race.id;
-            renderRaceSelection(container);
+            characterCreationState.selectedRace = raceId;
+            
+            // Request backgrounds for this race
+            if (typeof socket !== 'undefined' && socket) {
+                socket.emit('request_backgrounds', { race_id: raceId });
+                socket.once('backgrounds_list', (data) => {
+                    console.log('[CharacterCreation] Received backgrounds:', data.backgrounds);
+                    characterCreationState.availableBackgrounds = data.backgrounds;
+                    renderRaceSelection(container);
+                });
+            }
         });
 
         raceOptions.appendChild(raceCard);
     });
 
     // Add next button
-    if (characterCreationState.selectedRace) {
+    if (characterCreationState.selectedRace && Object.keys(characterCreationState.availableBackgrounds).length > 0) {
         const nextButton = document.createElement('button');
         nextButton.textContent = 'Next: Background';
         nextButton.style.cssText = `
@@ -260,7 +215,7 @@ function renderRaceSelection(container) {
  * @returns {void}
  */
 function renderBackgroundSelection(container) {
-    const race = RACES[characterCreationState.selectedRace];
+    const race = characterCreationState.availableRaces[characterCreationState.selectedRace];
     
     container.innerHTML = `
         <h2 style="margin: 0 0 10px 0; color: #4CAF50;">Choose Your Background</h2>
@@ -270,42 +225,61 @@ function renderBackgroundSelection(container) {
 
     const backgroundOptions = container.querySelector('#background-options');
     
-    // Only show backgrounds available for selected race
-    race.backgrounds.forEach(bgId => {
-        const bg = BACKGROUNDS[bgId];
+    // Show all backgrounds available for selected race
+    Object.entries(characterCreationState.availableBackgrounds).forEach(([bgName, bg]) => {
         const bgCard = document.createElement('div');
         bgCard.style.cssText = `
             padding: 20px;
             margin-bottom: 15px;
             background: #333;
-            border: 2px solid ${characterCreationState.selectedBackground === bg.id ? '#4CAF50' : '#555'};
+            border: 2px solid ${characterCreationState.selectedBackground === bgName ? '#4CAF50' : '#555'};
             border-radius: 8px;
             cursor: pointer;
             transition: all 0.2s;
         `;
 
+        // Build stat bonuses display
+        const statBonuses = [];
+        const statFields = [
+            'additional_strength', 'additional_dexterity', 'additional_intelligence', 
+            'additional_willpower', 'additional_charisma', 'additional_perception',
+            'additional_endurance', 'additional_luck', 'additional_speed',
+            'additional_soul_power', 'additional_combat_sense'
+        ];
+        
+        statFields.forEach(field => {
+            if (bg[field] && bg[field] !== 0) {
+                const statName = field.replace('additional_', '').replace(/_/g, ' ');
+                const value = bg[field];
+                const sign = value > 0 ? '+' : '';
+                statBonuses.push(`${statName} ${sign}${value}`);
+            }
+        });
+
         bgCard.innerHTML = `
-            <h3 style="margin: 0 0 10px 0; color: ${characterCreationState.selectedBackground === bg.id ? '#4CAF50' : '#fff'};">${bg.name}</h3>
-            <p style="color: #ccc; margin: 0 0 10px 0;">${bg.description}</p>
-            <div style="font-size: 12px; color: #888;">
-                <strong>Bonuses:</strong> ${Object.entries(bg.statBonuses).map(([stat, bonus]) => `${stat} +${bonus}`).join(', ')}
-            </div>
+            <h3 style="margin: 0 0 10px 0; color: ${characterCreationState.selectedBackground === bgName ? '#4CAF50' : '#fff'};">${bg.display_name || bgName}</h3>
+            <p style="color: #ccc; margin: 0 0 10px 0; font-style: italic; font-size: 13px;">${bg.lore_text || 'A mysterious background.'}</p>
+            ${statBonuses.length > 0 ? `
+                <div style="font-size: 12px; color: #888; margin-top: 10px;">
+                    <strong>Bonuses:</strong> ${statBonuses.join(', ')}
+                </div>
+            ` : ''}
         `;
 
         bgCard.addEventListener('mouseenter', () => {
-            if (characterCreationState.selectedBackground !== bg.id) {
+            if (characterCreationState.selectedBackground !== bgName) {
                 bgCard.style.borderColor = '#888';
             }
         });
 
         bgCard.addEventListener('mouseleave', () => {
-            if (characterCreationState.selectedBackground !== bg.id) {
+            if (characterCreationState.selectedBackground !== bgName) {
                 bgCard.style.borderColor = '#555';
             }
         });
 
         bgCard.addEventListener('click', () => {
-            characterCreationState.selectedBackground = bg.id;
+            characterCreationState.selectedBackground = bgName;
             renderBackgroundSelection(container);
         });
 
@@ -321,7 +295,9 @@ function renderBackgroundSelection(container) {
  * @returns {void}
  */
 function renderPersonalitySelection(container) {
-    const race = RACES[characterCreationState.selectedRace];
+    // For now, use a default set of personality traits
+    // TODO: Make this configurable per race if needed
+    const personalityTraits = ['ambitious', 'curious', 'stubborn', 'loyal', 'cautious', 'brave', 'cunning', 'compassionate'];
     
     container.innerHTML = `
         <h2 style="margin: 0 0 10px 0; color: #4CAF50;">Define Personality</h2>
@@ -331,7 +307,7 @@ function renderPersonalitySelection(container) {
 
     const personalityOptions = container.querySelector('#personality-options');
     
-    race.personalityTraits.forEach(trait => {
+    personalityTraits.forEach(trait => {
         const isSelected = characterCreationState.personality[trait] === true;
         const traitBtn = document.createElement('button');
         traitBtn.textContent = trait.charAt(0).toUpperCase() + trait.slice(1);
@@ -370,7 +346,14 @@ function renderPersonalitySelection(container) {
  * @returns {void}
  */
 function renderAppearanceSelection(container) {
-    const race = RACES[characterCreationState.selectedRace];
+    // Default appearance options for humans
+    // TODO: Make this configurable per race if needed
+    const appearanceOptions = {
+        skinTone: ['pale', 'fair', 'olive', 'tan', 'brown', 'dark'],
+        hairColor: ['black', 'brown', 'blonde', 'red', 'gray', 'white'],
+        eyeColor: ['brown', 'blue', 'green', 'hazel', 'gray'],
+        bodyType: ['slim', 'average', 'athletic', 'stocky', 'heavy']
+    };
     
     container.innerHTML = `
         <h2 style="margin: 0 0 10px 0; color: #4CAF50;">Customize Appearance</h2>
@@ -378,9 +361,9 @@ function renderAppearanceSelection(container) {
         <div id="appearance-options"></div>
     `;
 
-    const appearanceOptions = container.querySelector('#appearance-options');
+    const appearanceOptionsContainer = container.querySelector('#appearance-options');
     
-    Object.entries(race.appearanceOptions).forEach(([category, options]) => {
+    Object.entries(appearanceOptions).forEach(([category, options]) => {
         const categoryDiv = document.createElement('div');
         categoryDiv.style.marginBottom = '20px';
         
@@ -420,105 +403,10 @@ function renderAppearanceSelection(container) {
         
         categoryDiv.appendChild(label);
         categoryDiv.appendChild(select);
-        appearanceOptions.appendChild(categoryDiv);
+        appearanceOptionsContainer.appendChild(categoryDiv);
     });
 
-    addNavigationButtons(container, 'personality', 'stats');
-}
-
-/**
- * Render stat selection step
- * @param {HTMLElement} container - Container to render into
- * @returns {void}
- */
-function renderStatSelection(container) {
-    const race = RACES[characterCreationState.selectedRace];
-    const background = BACKGROUNDS[characterCreationState.selectedBackground];
-    
-    // Initialize stats if not already set
-    if (Object.keys(characterCreationState.stats).length === 0) {
-        characterCreationState.stats = { ...race.baseStats };
-    }
-    
-    container.innerHTML = `
-        <h2 style="margin: 0 0 10px 0; color: #4CAF50;">Allocate Stats</h2>
-        <p style="color: #aaa; margin-bottom: 10px;">Distribute points among your character's attributes</p>
-        <p style="color: #888; margin-bottom: 20px; font-size: 12px;">
-            Base: ${race.name} | Background: ${background.name} (bonuses already applied)
-        </p>
-        <div id="stat-options"></div>
-    `;
-
-    const statOptions = container.querySelector('#stat-options');
-    
-    Object.entries(characterCreationState.stats).forEach(([stat, value]) => {
-        const bgBonus = background.statBonuses[stat] || 0;
-        const raceModifier = race.statModifiers[stat] || 0;
-        const totalValue = value + bgBonus + raceModifier;
-        
-        const statRow = document.createElement('div');
-        statRow.style.cssText = `
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 10px;
-            margin-bottom: 10px;
-            background: #333;
-            border-radius: 4px;
-        `;
-        
-        statRow.innerHTML = `
-            <div style="flex: 1;">
-                <strong style="color: #4CAF50;">${stat.charAt(0).toUpperCase() + stat.slice(1)}:</strong>
-                <span style="color: #fff; margin-left: 10px;">${totalValue}</span>
-                ${bgBonus > 0 ? `<span style="color: #888; font-size: 12px;"> (+${bgBonus} from background)</span>` : ''}
-            </div>
-            <div>
-                <button class="stat-decrease" data-stat="${stat}" style="
-                    padding: 5px 12px;
-                    margin: 0 5px;
-                    background: #d32f2f;
-                    color: white;
-                    border: none;
-                    border-radius: 4px;
-                    cursor: pointer;
-                ">-</button>
-                <button class="stat-increase" data-stat="${stat}" style="
-                    padding: 5px 12px;
-                    background: #4CAF50;
-                    color: white;
-                    border: none;
-                    border-radius: 4px;
-                    cursor: pointer;
-                ">+</button>
-            </div>
-        `;
-        
-        statOptions.appendChild(statRow);
-    });
-    
-    // Add event listeners for stat adjustment
-    container.querySelectorAll('.stat-increase').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const stat = e.target.dataset.stat;
-            if (characterCreationState.stats[stat] < 18) {
-                characterCreationState.stats[stat]++;
-                renderStatSelection(container);
-            }
-        });
-    });
-    
-    container.querySelectorAll('.stat-decrease').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const stat = e.target.dataset.stat;
-            if (characterCreationState.stats[stat] > 3) {
-                characterCreationState.stats[stat]--;
-                renderStatSelection(container);
-            }
-        });
-    });
-
-    addNavigationButtons(container, 'appearance', 'items');
+    addNavigationButtons(container, 'personality', 'items');
 }
 
 /**
@@ -527,10 +415,9 @@ function renderStatSelection(container) {
  * @returns {void}
  */
 function renderItemSelection(container) {
-    const race = RACES[characterCreationState.selectedRace];
-    const background = BACKGROUNDS[characterCreationState.selectedBackground];
-    
-    const allItems = [...race.startingItems, ...background.startingItems];
+    // For now, use a simple default starting inventory
+    // TODO: Make this configurable based on race and background
+    const startingItems = ['basic_clothes', 'water_flask', 'travel_rations'];
     
     container.innerHTML = `
         <h2 style="margin: 0 0 10px 0; color: #4CAF50;">Starting Equipment</h2>
@@ -544,7 +431,7 @@ function renderItemSelection(container) {
 
     const itemList = container.querySelector('#item-list');
     
-    allItems.forEach(item => {
+    startingItems.forEach(item => {
         const itemDiv = document.createElement('div');
         itemDiv.style.cssText = `
             padding: 10px;
@@ -558,9 +445,69 @@ function renderItemSelection(container) {
         itemList.appendChild(itemDiv);
     });
     
-    characterCreationState.items = allItems;
+    characterCreationState.items = startingItems;
 
-    addNavigationButtons(container, 'stats', 'summary');
+    addNavigationButtons(container, 'appearance', 'name');
+}
+
+/**
+ * Render character name input step
+ * @param {HTMLElement} container - Container to render into
+ * @returns {void}
+ */
+function renderNameInput(container) {
+    container.innerHTML = `
+        <h2 style="margin: 0 0 10px 0; color: #4CAF50;">Name Your Character</h2>
+        <p style="color: #aaa; margin-bottom: 20px;">Choose a name for your character</p>
+        
+        <div style="background: #333; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+            <label for="character-name-input" style="display: block; color: #4CAF50; margin-bottom: 10px; font-weight: bold;">
+                Character Name:
+            </label>
+            <input 
+                type="text" 
+                id="character-name-input" 
+                maxlength="30"
+                placeholder="Enter character name..."
+                value="${characterCreationState.characterName}"
+                style="
+                    width: 100%;
+                    padding: 12px;
+                    background: #444;
+                    color: #fff;
+                    border: 2px solid #555;
+                    border-radius: 4px;
+                    font-size: 16px;
+                    box-sizing: border-box;
+                "
+            />
+            <p style="color: #888; font-size: 12px; margin-top: 8px; margin-bottom: 0;">
+                Note: This is your character's name, not your player name. Maximum 30 characters.
+            </p>
+        </div>
+    `;
+    
+    const input = container.querySelector('#character-name-input');
+    input.focus();
+    
+    input.addEventListener('input', (e) => {
+        characterCreationState.characterName = e.target.value.trim();
+        // Re-render navigation buttons to update their state
+        const existingButtons = container.querySelector('div[style*="display: flex"]');
+        if (existingButtons) {
+            existingButtons.remove();
+        }
+        addNavigationButtons(container, 'items', 'summary');
+    });
+    
+    input.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter' && characterCreationState.characterName.length > 0) {
+            characterCreationState.currentStep = 'summary';
+            renderCurrentStep(container);
+        }
+    });
+
+    addNavigationButtons(container, 'items', 'summary');
 }
 
 /**
@@ -569,8 +516,8 @@ function renderItemSelection(container) {
  * @returns {void}
  */
 function renderSummary(container) {
-    const race = RACES[characterCreationState.selectedRace];
-    const background = BACKGROUNDS[characterCreationState.selectedBackground];
+    const race = characterCreationState.availableRaces[characterCreationState.selectedRace];
+    const background = characterCreationState.availableBackgrounds[characterCreationState.selectedBackground];
     
     container.innerHTML = `
         <h2 style="margin: 0 0 10px 0; color: #4CAF50;">Character Summary</h2>
@@ -578,24 +525,29 @@ function renderSummary(container) {
         
         <div style="background: #333; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
             <div style="margin-bottom: 15px;">
+                <strong style="color: #4CAF50;">Name:</strong> <span style="color: #fff;">${characterCreationState.characterName}</span>
+            </div>
+            <div style="margin-bottom: 15px;">
                 <strong style="color: #4CAF50;">Race:</strong> <span style="color: #fff;">${race.name}</span>
             </div>
             <div style="margin-bottom: 15px;">
-                <strong style="color: #4CAF50;">Background:</strong> <span style="color: #fff;">${background.name}</span>
+                <strong style="color: #4CAF50;">Background:</strong> <span style="color: #fff;">${background.display_name || characterCreationState.selectedBackground}</span>
             </div>
             <div style="margin-bottom: 15px;">
                 <strong style="color: #4CAF50;">Personality:</strong> 
                 <span style="color: #fff;">${Object.entries(characterCreationState.personality)
                     .filter(([_, v]) => v)
                     .map(([k, _]) => k)
-                    .join(', ')}</span>
+                    .join(', ') || 'None selected'}</span>
             </div>
             <div style="margin-bottom: 15px;">
                 <strong style="color: #4CAF50;">Appearance:</strong>
                 <div style="color: #fff; margin-left: 20px; margin-top: 5px;">
-                    ${Object.entries(characterCreationState.appearance)
-                        .map(([k, v]) => `${k}: ${v}`)
-                        .join('<br>')}
+                    ${Object.entries(characterCreationState.appearance).length > 0 
+                        ? Object.entries(characterCreationState.appearance)
+                            .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`)
+                            .join('<br>')
+                        : 'Default appearance'}
                 </div>
             </div>
             <div>
@@ -603,10 +555,8 @@ function renderSummary(container) {
                 <div style="color: #fff; margin-left: 20px; margin-top: 5px;">
                     ${Object.entries(characterCreationState.stats)
                         .map(([k, v]) => {
-                            const bgBonus = background.statBonuses[k] || 0;
-                            const raceModifier = race.statModifiers[k] || 0;
-                            const total = v + bgBonus + raceModifier;
-                            return `${k}: ${total}`;
+                            const displayName = k.replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                            return `${displayName}: ${v}`;
                         })
                         .join('<br>')}
                 </div>
@@ -639,7 +589,7 @@ function renderSummary(container) {
     `;
     
     container.querySelector('#back-btn').addEventListener('click', () => {
-        characterCreationState.currentStep = 'items';
+        characterCreationState.currentStep = 'name';
         renderCurrentStep(container);
     });
     
@@ -718,14 +668,13 @@ function checkStepComplete(step) {
         case 'personality':
             return Object.values(characterCreationState.personality).filter(v => v).length > 0;
         case 'appearance':
-            const race = RACES[characterCreationState.selectedRace];
-            return Object.keys(race.appearanceOptions).every(
-                key => characterCreationState.appearance[key]
-            );
-        case 'stats':
-            return true; // Stats always valid
+            // For now, appearance is optional - always return true
+            // TODO: Make this check required fields if appearance becomes mandatory
+            return true;
         case 'items':
             return true; // Items always valid
+        case 'name':
+            return characterCreationState.characterName.length > 0;
         default:
             return false;
     }
@@ -738,29 +687,25 @@ function checkStepComplete(step) {
 function finalizeCharacterCreation() {
     console.log('[CharacterCreation] Finalizing character:', characterCreationState);
     
-    const race = RACES[characterCreationState.selectedRace];
-    const background = BACKGROUNDS[characterCreationState.selectedBackground];
-    
-    // Calculate final stats
-    const finalStats = {};
-    Object.entries(characterCreationState.stats).forEach(([stat, value]) => {
-        finalStats[stat] = value + (background.statBonuses[stat] || 0) + (race.statModifiers[stat] || 0);
-    });
-    
     const characterData = {
-        race: characterCreationState.selectedRace,
-        background: characterCreationState.selectedBackground,
+        player_name: characterCreationState.characterName,
+        race_id: characterCreationState.selectedRace,
+        background_name: characterCreationState.selectedBackground,
         personality: Object.entries(characterCreationState.personality)
             .filter(([_, v]) => v)
             .map(([k, _]) => k),
         appearance: characterCreationState.appearance,
-        stats: finalStats,
         items: characterCreationState.items
     };
     
-    // TODO: Send to server via socket
+    // Send to server via socket
     if (window.socket && window.socket.connected) {
-        window.socket.emit('create_character', characterData);
+        window.socket.emit('new_character', characterData);
+        console.log('[CharacterCreation] Sent character data to server:', characterData);
+    } else {
+        console.error('[CharacterCreation] Socket not connected');
+        alert('Connection error. Please refresh and try again.');
+        return;
     }
     
     // Close character creation
@@ -769,5 +714,5 @@ function finalizeCharacterCreation() {
         overlay.remove();
     }
     
-    console.log('[CharacterCreation] Character created:', characterData);
+    console.log('[CharacterCreation] Character created successfully');
 }

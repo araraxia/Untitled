@@ -11,6 +11,7 @@ ROOT_DIRECTORY = FILE_PATH.parent.parent.parent
 DATA_DIRECTORY = ROOT_DIRECTORY / "frontend" / "assets" / "data"
 PLAYER_DIRECTORY = DATA_DIRECTORY / "player"
 
+
 class PlayerCharacter:
     """Player controller that can control multiple entities simultaneously.
 
@@ -22,21 +23,27 @@ class PlayerCharacter:
     def __init__(
         self,
         player_id: str = "00000000-0000-0000-0000-000000000000",
+        player_name: str = "Player",
     ):
         # 00000000-0000-0000-0000-000000000000 is the default ID for non-persistent players.
         self.player_id = player_id
+        self.player_name = player_name
         self.world_id: str = ""  # Current world ID the player is in
         self.area_id: str = ""  # Current area ID the player is in
         self.active_entity_index: int = (
             0  # Index of currently active entity for direct manual control
         )
         self.controlled_entity_ids: List[str] = []  # Currently controlled entity IDs
-        self.controlled_entity_objs: List[Entity] = []  # Currently controlled entity objects
+        self.controlled_entity_objs: List[Entity] = (
+            []
+        )  # Currently controlled entity objects
         self.controlled_entity_history: List[str] = (
             []
         )  # List of entity IDs ever controlled
         self.current_selected_entities: List[str] = []  # Currently selected entity IDs
-        self.current_selected_entity_objs: List[Entity] = []  # Currently selected entity objects
+        self.current_selected_entity_objs: List[Entity] = (
+            []
+        )  # Currently selected entity objects
 
         # Player-specific attributes (not tied to any entity)
         self.player_inventory = {}  # Global items by player across entities
@@ -140,7 +147,9 @@ class PlayerCharacter:
             target_entities = self.controlled_entity_objs
         elif target_entity_id:
             target_entities = [
-                e for e in self.controlled_entity_objs if e.entity_id == target_entity_id
+                e
+                for e in self.controlled_entity_objs
+                if e.entity_id == target_entity_id
             ]
         else:
             active = self.get_active_entity()
@@ -200,12 +209,21 @@ class PlayerCharacter:
         """
         return {
             "player_id": self.player_id,
+            "player_name": self.player_name,
             "controlled_entity_ids": [e.entity_id for e in self.controlled_entity_objs],
             "active_entity_index": self.active_entity_index,
             "controlled_entities_history": self.controlled_entity_history,
             "player_inventory": self.player_inventory,
             "player_stats": self.player_stats,
         }
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Alias for serialize() to maintain compatibility.
+
+        Returns:
+            Dictionary containing player state (not entity state)
+        """
+        return self.serialize()
 
     def save_to_file(self, directory: Path = PLAYER_DIRECTORY) -> str:
         """Save player controller data to a JSON file named with the player ID.
@@ -231,7 +249,9 @@ class PlayerCharacter:
         return str(file_path)
 
     @classmethod
-    def load_from_file(cls, file_path: Path, load_entities: bool = True) -> "PlayerCharacter":
+    def load_from_file(
+        cls, file_path: Path, load_entities: bool = True
+    ) -> "PlayerCharacter":
         """Load player controller data from a JSON file.
 
         Args:
@@ -243,9 +263,12 @@ class PlayerCharacter:
         # Load player data first
         with open(file_path, "r") as f:
             data = json.load(f)
-        
+
         # Create player controller
-        player = cls(player_id=data.get("player_id"))
+        player = cls(
+            player_id=data.get("player_id"),
+            player_name=data.get("player_name", "Player"),
+        )
         player.world_id = data.get("world_id", "")
         player.area_id = data.get("area_id", "")
         player.active_entity_index = data.get("active_entity_index", 0)
@@ -258,11 +281,11 @@ class PlayerCharacter:
             {"total_playtime": 0.0, "entities_controlled": 0, "achievements": []},
         )
         player.current_action = data.get("current_action", None)
-        
+
         # Load entities if requested
         if load_entities:
             player.load_controlled_entities()
-        
+
         return player
 
     @classmethod
@@ -273,7 +296,7 @@ class PlayerCharacter:
         load_entities: bool = True,
     ) -> "PlayerCharacter":
         """Load player controller data using player ID to construct the file path.
-        
+
         This method will automatically load all controlled entities from their files.
 
         Args:
@@ -286,15 +309,14 @@ class PlayerCharacter:
         """
         file_path = Path(directory) / f"player-{player_id}.json"
         return cls.load_from_file(file_path, entity_lookup=None)
-        
-    
+
     def load_controlled_entities(self):
         """Load all controlled entities from their files.
-        
+
         This method loads Entity objects for all entity IDs in controlled_entity_ids.
         """
         self.controlled_entity_objs = []
-        
+
         for entity_id in self.controlled_entity_ids:
             try:
                 entity = Entity.load_by_id(entity_id)
