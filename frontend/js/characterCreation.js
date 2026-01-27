@@ -687,6 +687,30 @@ function checkStepComplete(step) {
 function finalizeCharacterCreation() {
     console.log('[CharacterCreation] Finalizing character:', characterCreationState);
     
+    // Show loading overlay
+    const container = document.getElementById('character-creation-container');
+    container.innerHTML = `
+        <div style="text-align: center; padding: 40px;">
+            <h2 style="margin: 0 0 20px 0; color: #4CAF50;">Creating Character...</h2>
+            <p style="color: #aaa; margin-bottom: 30px;">Please wait while your character is being created.</p>
+            <div style="
+                border: 4px solid #333;
+                border-top: 4px solid #4CAF50;
+                border-radius: 50%;
+                width: 60px;
+                height: 60px;
+                animation: spin 1s linear infinite;
+                margin: 0 auto;
+            "></div>
+            <style>
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+            </style>
+        </div>
+    `;
+    
     const characterData = {
         player_name: characterCreationState.characterName,
         race_id: characterCreationState.selectedRace,
@@ -698,21 +722,14 @@ function finalizeCharacterCreation() {
         items: characterCreationState.items
     };
     
-    // Send to server via socket
+    // Send to server via socket and wait for response
     if (window.socket && window.socket.connected) {
         window.socket.emit('new_character', characterData);
         console.log('[CharacterCreation] Sent character data to server:', characterData);
+        // Server will respond with 'character_created' event when done
     } else {
         console.error('[CharacterCreation] Socket not connected');
         alert('Connection error. Please refresh and try again.');
         return;
     }
-    
-    // Close character creation
-    const overlay = document.getElementById('character-creation-overlay');
-    if (overlay) {
-        overlay.remove();
-    }
-    
-    console.log('[CharacterCreation] Character created successfully');
 }

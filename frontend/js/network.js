@@ -89,6 +89,19 @@ function initNetwork() {
             console.error('[Network] Character creation function not available');
         }
     });
+    
+    socket.on('character_created', (data) => {
+        console.log('[Network] Character created successfully:', data);
+        // Close character creation overlay
+        const overlay = document.getElementById('character-creation-overlay');
+        if (overlay) {
+            overlay.remove();
+        }
+        
+        // Reload the page to show player select with the new character
+        console.log('[Network] Reloading page to show player select');
+        window.location.reload();
+    });
 
     console.log('[Network] Network initialized');
 }

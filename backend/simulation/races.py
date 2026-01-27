@@ -75,7 +75,8 @@ class Race:
 
     def get_backgrounds(self) -> Dict[str, object]:
         """Get available backgrounds for this race"""
-        raise NotImplementedError("Subclasses must implement get_backgrounds")
+        from backend.simulation.backgrounds import get_classes_by_tag as get_bg_by_tag
+        return get_bg_by_tag(self.id)
 
     def generate_attributes(self, max_attempts: int = 100) -> dict:
         """
@@ -165,12 +166,6 @@ class Human(Race):
         "Their short lives burn brightly, and they can be found in every corner of the realm, "
         "pursuing countless paths and destinies."
     )
-
-    def get_backgrounds(self) -> Dict[str, object]:
-        """Get all human backgrounds"""
-        from backend.simulation.backgrounds import get_human_classes
-
-        return get_human_classes()
 
 
 def get_all_races() -> Dict[str, Race]:

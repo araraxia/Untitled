@@ -210,11 +210,15 @@ class PlayerCharacter:
         return {
             "player_id": self.player_id,
             "player_name": self.player_name,
-            "controlled_entity_ids": [e.entity_id for e in self.controlled_entity_objs],
+            "world_id": self.world_id,
+            "area_id": self.area_id,
             "active_entity_index": self.active_entity_index,
-            "controlled_entities_history": self.controlled_entity_history,
+            "controlled_entity_ids": [e.entity_id for e in self.controlled_entity_objs],
+            "controlled_entity_history": self.controlled_entity_history,
+            "current_selected_entities": self.current_selected_entities,
             "player_inventory": self.player_inventory,
             "player_stats": self.player_stats,
+            "current_action": self.current_action,
         }
 
     def to_dict(self) -> Dict[str, Any]:
@@ -245,6 +249,10 @@ class PlayerCharacter:
         file_path = save_dir / f"player-{self.player_id}.json"
         with open(file_path, "w") as f:
             json.dump(data, f, indent=2)
+
+        if self.current_selected_entity_objs:
+            for entity_obj in self.current_selected_entity_objs:
+                entity_obj.save_to_file()
 
         return str(file_path)
 

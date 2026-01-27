@@ -80,10 +80,7 @@ class SaveManager():
         was_paused = self.game_loop.paused
         self.game_loop.pause()
 
-        # Create necessary directories
-        PLAYER_DIR.mkdir(parents=True, exist_ok=True)
-        self.player_data_dir = PLAYER_DIR / f"player-{self.player_id}"
-        self.player_data_dir.mkdir(parents=True, exist_ok=True)
+        self.player.save_to_file()
         
         # Save area state
         current_area = self.game_loop.current_area
@@ -115,17 +112,6 @@ class SaveManager():
             import json
 
             json.dump(area.to_dict(), f, indent=4)
-
-    @staticmethod
-    def save_player(player: PlayerCharacter):
-        """Save a player to a JSON file."""
-        player_file = PLAYER_DIR / f"player-{player.player_id}.json"
-        player_file.parent.mkdir(parents=True, exist_ok=True)
-
-        with open(player_file, "w") as f:
-            import json
-
-            json.dump(player.to_dict(), f, indent=4)
 
     def delete_player_data(self):
         """Delete all data associated with a player."""

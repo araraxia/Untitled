@@ -1,9 +1,11 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
 class BlankBackground:
-    """"""
+    """Base background class with all default attributes."""
+
+    tags: list = field(default_factory=lambda: ["human", "common"])
 
     # Base attributes and their variances
     additional_strength: int = 0
@@ -82,7 +84,8 @@ class BlankBackground:
 
 
 @dataclass
-class TideMarkedOutcast:
+class TideMarkedOutcast(BlankBackground):
+    tags: list = field(default_factory=lambda: ["human", "outcast", "sea"])
     additional_perception: int = 3
     additional_willpower: int = 3
     additional_charisma: int = -3
@@ -97,7 +100,8 @@ class TideMarkedOutcast:
 
 
 @dataclass
-class AshenChoirSurvivor:
+class AshenChoirSurvivor(BlankBackground):
+    tags: list = field(default_factory=lambda: ["human", "survivor", "fire"])
     additional_intelligence: int = 3
     intelligence_variance: int = 2
     additional_soul_power: int = 2
@@ -113,7 +117,8 @@ class AshenChoirSurvivor:
 
 
 @dataclass
-class BrokenBannerHeir:
+class BrokenBannerHeir(BlankBackground):
+    tags: list = field(default_factory=lambda: ["human", "noble", "warrior"])
     additional_charisma: int = 1
     additional_willpower: int = 4
     additional_combat_sense: int = 2
@@ -128,7 +133,10 @@ class BrokenBannerHeir:
 
 
 @dataclass
-class ClockmakersCreation:
+class ClockmakersCreation(BlankBackground):
+    tags: list = field(
+        default_factory=lambda: ["construct", "mechanical", "artificial"]
+    )
     additional_intelligence: int = 4
     additional_dexterity: int = 2
     additional_physical_resistance: int = 3
@@ -143,7 +151,8 @@ class ClockmakersCreation:
 
 
 @dataclass
-class OrchardWitch:
+class OrchardWitch(BlankBackground):
+    tags: list = field(default_factory=lambda: ["human", "witch", "nature"])
     additional_intelligence: int = 2
     additional_perception: int = 3
     additional_soul_power: int = 2
@@ -157,7 +166,8 @@ class OrchardWitch:
 
 
 @dataclass
-class OathBoundMercenary:
+class OathBoundMercenary(BlankBackground):
+    tags: list = field(default_factory=lambda: ["human", "mercenary", "warrior"])
     additional_strength: int = 2
     additional_combat_sense: int = 3
     additional_willpower: int = 2
@@ -171,7 +181,8 @@ class OathBoundMercenary:
 
 
 @dataclass
-class ChildOfTwoSuns:
+class ChildOfTwoSuns(BlankBackground):
+    tags: list = field(default_factory=lambda: ["human", "blessed", "celestial"])
     additional_soul_power: int = 4
     additional_charisma: int = 2
     additional_fire_resistance_modifier: float = 0.4
@@ -184,7 +195,8 @@ class ChildOfTwoSuns:
 
 
 @dataclass
-class ForbiddenNameLibrarian:
+class ForbiddenNameLibrarian(BlankBackground):
+    tags: list = field(default_factory=lambda: ["human", "scholar", "forbidden"])
     additional_intelligence: int = 4
     additional_perception: int = 2
     additional_magic_illusion_resistance_modifier: float = 0.3
@@ -197,7 +209,8 @@ class ForbiddenNameLibrarian:
 
 
 @dataclass
-class BoneRiverNomad:
+class BoneRiverNomad(BlankBackground):
+    tags: list = field(default_factory=lambda: ["human", "nomad", "cursed"])
     additional_endurance: int = 3
     additional_willpower: int = 2
     additional_soul_power: int = 1
@@ -210,7 +223,8 @@ class BoneRiverNomad:
 
 
 @dataclass
-class CrownlessPretender:
+class CrownlessPretender(BlankBackground):
+    tags: list = field(default_factory=lambda: ["human", "noble", "pretender"])
     additional_charisma: int = 3
     additional_willpower: int = 2
     additional_luck: int = -3
@@ -224,7 +238,8 @@ class CrownlessPretender:
 
 
 @dataclass
-class EmberMarkedMidwife:
+class EmberMarkedMidwife(BlankBackground):
+    tags: list = field(default_factory=lambda: ["human", "healer", "blessed"])
     additional_intelligence: int = 2
     additional_willpower: int = 3
     additional_fire_resistance_modifier: float = 0.6
@@ -237,7 +252,8 @@ class EmberMarkedMidwife:
 
 
 @dataclass
-class SkyFallenKnight:
+class SkyFallenKnight(BlankBackground):
+    tags: list = field(default_factory=lambda: ["human", "knight", "fallen"])
     additional_strength: int = 2
     additional_endurance: int = 3
     additional_combat_sense: int = 2
@@ -251,7 +267,8 @@ class SkyFallenKnight:
 
 
 @dataclass
-class SpiritDebtCollector:
+class SpiritDebtCollector(BlankBackground):
+    tags: list = field(default_factory=lambda: ["human", "cursed", "spirit"])
     additional_soul_power: int = 3
     additional_mental_resistance: int = 4
     additional_curse_resistance_modifier: float = 0.6
@@ -264,7 +281,8 @@ class SpiritDebtCollector:
 
 
 @dataclass
-class PaintedBarbarian:
+class PaintedBarbarian(BlankBackground):
+    tags: list = field(default_factory=lambda: ["human", "barbarian", "warrior"])
     additional_strength: int = 3
     additional_endurance: int = 3
     additional_charisma: int = -1
@@ -277,7 +295,8 @@ class PaintedBarbarian:
 
 
 @dataclass
-class AcademyDropout:
+class AcademyDropout(BlankBackground):
+    tags: list = field(default_factory=lambda: ["human", "scholar", "dropout"])
     additional_intelligence: int = 2
     additional_dexterity: int = 2
     additional_luck: int = -1
@@ -290,7 +309,8 @@ class AcademyDropout:
 
 
 @dataclass
-class HollowEyedOracle:
+class HollowEyedOracle(BlankBackground):
+    tags: list = field(default_factory=lambda: ["human", "oracle", "seer"])
     additional_perception: int = 4
     additional_intelligence: int = 2
     additional_charisma: int = -3
@@ -303,7 +323,8 @@ class HollowEyedOracle:
 
 
 @dataclass
-class RuneboundSmith:
+class RuneboundSmith(BlankBackground):
+    tags: list = field(default_factory=lambda: ["human", "smith", "crafter"])
     additional_strength: int = 2
     additional_endurance: int = 2
     additional_intelligence: int = 2
@@ -316,7 +337,8 @@ class RuneboundSmith:
 
 
 @dataclass
-class ForgottenGodChampion:
+class ForgottenGodChampion(BlankBackground):
+    tags: list = field(default_factory=lambda: ["human", "champion", "divine"])
     additional_soul_power: int = 4
     additional_willpower: int = 2
     additional_luck: int = -3
@@ -329,7 +351,8 @@ class ForgottenGodChampion:
 
 
 @dataclass
-class SewerCrownPrince:
+class SewerCrownPrince(BlankBackground):
+    tags: list = field(default_factory=lambda: ["human", "underworld", "leader"])
     additional_charisma: int = 2
     additional_perception: int = 3
     additional_dexterity: int = 2
@@ -342,7 +365,8 @@ class SewerCrownPrince:
 
 
 @dataclass
-class LastWeatherBinder:
+class LastWeatherBinder(BlankBackground):
+    tags: list = field(default_factory=lambda: ["human", "mage", "elemental"])
     additional_soul_power: int = 3
     additional_intelligence: int = 2
     additional_lightning_resistance_modifier: float = 0.6
@@ -355,15 +379,21 @@ class LastWeatherBinder:
     )
 
 
-def get_human_classes():
-    """Get predetermined background classes available for humans.
-    Returns a dict mapping display names to background class instances.
+def get_classes_by_tag(tag):
+    """Get background classes filtered by a specific tag.
+
+    Args:
+        tag: The tag to filter by (e.g., "human", "warrior", "mage")
+
+    Returns:
+        A dict mapping display names to background class instances that have the specified tag.
     """
-    return {
+    all_backgrounds = {
         "Blank Background": BlankBackground(),
         "Tide-Marked Outcast": TideMarkedOutcast(),
         "Ashen Choir Survivor": AshenChoirSurvivor(),
         "Broken Banner Heir": BrokenBannerHeir(),
+        "Clockmaker's Creation": ClockmakersCreation(),
         "Orchard Witch": OrchardWitch(),
         "Oath-Bound Mercenary": OathBoundMercenary(),
         "Child of Two Suns": ChildOfTwoSuns(),
@@ -373,6 +403,7 @@ def get_human_classes():
         "Ember-Marked Midwife": EmberMarkedMidwife(),
         "Sky-Fallen Knight": SkyFallenKnight(),
         "Spirit Debt Collector": SpiritDebtCollector(),
+        "Painted Barbarian": PaintedBarbarian(),
         "Academy Dropout": AcademyDropout(),
         "Hollow-Eyed Oracle": HollowEyedOracle(),
         "Runebound Smith": RuneboundSmith(),
@@ -380,3 +411,5 @@ def get_human_classes():
         "Sewer Crown Prince": SewerCrownPrince(),
         "Last Weather Binder": LastWeatherBinder(),
     }
+
+    return {name: bg for name, bg in all_backgrounds.items() if tag in bg.tags}

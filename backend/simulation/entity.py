@@ -91,53 +91,335 @@ class Entity:
         self.abilities = {}
 
         # Health system
-        self.health = {
-            "head": {
-                "left_eye": {},
-                "right_eye": {},
-                "mouth": {},
-                "tongue": {},
-                "skull": {},
-                "brain": {},
+        self.health = [
+            {
+                "part": "head",
+                "health": 0.0,
+                "subparts": [
+                    {
+                        "part": "left_eye",
+                        "health": 0.0,
+                        "subparts": [],
+                        "is_vital": False,
+                        "on_loss": [
+                            {
+                                "type": "stat",
+                                "target": "perception",
+                                "value": 0.5,
+                                "value_type": "multiplier",
+                            }
+                        ],
+                    },
+                    {
+                        "part": "right_eye",
+                        "health": 0.0,
+                        "subparts": [],
+                        "is_vital": False,
+                        "on_loss": [
+                            {
+                                "type": "stat",
+                                "target": "perception",
+                                "value": 0.5,
+                                "value_type": "multiplier",
+                            }
+                        ],
+                    },
+                    {
+                        "part": "mouth",
+                        "health": 0.0,
+                        "subparts": [],
+                        "is_vital": False,
+                        "on_loss": [],
+                    },
+                    {
+                        "part": "tongue",
+                        "health": 0.0,
+                        "subparts": [],
+                        "is_vital": False,
+                        "on_loss": [],
+                    },
+                    {
+                        "part": "skull",
+                        "health": 0.0,
+                        "subparts": [],
+                        "is_vital": True,
+                        "on_loss": [],
+                    },
+                    {
+                        "part": "brain",
+                        "health": 0.0,
+                        "subparts": [],
+                        "is_vital": True,
+                        "on_loss": [
+                            {
+                                "type": "status_effect",
+                                "target": "death",
+                                "duration": 99999,
+                            }
+                        ],
+                    },
+                ],
+                "is_vital": True,
+                "on_loss": [
+                    {
+                        "type": "status_effect",
+                        "target": "unconscious",
+                        "duration": 99999,
+                    }
+                ],
             },
-            "torso": {
-                "chest": {},
-                "stomach": {},
-                "groin": {},
-                "left_shoulder": {},
-                "right_shoulder": {},
-                "upper_back": {},
-                "lower_back": {},
-                "heart": {},
-                "lung_left": {},
-                "lung_right": {},
-                "neck": {},
+            {
+                "part": "torso",
+                "health": 0.0,
+                "subparts": [
+                    {
+                        "part": "chest",
+                        "health": 0.0,
+                        "subparts": [],
+                        "is_vital": False,
+                        "on_loss": [],
+                    },
+                    {
+                        "part": "stomach",
+                        "health": 0.0,
+                        "subparts": [],
+                        "is_vital": False,
+                        "on_loss": [],
+                    },
+                    {
+                        "part": "groin",
+                        "health": 0.0,
+                        "subparts": [],
+                        "is_vital": False,
+                        "on_loss": [],
+                    },
+                    {
+                        "part": "left_shoulder",
+                        "health": 0.0,
+                        "subparts": [],
+                        "is_vital": False,
+                        "on_loss": [],
+                    },
+                    {
+                        "part": "right_shoulder",
+                        "health": 0.0,
+                        "subparts": [],
+                        "is_vital": False,
+                        "on_loss": [],
+                    },
+                    {
+                        "part": "upper_back",
+                        "health": 0.0,
+                        "subparts": [],
+                        "is_vital": False,
+                        "on_loss": [],
+                    },
+                    {
+                        "part": "lower_back",
+                        "health": 0.0,
+                        "subparts": [],
+                        "is_vital": False,
+                        "on_loss": [],
+                    },
+                    {
+                        "part": "heart",
+                        "health": 0.0,
+                        "subparts": [],
+                        "is_vital": True,
+                        "on_loss": [
+                            {
+                                "type": "status_effect",
+                                "target": "death",
+                                "duration": 99999,
+                            }
+                        ],
+                    },
+                    {
+                        "part": "lung_left",
+                        "health": 0.0,
+                        "subparts": [],
+                        "is_vital": False,
+                        "on_loss": [],
+                    },
+                    {
+                        "part": "lung_right",
+                        "health": 0.0,
+                        "subparts": [],
+                        "is_vital": False,
+                        "on_loss": [],
+                    },
+                    {
+                        "part": "neck",
+                        "health": 0.0,
+                        "subparts": [],
+                        "is_vital": True,
+                        "on_loss": [],
+                    },
+                ],
+                "is_vital": True,
+                "on_loss": [],
             },
-            "left_arm": {
-                "left_forearm": {},
-                "left_upper_arm": {},
-                "left_hand": {"left_fingers": {}},
+            {
+                "part": "left_arm",
+                "health": 0.0,
+                "subparts": [
+                    {
+                        "part": "left_upper_arm",
+                        "health": 0.0,
+                        "subparts": [],
+                        "is_vital": False,
+                        "on_loss": [],
+                    },
+                    {
+                        "part": "left_forearm",
+                        "health": 0.0,
+                        "subparts": [],
+                        "is_vital": False,
+                        "on_loss": [],
+                    },
+                    {
+                        "part": "left_hand",
+                        "health": 0.0,
+                        "subparts": [
+                            {
+                                "part": "left_fingers",
+                                "health": 0.0,
+                                "subparts": [],
+                                "is_vital": False,
+                                "on_loss": [],
+                            },
+                        ],
+                        "is_vital": False,
+                        "on_loss": [],
+                    },
+                ],
+                "is_vital": False,
+                "on_loss": [],
             },
-            "right_arm": {
-                "right_forearm": {},
-                "right_upper_arm": {},
-                "right_hand": {"right_fingers": {}},
+            {
+                "part": "right_arm",
+                "health": 0.0,
+                "subparts": [
+                    {
+                        "part": "right_upper_arm",
+                        "health": 0.0,
+                        "subparts": [],
+                        "is_vital": False,
+                        "on_loss": [],
+                    },
+                    {
+                        "part": "right_forearm",
+                        "health": 0.0,
+                        "subparts": [],
+                        "is_vital": False,
+                        "on_loss": [],
+                    },
+                    {
+                        "part": "right_hand",
+                        "health": 0.0,
+                        "subparts": [
+                            {
+                                "part": "right_fingers",
+                                "health": 0.0,
+                                "subparts": [],
+                                "is_vital": False,
+                                "on_loss": [],
+                            },
+                        ],
+                        "is_vital": False,
+                        "on_loss": [],
+                    },
+                ],
+                "is_vital": False,
+                "on_loss": [],
             },
-            "left_hip": {},
-            "right_hip": {},
-            "left_leg": {
-                "left_thigh": {},
-                "left_knee": {},
-                "left_calf": {},
-                "left_foot": {},
+            {
+                "part": "left_hip",
+                "health": 0.0,
+                "subparts": [],
+                "is_vital": False,
+                "on_loss": [],
             },
-            "right_leg": {
-                "right_thigh": {},
-                "right_knee": {},
-                "right_calf": {},
-                "right_foot": {},
+            {
+                "part": "right_hip",
+                "health": 0.0,
+                "subparts": [],
+                "is_vital": False,
+                "on_loss": [],
             },
-        }
+            {
+                "part": "left_leg",
+                "health": 0.0,
+                "subparts": [
+                    {
+                        "part": "left_thigh",
+                        "health": 0.0,
+                        "subparts": [],
+                        "is_vital": False,
+                        "on_loss": [],
+                    },
+                    {
+                        "part": "left_knee",
+                        "health": 0.0,
+                        "subparts": [],
+                        "is_vital": False,
+                        "on_loss": [],
+                    },
+                    {
+                        "part": "left_calf",
+                        "health": 0.0,
+                        "subparts": [],
+                        "is_vital": False,
+                        "on_loss": [],
+                    },
+                    {
+                        "part": "left_foot",
+                        "health": 0.0,
+                        "subparts": [],
+                        "is_vital": False,
+                        "on_loss": [],
+                    },
+                ],
+                "is_vital": False,
+                "on_loss": [],
+            },
+            {
+                "part": "right_leg",
+                "health": 0.0,
+                "subparts": [
+                    {
+                        "part": "right_thigh",
+                        "health": 0.0,
+                        "subparts": [],
+                        "is_vital": False,
+                        "on_loss": [],
+                    },
+                    {
+                        "part": "right_knee",
+                        "health": 0.0,
+                        "subparts": [],
+                        "is_vital": False,
+                        "on_loss": [],
+                    },
+                    {
+                        "part": "right_calf",
+                        "health": 0.0,
+                        "subparts": [],
+                        "is_vital": False,
+                        "on_loss": [],
+                    },
+                    {
+                        "part": "right_foot",
+                        "health": 0.0,
+                        "subparts": [],
+                        "is_vital": False,
+                        "on_loss": [],
+                    },
+                ],
+                "is_vital": False,
+                "on_loss": [],
+            },
+        ]
 
         # Equipment
         self.equipment = {}
