@@ -78,3 +78,6 @@ Weights can be assigned to possible outcomes to make it more likely to generate 
 If wanting to generate a long straight pathway that forks occasionally, assign high weights to outcomes that continue the current pathway, medium weights to fork outcomes and low weights to outcomes that end the current pathway.
 
 Can "force" generate key cells or structures by having a pre-check before choosing which superposition cell to collapse next. Key cell has a low probility roll, if it succeeds it will attempt to generate a key cell in a valid location. If it fails, can increment a counter to make success more likely next time or eventually hit a dry protection threshold. Can then return to standard generation, and this may help spread out key cells.
+
+## Atlas + Parameter Map Designer
+TODO: Build a tool that allows you to select a Primary sprite atlas and/or a secondary effect/sprite atlas, and paint each channel of a parameter map to see a preview of each shader during the painting process.

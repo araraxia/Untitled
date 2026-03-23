@@ -91,7 +91,7 @@ The executable will be in the `dist/` folder.
 
 ## Project Structure
 
-```
+```text
 game-project/
 ├── main.py              # PyWebView application entry point
 ├── backend/             # Python Flask + SocketIO server
@@ -160,7 +160,7 @@ Run `pip install -r requirements.txt` in your virtual environment
 ## Comparison: PyWebView vs Electron
 
 | Feature | PyWebView | Electron |
-|---------|-----------|----------|
+| ------- | --------- | -------- |
 | Language | Python | Node.js/JavaScript |
 | Size | ~10-30 MB | ~100-150 MB |
 | Memory | Lower | Higher |

@@ -1,0 +1,17 @@
+{
+  "base_model_path": "images/effects/glow",
+  "relative_z_index": 2,
+  "pulse": {
+    "default_sprite_sheet": "lantern_glow.png",
+    "default_sprite_version": "v00",
+    "duration_type": "variable",
+    "frame_width": 64,
+    "frame_height": 64,
+    "frame_count": 5,
+    "frame_duration": [120, 180, 300, 180, 120],
+    "loop": true,
+    "default": {
+      "start_frame_index": 0
+    }
+  }
+}

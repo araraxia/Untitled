@@ -1,0 +1,10 @@
+{
+  "uuid": "00000000-0000-0000-0000-000000000002",
+  "name": "Lantern",
+  "type": "object",
+  "material": "material/material-example-lantern.json",
+  "animation_clip": "animation/animation-example-lantern-idle.json",
+  "runtime": {
+    "glow_intensity": 0.8
+  }
+}

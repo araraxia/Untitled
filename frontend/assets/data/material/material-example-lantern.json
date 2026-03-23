@@ -1,0 +1,15 @@
+{
+  "id": "lantern_default",
+  "base_atlas": "images/sprites/objects/lantern_atlas.png",
+  "param_map": "images/param_maps/lantern_params.png",
+  "overlays": [
+    {
+      "id": "glow_pulse",
+      "atlas": "images/effects/glow/lantern_glow.png",
+      "animation_clip": "animation/animation-example-lantern-glow.json",
+      "animation_state": "pulse",
+      "blend_mode": "additive",
+      "intensity": 0.8
+    }
+  ]
+}

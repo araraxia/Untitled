@@ -142,7 +142,7 @@ The JSON format supports variable frame durations:
 ## Sprite Sheet Layout
 
 Standard layout (8x8 grid):
-```
+```text
 Row 0: Stand animations (down, up, left, right frames 0-7)
 Row 1: Stand animations continued (frames 8-15)
 Row 2: Stand animations continued (frames 16-23)

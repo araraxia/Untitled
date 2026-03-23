@@ -6,27 +6,27 @@ Successfully implemented a comprehensive sprite-based animation system with prop
 ## Architecture
 
 ### 1. **SpriteSheet Class** ([js/sprites/spritesheet.js](js/sprites/spritesheet.js))
-   - Manages sprite sheet images
-   - Handles frame extraction and rendering
-   - Supports horizontal flipping for directional sprites
+- Manages sprite sheet images
+- Handles frame extraction and rendering
+- Supports horizontal flipping for directional sprites
 
 ### 2. **Animation Classes** ([js/sprites/animation.js](js/sprites/animation.js))
-   - **Animation**: Defines a single animation sequence (frames, timing, looping)
-   - **AnimationController**: Manages animation playback, updates, and rendering
-   - Handles frame timing and transitions
+- **Animation**: Defines a single animation sequence (frames, timing, looping)
+- **AnimationController**: Manages animation playback, updates, and rendering
+- Handles frame timing and transitions
 
 ### 3. **EntityRenderer Class** ([js/entityRenderer.js](js/entityRenderer.js))
-   - Central rendering system for all entities
-   - Loads animation data from JSON ([assets/data/human_animations.json](assets/data/human_animations.json))
-   - Creates and manages AnimationControllers per entity
-   - Automatically switches between "stand" and "walk" animations based on entity state
-   - Handles sprite flipping for left/right directions
-   - Includes fallback rendering when sprites unavailable
+- Central rendering system for all entities
+- Loads animation data from JSON ([assets/data/human_animations.json](assets/data/human_animations.json))
+- Creates and manages AnimationControllers per entity
+- Automatically switches between "stand" and "walk" animations based on entity state
+- Handles sprite flipping for left/right directions
+- Includes fallback rendering when sprites unavailable
 
 ### 4. **Updated Systems**
-   - **renderer.js**: Now uses EntityRenderer instead of manual drawing
-   - **input.js**: Sends facing direction with movement commands
-   - **index.html**: Includes all new script files in correct order
+- **renderer.js**: Now uses EntityRenderer instead of manual drawing
+- **input.js**: Sends facing direction with movement commands
+- **index.html**: Includes all new script files in correct order
 
 ## How It Works
 
@@ -50,7 +50,7 @@ Successfully implemented a comprehensive sprite-based animation system with prop
 
 Instead of binding keyboard events directly to animation objects (which would couple input to rendering), we use a **state-based approach**:
 
-```
+```text
 Keyboard Input → Entity State Update → EntityRenderer reads state → Plays animation
 ```
 
