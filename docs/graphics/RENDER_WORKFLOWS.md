@@ -2,6 +2,8 @@
 
 Practical per-feature shader recipes. Each workflow builds on the previous.
 
+Shader pipelines are compiled and cached by `ShaderCache` (`frontend/js/engine/sprites/shaderCache.js`). Material bind groups — which set up textures and uniforms for a draw call — are created by `MaterialLoader` (`frontend/js/engine/sprites/materialLoader.js`).
+
 ---
 
 ## Workflow A: Simple Sprite Animation

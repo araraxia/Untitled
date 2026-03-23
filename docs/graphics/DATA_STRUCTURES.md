@@ -2,6 +2,8 @@
 
 JSON schemas used by the material/animation pipeline. All live under `frontend/assets/data/`.
 
+Asset keys (plain string values such as `"lantern_atlas"` or `"lantern_params"`) are resolved to file paths at runtime by `AssetLoader` (`frontend/js/engine/assetLoader.js`). Game code and material JSON never reference raw file paths directly — always use the registered key.
+
 ---
 
 ## Animation Clip

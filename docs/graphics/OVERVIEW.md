@@ -33,6 +33,36 @@ Animation sequences are defined as **animation clips** in JSON: ordered lists of
 
 ---
 
+## Frontend Engine Directory Structure
+
+Following the engine–game separation (Phase 1 of [ROADMAP.md](../../ROADMAP.md)), frontend JavaScript is split into two namespaces. The layout below shows the **target state** after Phase 1 completes; Phase 0 systems currently live under `frontend/js/` and `frontend/js/sprites/` pending the restructure.
+
+```text
+frontend/js/
+  engine/               ← reusable engine infrastructure
+    renderer.js         ← WebGPU render coordinator
+    entityRenderer.js   ← per-entity animation and GPU draw
+    interpolation.js    ← position interpolation (10 TPS → 60 FPS)
+    input.js            ← raw input event stream
+    network.js          ← SocketIO abstraction
+    assetLoader.js      ← asset registry; resolves keys to file paths
+    sprites/
+      shaderCache.js    ← WGSL pipeline compilation and caching
+      gpuBuffers.js     ← GPU buffer helpers (uniform, vertex)
+      gpuSpriteSheet.js ← WebGPU counterpart to Canvas 2D SpriteSheet
+      materialLoader.js ← builds GPUBindGroup objects from material JSON
+  game/                 ← game-specific content; calls into engine API only
+    characterCreation.js
+    playerSelect.js
+    ui.js               ← game-specific UI panels
+```
+
+Engine modules have no knowledge of game rules. Game modules call into the engine API but must not reach into engine internals.
+
+The backend mirrors this split: `backend/engine/` (ECS, spatial, game loop) versus `backend/game/` (entities, systems, world). See [ROADMAP.md](../../ROADMAP.md) Phase 1 for the full restructure plan and prompt file.
+
+---
+
 ## Migration Path: Canvas 2D → WebGPU
 
 1. ✅ **Acquire a GPUDevice** at startup via `navigator.gpu.requestAdapter()` → `requestDevice()`. Gate the entire rendering path on this succeeding; fall back to an error screen if WebGPU is unavailable. *(implemented in `frontend/js/renderer.js` — `initWebGPU()`, `useGPU` flag)*
@@ -40,21 +70,30 @@ Animation sequences are defined as **animation clips** in JSON: ordered lists of
 3. **Introduce the material system**: define bind group layouts for texture bindings and uniform buffers; extend `SpriteSheet` / `EntityRenderer` to create and bind `GPUBindGroup` objects per draw call.
 4. **Add parameter map support**: write the Python channel-packing tool, generate param maps for existing assets, upload as `GPUTexture` objects, update material JSON.
 5. **Implement the combiner**: parameterise the WGSL fragment shader so the combiner formula is driven by material data rather than being hardcoded.
-6. **Exploit compute shaders** (later): move particle simulation, spatial queries, or animation bone blending to `GPUComputePipeline` to offload the CPU game loop.
+6. **Add a lighting pass**: a second render pass accumulates additive point-light contributions; the pass reads light-entity positions from a uniform array and outputs a screen-space light buffer multiplied into the base pass. Lights are entities carrying a `light` component (ROADMAP Phase 2.4).
+7. **Particle system via compute**: move particle position and velocity integration to a `GPUComputePipeline` so particle state lives entirely on the GPU. The render pass reads the particle storage buffer directly without a CPU round-trip (ROADMAP Phase 2.5).
 
-This migration can be done incrementally — the Canvas 2D path can remain active while the WebGPU pipeline is built alongside it.
+This migration can be done incrementally — each step is independently testable.
 
 ---
 
 ## New Systems Required
 
-| System | Location | Notes |
+Paths show the target layout after Phase 1 restructure. Phase 0 systems are ✅ implemented at their original paths pending that move.
+
+| System | Target location | Status |
 | --- | --- | --- |
-| WebGPU renderer | `frontend/js/renderer.js` | Replace Canvas 2D context; acquire `GPUDevice` |
-| WGSL shader cache | `frontend/js/sprites/` | Compile + cache `GPURenderPipeline` objects |
-| Material loader | `frontend/js/sprites/` | Create bind group layouts and `GPUBindGroup` per material |
-| Channel-pack tool | `tools/pack_param_map.py` | Python pre-processing script |
-| Parameter map assets | `frontend/assets/images/param_maps/` | GPU-ready packed textures uploaded as `GPUTexture` |
+| WebGPU renderer | `frontend/js/engine/renderer.js` | ✅ Phase 0 — device, canvas context, render loop |
+| Entity renderer | `frontend/js/engine/entityRenderer.js` | ✅ Phase 0 — per-entity GPU draw path |
+| WGSL shader cache | `frontend/js/engine/sprites/shaderCache.js` | ✅ Phase 0 — sprite pipeline, `ShaderCache` class |
+| GPU buffer helpers | `frontend/js/engine/sprites/gpuBuffers.js` | ✅ Phase 0 — uniform + quad vertex buffers |
+| GPU sprite sheet | `frontend/js/engine/sprites/gpuSpriteSheet.js` | ✅ Phase 0 — texture load, UV rect, bind group |
+| Material loader | `frontend/js/engine/sprites/materialLoader.js` | Phase 2 — `GPUBindGroup` from `material/*.json` |
+| Asset loader | `frontend/js/engine/assetLoader.js` | Phase 2 — asset registry; resolves keys to paths |
+| Lighting pass | `frontend/js/engine/sprites/` | Phase 2 — point-light accumulation render pass |
+| Particle compute | `frontend/js/engine/sprites/` | Phase 2 — `GPUComputePipeline` particle simulation |
+| Channel-pack tool | `tools/pack_param_map.py` | Phase 2 — Python source-asset pre-processing |
+| Parameter map assets | `frontend/assets/images/param_maps/` | Phase 2 — packed RGBA textures as `GPUTexture` |
 | Material definitions | `frontend/assets/data/material/` | JSON; one file per material type |
 | Overlay animation clips | `frontend/assets/data/animation/` | JSON; same schema as base animation clips |
 
@@ -66,3 +105,4 @@ This migration can be done incrementally — the Canvas 2D path can remain activ
 - [COORDINATE_MAPPING.md](COORDINATE_MAPPING.md) — UV coordinates, 2D and 3D projection
 - [RENDER_WORKFLOWS.md](RENDER_WORKFLOWS.md) — Practical per-feature shader workflows
 - [DATA_STRUCTURES.md](DATA_STRUCTURES.md) — JSON schemas for animation clips, materials, entities
+- [ROADMAP.md](../../ROADMAP.md) — Full engine packaging roadmap; graphics work is Phase 0 (complete) and Phase 2

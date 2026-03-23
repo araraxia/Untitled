@@ -101,3 +101,15 @@ Materials map each combiner slot to a named source. The renderer reads this at l
   }
 }
 ```
+
+---
+
+## Implementation Reference
+
+| File | Responsibility |
+| --- | --- |
+| `frontend/js/engine/sprites/shaderCache.js` | Compiles and caches `GPURenderPipeline` variants; one pipeline per unique material flag combination |
+| `frontend/js/engine/sprites/materialLoader.js` | Reads `material/*.json`, constructs a `GPUBindGroup` per material at load time |
+| `tools/pack_param_map.py` | CLI tool that packs greyscale channel images into a single RGBA param map PNG |
+
+See [RENDER_WORKFLOWS.md](RENDER_WORKFLOWS.md) for per-effect WGSL shader code and [DATA_STRUCTURES.md](DATA_STRUCTURES.md) for the full material JSON schema.

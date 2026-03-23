@@ -272,8 +272,6 @@ def handle_load_game(data):
     except FileNotFoundError:
         emit("error", {"message": f"Player file for ID {player_id} does not exist."})
 
-    return
-
     # Start game loop on first player load (thread-safe)
     if not game_loop.running:
         logger.info("Starting game loop for first player load")
