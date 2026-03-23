@@ -9,6 +9,7 @@
 <body>
     <div id="game-container">
         <canvas id="game-canvas"></canvas>
+        <canvas id="overlay-canvas"></canvas>
         <div id="ui-overlay">
             <div id="loading-indicator" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; font-size: 24px; color: #4CAF50;">
                 <p>Loading Game...</p>
@@ -38,6 +39,9 @@
     <!-- Sprite and animation system -->
     <script src="js/sprites/spritesheet.js"></script>
     <script src="js/sprites/animation.js"></script>
+    <script src="js/sprites/shaderCache.js"></script>
+    <script src="js/sprites/gpuBuffers.js"></script>
+    <script src="js/sprites/gpuSpriteSheet.js"></script>
     <script src="js/entityRenderer.js"></script>
     
     <!-- Character creation system -->

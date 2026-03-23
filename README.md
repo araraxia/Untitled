@@ -20,7 +20,7 @@ A real-time simulation game with Rimworld-style controls and Dwarf Fortress-insp
 
 ## Project Structure
 
-```
+```text
 game-project/
 ├── backend/
 │   ├── __init__.py
@@ -241,7 +241,7 @@ python backend/app.py
 ```
 
 ### Key Dependencies
-```
+```text
 Flask==3.0.0
 Flask-SocketIO==5.3.5
 python-socketio==5.10.0

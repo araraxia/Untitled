@@ -30,6 +30,14 @@ body {
     cursor: crosshair;
 }
 
+#overlay-canvas {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+}
+
 #ui-overlay {
     position: absolute;
     top: 0;

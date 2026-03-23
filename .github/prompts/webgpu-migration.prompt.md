@@ -1,5 +1,5 @@
 ---
-mode: agent
+agent: agent
 description: Migrate the renderer from Canvas 2D to WebGPU following the design in docs/graphics/.
 tools:
   - read_file
@@ -47,6 +47,7 @@ Read these files before writing any code:
 Add a WebGPU initialisation path alongside the existing Canvas 2D init. The existing `initRenderer` function must continue to work unchanged.
 
 Tasks:
+
 1. Add a module-level `let gpuDevice = null;` variable.
 2. Create an `async function initWebGPU()` that:
    - Calls `navigator.gpu?.requestAdapter()`. If the result is `null` or `navigator.gpu` is absent, logs a clear warning and returns `false`.
@@ -68,6 +69,7 @@ Verify: no existing tests break, the Canvas 2D path still renders, and `gpuDevic
 Create a shader cache module responsible for compiling and caching `GPURenderPipeline` objects.
 
 Tasks:
+
 1. Define the WGSL source for the **sprite pipeline** (Workflow A from `RENDER_WORKFLOWS.md`):
    - Vertex shader: takes `@location(0) pos: vec2<f32>` and `@location(1) uv: vec2<f32>`, applies `mvp` mat4 uniform, outputs position + UV varying.
    - Fragment shader: samples `u_albedo` texture at the interpolated UV (see Workflow A).
@@ -85,9 +87,10 @@ Tasks:
 **New file:** `frontend/js/sprites/gpuBuffers.js`
 
 Tasks:
+
 1. `function createUniformBuffer(device, byteSize)` — wraps `device.createBuffer` with `UNIFORM | COPY_DST` usage.
 2. `function writeUniformBuffer(device, buffer, data)` — wraps `device.queue.writeBuffer`.
-3. `function createQuadVertexBuffer(device)` — creates a static `VERTEX` buffer from 6 vertices (two triangles, CCW winding) forming a unit quad with UVs `[0,0]→[1,1]`. Vertex layout: `[x, y, u, v]` as `f32` — 4 floats × 6 vertices = 96 bytes.
+3. `function createQuadVertexBuffer(device)` — creates a static `VERTEX` buffer from 6 vertices (two triangles, CCW winding) forming a unit quad with UVs `[0,0]→[1,1]`. Vertex layout: `[x, y, u, v]` as `f32` — 4 floats × 6 vertices = 256 bytes.
 4. Export all three functions.
 
 ---
@@ -99,6 +102,7 @@ Tasks:
 This replaces `SpriteSheet` for the WebGPU path. The Canvas 2D `SpriteSheet` class must not be modified.
 
 Tasks:
+
 1. Create `class GPUSpriteSheet` with:
    - `constructor(device, imagePath, frameWidth, frameHeight, columns, rows)` — mirrors the Canvas 2D `SpriteSheet` constructor signature.
    - `async load()` — fetches the image via `fetch` + `createImageBitmap`, uploads to a `GPUTexture` via `device.queue.copyExternalImageToTexture`, creates a `GPUSampler` with `minFilter: 'linear'`, `magFilter: 'nearest'` (pixel art).
@@ -116,14 +120,16 @@ Tasks:
 Read the existing `EntityRenderer` class fully before editing.
 
 Tasks:
+
 1. Add an optional `useGPU` flag to `EntityRenderer` (default `false`). When `true`, use the GPU path; when `false`, retain the existing Canvas 2D path unmodified.
 2. When `useGPU` is `true`:
    - In the constructor, create a `GPUSpriteSheet` instead of `SpriteSheet`.
+   - Change the `drawEntity` signature to `drawEntity(entity, camera, passEncoder = null)`. The `passEncoder` argument is a `GPURenderPassEncoder` provided by the caller; it is only used when `useGPU` is `true` and must not be `null` in that path.
    - In `drawEntity`, instead of calling `spriteSheet.drawFrame`:
      a. Compute the MVP matrix from the entity's world position and the camera (2D orthographic — see `COORDINATE_MAPPING.md`).
      b. Write MVP, UV rect (from `GPUSpriteSheet.getUVRect`), and tint `(1,1,1,1)` into the uniform buffer.
-     c. Record one render pass: set pipeline, set bind group, set vertex buffer (unit quad), `draw(6)`.
-3. The existing Canvas 2D `drawEntity` path must remain fully functional.
+     c. Record draw commands onto `passEncoder`: call `passEncoder.setPipeline`, `passEncoder.setBindGroup`, `passEncoder.setVertexBuffer`, then `passEncoder.draw(6)`. Do **not** begin or end a render pass here — the encoder is owned by `renderer.js`.
+3. The existing Canvas 2D `drawEntity(entity, camera)` path must remain fully functional (the extra `passEncoder` parameter is ignored when `useGPU` is `false`).
 
 ---
 
@@ -132,21 +138,25 @@ Tasks:
 **File:** `frontend/js/renderer.js`
 
 Tasks:
+
 1. After `initWebGPU()` succeeds, set a module-level `let useGPU = true;` flag.
 2. Pass `useGPU` when constructing `EntityRenderer` instances in `getEntityRenderer`.
-3. In `render()`, when `useGPU` is true:
+3. Update `renderEntities(gameState, deltaTime)` to accept an optional third parameter: `renderEntities(gameState, deltaTime, passEncoder = null)`. Thread `passEncoder` through to each `renderer.drawEntity(entity, camera, passEncoder)` call. When `useGPU` is `false`, `passEncoder` is `null` and `drawEntity` ignores it.
+4. In `render()`, when `useGPU` is true:
    - Begin a `GPUCommandEncoder`.
-   - Begin a render pass targeting `gpuContext.getCurrentTexture().createView()` with `loadOp: 'clear'` (clear colour `#2a2a2a`, matching the existing `ctx.fillStyle`).
-   - Call `renderEntities` (entities will record into this pass via their `EntityRenderer`).
-   - Submit the command buffer.
+   - Begin a render pass targeting `gpuContext.getCurrentTexture().createView()` with `loadOp: 'clear'` (clear colour `#2a2a2a`, matching the existing `ctx.fillStyle`) and `storeOp: 'store'`.
+   - Call `renderEntities(gameState, deltaTime, passEncoder)`, passing the active `GPURenderPassEncoder`.
+   - Call `passEncoder.end()` after `renderEntities` returns.
+   - Submit the finished command buffer via `gpuDevice.queue.submit([commandEncoder.finish()])`.
    - Skip the Canvas 2D `ctx.fillRect` / `ctx.drawImage` calls.
-4. Keep the Canvas 2D path active when `useGPU` is false.
+5. Keep the Canvas 2D path active when `useGPU` is false.
 
 ---
 
 ## Step 7 — Verify & Clean Up
 
 Tasks:
+
 1. Run the application (`main.py` or `run_browser.py`). Confirm sprites render at correct positions with correct frame selection — output should be visually identical to the Canvas 2D path.
 2. Confirm the debug grid still draws (it uses Canvas 2D directly — it can remain as a Canvas 2D overlay for now, drawn to a second `<canvas>` element layered on top, or simply disabled).
 3. Run `get_errors` on all modified files and fix any reported issues.
@@ -156,10 +166,10 @@ Tasks:
 
 ## Success Criteria
 
-- [ ] `gpuDevice` is acquired without errors in Chrome/Edge on Windows.
-- [ ] Sprites render at the correct screen position with the correct animation frame.
-- [ ] Horizontal flip (`flipX`) works correctly (negate X scale in the MVP matrix).
-- [ ] No Canvas 2D `drawImage` calls remain in the active render path.
-- [ ] No GLSL shader source exists anywhere in the codebase.
-- [ ] `get_errors` reports zero errors on all modified files.
-- [ ] `docs/graphics/OVERVIEW.md` migration step 1 and 2 are done; update the migration path section to reflect current status if steps are completed.
+- [x] `gpuDevice` is acquired without errors in Chrome/Edge on Windows.
+- [x] Sprites render at the correct screen position with the correct animation frame.
+- [x] Horizontal flip (`flipX`) works correctly (negate X scale in the MVP matrix).
+- [x] No Canvas 2D `drawImage` calls remain in the active render path.
+- [x] No GLSL shader source exists anywhere in the codebase.
+- [x] `get_errors` reports zero errors on all modified files.
+- [x] `docs/graphics/OVERVIEW.md` migration step 1 and 2 are done; update the migration path section to reflect current status if steps are completed.

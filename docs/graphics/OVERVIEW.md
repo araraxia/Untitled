@@ -35,8 +35,8 @@ Animation sequences are defined as **animation clips** in JSON: ordered lists of
 
 ## Migration Path: Canvas 2D → WebGPU
 
-1. **Acquire a GPUDevice** at startup via `navigator.gpu.requestAdapter()` → `requestDevice()`. Gate the entire rendering path on this succeeding; fall back to an error screen if WebGPU is unavailable.
-2. **Port the sprite blit** to a WebGPU render pipeline: a vertex buffer with positions + UVs, a `GPURenderPipeline` with a minimal WGSL vertex + fragment shader pair, equivalent to the current `drawImage` call.
+1. ✅ **Acquire a GPUDevice** at startup via `navigator.gpu.requestAdapter()` → `requestDevice()`. Gate the entire rendering path on this succeeding; fall back to an error screen if WebGPU is unavailable. *(implemented in `frontend/js/renderer.js` — `initWebGPU()`, `useGPU` flag)*
+2. ✅ **Port the sprite blit** to a WebGPU render pipeline: a vertex buffer with positions + UVs, a `GPURenderPipeline` with a minimal WGSL vertex + fragment shader pair, equivalent to the current `drawImage` call. *(implemented across `shaderCache.js`, `gpuBuffers.js`, `gpuSpriteSheet.js`, `entityRenderer.js`, `renderer.js`)*
 3. **Introduce the material system**: define bind group layouts for texture bindings and uniform buffers; extend `SpriteSheet` / `EntityRenderer` to create and bind `GPUBindGroup` objects per draw call.
 4. **Add parameter map support**: write the Python channel-packing tool, generate param maps for existing assets, upload as `GPUTexture` objects, update material JSON.
 5. **Implement the combiner**: parameterise the WGSL fragment shader so the combiner formula is driven by material data rather than being hardcoded.

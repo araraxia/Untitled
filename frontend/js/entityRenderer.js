@@ -8,16 +8,29 @@ class EntityRenderer {
      * @param {CanvasRenderingContext2D} ctx - The canvas 2D rendering context
      * @param {string} entityId - The entity ID to render
      * @param {Array<string>} animationDataPaths - List of animation data file paths
+     * @param {boolean} [useGPU=false] - When true, use the WebGPU render path
      */
-    constructor(ctx, entityId, animationDataPaths = []) {
-        console.log('[EntityRenderer] Constructor called - entityId:', entityId, 'paths:', animationDataPaths);
+    constructor(ctx, entityId, animationDataPaths = [], useGPU = false) {
+        console.log('[EntityRenderer] Constructor called - entityId:', entityId, 'paths:', animationDataPaths, 'useGPU:', useGPU);
         this.ctx = ctx;
         this.entityId = entityId;
         this.animationDataPaths = animationDataPaths;
+        this.useGPU = useGPU;
         this.spriteSheets = {};
         this.animationControllers = {};
         this.animationDataList = [];  // Store all animation data sorted by Z-index
         this.loadingComplete = false;
+
+        if (useGPU) {
+            this._canvas = document.getElementById('game-canvas');
+            this._shaderCache = new ShaderCache(
+                gpuDevice,
+                navigator.gpu.getPreferredCanvasFormat(),
+            );
+            this._quadVertexBuffer = createQuadVertexBuffer(gpuDevice);
+            this._uniformBuffers = {};  // spriteKey → GPUBuffer
+            this._bindGroups = {};      // spriteKey → GPUBindGroup
+        }
     }
 
     /**
@@ -74,25 +87,26 @@ class EntityRenderer {
                 
                 // Create sprite sheet if not already loaded
                 if (!this.spriteSheets[spriteKey]) {
-                    this.spriteSheets[spriteKey] = new SpriteSheet(
+                    const gpuSheet = new GPUSpriteSheet(
+                        gpuDevice,
                         'assets/' + spritePath,
                         animConfig.frame_width,
                         animConfig.frame_height,
                         8, // columns - standard 8 columns for character sprites
-                        8  // rows - standard 8 rows for character sprites
+                        8, // rows - standard 8 rows for character sprites
                     );
-                    
-                    // Wait for sprite sheet to load
-                    promises.push(new Promise((resolve) => {
-                        const checkLoaded = () => {
-                            if (this.spriteSheets[spriteKey].loaded) {
-                                resolve();
-                            } else {
-                                setTimeout(checkLoaded, 50);
-                            }
-                        };
-                        checkLoaded();
-                    }));
+                    promises.push(
+                        gpuSheet.load().then(() => {
+                            this.spriteSheets[spriteKey] = gpuSheet;
+                            const pipeline = this._shaderCache.getSpritePipeline();
+                            // Uniform buffer: mvp(64) + uv_rect(16) + tint(16) = 96 bytes
+                            const uBuf = createUniformBuffer(gpuDevice, 96);
+                            this._uniformBuffers[spriteKey] = uBuf;
+                            this._bindGroups[spriteKey] = gpuSheet.createBindGroup(
+                                gpuDevice, pipeline, uBuf,
+                            );
+                        }),
+                    );
                 }
             }
         }
@@ -194,53 +208,83 @@ class EntityRenderer {
     }
 
     /**
-     * Draw a single entity with its current animation
+     * Draw a single entity with its current animation.
+     *
+     * In the WebGPU path, passEncoder must be the active GPURenderPassEncoder
+     * owned by renderer.js. Draw commands are recorded onto it; the caller is
+     * responsible for beginning and ending the render pass.
+     *
      * @param {Object} entity - Entity data object
      * @param {Object} camera - Camera position {x, y}
+     * @param {GPURenderPassEncoder|null} [passEncoder=null] - Active render pass
+     *   encoder; only used when useGPU is true.
      */
-    drawEntity(entity, camera) {
+    drawEntity(entity, camera, passEncoder = null) {
         console.log('[EntityRenderer] drawEntity called - entityId:', entity.id, 'loadingComplete:', this.loadingComplete);
         if (!this.loadingComplete) {
-            // Fallback to simple circle if animations not loaded
-            this.drawEntityFallback(entity, camera);
+            if (!this.useGPU) this.drawEntityFallback(entity, camera);
             return;
         }
 
         // Use interpolated position for smooth movement
         const x = (entity.displayX || entity.x) - camera.x;
         const y = (entity.displayY || entity.y) - camera.y;
-        
-        // Draw using animation controller if available
-        if (entity._animController) {
-            // Find animation config from loaded data
-            let animConfig = null;
-            for (const { data } of this.animationDataList) {
-                if (data[entity._animType]) {
-                    animConfig = data[entity._animType];
-                    break;
-                }
-            }
-            
-            const direction = entity.facing || 'down';
-            const dirConfig = animConfig?.[direction];
-            const flipX = dirConfig?.flip_x || false;
-            
-            // Center the sprite on the entity position
-            const drawX = x - animConfig.frame_width / 2;
-            const drawY = y - animConfig.frame_height / 2;
-            
-            entity._animController.draw(this.ctx, drawX, drawY, flipX);
-            
-        } else {
-            // Fallback if animation controller not set up
-            this.drawEntityFallback(entity, camera);
+
+        if (!entity._animController) {
+            if (!this.useGPU) this.drawEntityFallback(entity, camera);
+            return;
         }
-        
-        // Draw health bar if HP is defined
-        this.drawHealthBar(entity, x, y);
-        
-        // Draw entity ID
-        this.drawEntityLabel(entity, x, y);
+
+        // Find animation config from loaded data
+        let animConfig = null;
+        for (const { data } of this.animationDataList) {
+            if (data[entity._animType]) {
+                animConfig = data[entity._animType];
+                break;
+            }
+        }
+
+        const direction = entity.facing || 'down';
+        const dirConfig = animConfig?.[direction];
+        const flipX = dirConfig?.flip_x || false;
+
+        if (this.useGPU) {
+            // --- WebGPU path ---
+            const spriteKey = entity._animType;
+            const gpuSheet = this.spriteSheets[spriteKey];
+            if (!gpuSheet || !gpuSheet.loaded) return;
+
+            const frameIndex = entity._animController.currentFrame;
+            const uvRect = gpuSheet.getUVRect(frameIndex);
+
+            // 2D orthographic MVP — maps the unit quad to screen space.
+            const cW = this._canvas.width;
+            const cH = this._canvas.height;
+            const scaleX = (flipX ? -1 : 1) * (animConfig.frame_width / cW);
+            const scaleY = animConfig.frame_height / cH;
+            const tx = (2 * x / cW) - 1;
+            const ty = 1 - (2 * y / cH);
+
+            // Column-major mat4x4 (WGSL layout):
+            // col0=[scaleX,0,0,0] col1=[0,scaleY,0,0] col2=[0,0,1,0] col3=[tx,ty,0,1]
+            // prettier-ignore
+            const uniforms = new Float32Array([
+                scaleX,  0,  0,  0,   // col 0
+                0,  scaleY,  0,  0,   // col 1
+                0,       0,  1,  0,   // col 2
+                tx,     ty,  0,  1,   // col 3
+                uvRect[0], uvRect[1], uvRect[2], uvRect[3],  // uv_rect
+                1, 1, 1, 1,           // tint
+            ]);
+
+            writeUniformBuffer(gpuDevice, this._uniformBuffers[spriteKey], uniforms);
+
+            const pipeline = this._shaderCache.getSpritePipeline();
+            passEncoder.setPipeline(pipeline);
+            passEncoder.setBindGroup(0, this._bindGroups[spriteKey]);
+            passEncoder.setVertexBuffer(0, this._quadVertexBuffer);
+            passEncoder.draw(6);
+        }
     }
 
     /**

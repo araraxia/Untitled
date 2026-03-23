@@ -237,7 +237,7 @@ def handle_new_character(data):
 @socketio.on("delete_player")
 def handle_delete_player(data):
     """Handle deleting a player and their data."""
-    from backend.load_save import SaveManager
+    from backend.save_manager import SaveManager
 
     player_id = data.get("player_id")
     if not player_id:
@@ -256,7 +256,7 @@ def handle_delete_player(data):
 @socketio.on("load_player")
 def handle_load_game(data):
     """Handle loading a player and their controlled entities."""
-    from backend.load_save import SaveManager
+    from backend.save_manager import SaveManager
 
     player_id = data.get("player_id")
     if not player_id:
@@ -264,7 +264,7 @@ def handle_load_game(data):
         return
 
     try:
-        save_manager = SaveManager(player_id=player_id, game_loop=game_loop)
+        save_manager = SaveManager(socketio, player_id=player_id)
         save_manager.load_game()
         emit(
             "player_loaded",
