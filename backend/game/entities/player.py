@@ -1,8 +1,8 @@
 """Player character with deep action system."""
 
 from typing import Dict, Any, Optional, List
-from backend.simulation.entity import Entity
-from backend.simulation.actions import ActionFactory
+from backend.engine.ecs.entity import Entity
+from backend.game.systems.actions import ActionFactory
 from pathlib import Path
 import json
 

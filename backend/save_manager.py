@@ -3,10 +3,10 @@ from pathlib import Path
 import sys
 from typing import Optional
 from backend import game_loop
-from backend.simulation.player import PlayerCharacter
-from backend.simulation.entity import Entity
-from backend.simulation.world import World
-from backend.simulation.area import Area
+from backend.game.entities.player import PlayerCharacter
+from backend.engine.ecs.entity import Entity
+from backend.game.world import World
+from backend.game.area import Area
 from backend.game_loop import GameLoop
 import threading
 

@@ -1,13 +1,21 @@
-"""Game configuration settings."""
+"""Game configuration settings — backwards-compatibility re-export.
 
-# Simulation settings
-TICK_RATE = 20  # ticks per second
-TICK_DURATION = 1.0 / TICK_RATE
+Import from backend.engine.config or backend.game.config directly where
+possible. This module exists so that existing code using
+``from backend.config import X`` continues to work unchanged.
+"""
 
-# Performance targets
-MAX_ENTITIES = 1000
-
-# Network settings
-HOST = "0.0.0.0"
-PORT = 5000
-DEBUG = True
+from backend.engine.config import (  # noqa: F401,F403
+    TICK_RATE,
+    TICK_DURATION,
+    MAX_ENTITIES,
+    HOST,
+    PORT,
+    DEBUG,
+    LOG_DIR,
+)
+from backend.game.config import (  # noqa: F401,F403
+    DEF_AREA_WIDTH,
+    DEF_AREA_HEIGHT,
+    SPATIAL_GRID_SIZE,
+)

@@ -2,8 +2,8 @@
 
 import time
 from typing import List, Dict, Any
-from backend.config import TICK_RATE, TICK_DURATION
-from backend.simulation.area import Area
+from backend.engine.config import TICK_RATE, TICK_DURATION
+from backend.game.area import Area
 from backend.independant_logger import Logger
 import threading
 

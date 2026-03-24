@@ -1,10 +1,10 @@
 """World state manager."""
 
 from typing import Dict, List, Any, Optional
-from backend.config import DEF_AREA_WIDTH, DEF_AREA_HEIGHT
-from backend.simulation.entity import Entity
-from backend.simulation.player import PlayerCharacter
-from backend.simulation.spatial import SpatialGrid
+from backend.game.config import DEF_AREA_WIDTH, DEF_AREA_HEIGHT
+from backend.engine.ecs.entity import Entity
+from backend.game.entities.player import PlayerCharacter
+from backend.engine.spatial import SpatialGrid
 from pathlib import Path
 import json
 

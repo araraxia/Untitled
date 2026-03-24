@@ -7,11 +7,11 @@ if not str(ROOT_DIR) in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from backend.game_loop import GameLoop
-from backend.simulation.player import PlayerCharacter
-from backend.simulation.world import World
-from backend.simulation.area import Area
-from backend.simulation.entity import Entity
-from backend.simulation.races import get_all_races, get_race_by_id
+from backend.game.entities.player import PlayerCharacter
+from backend.game.world import World
+from backend.game.area import Area
+from backend.engine.ecs.entity import Entity
+from backend.game.entities.races import get_all_races, get_race_by_id
 
 import uuid
 from dataclasses import asdict

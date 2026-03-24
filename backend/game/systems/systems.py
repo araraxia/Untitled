@@ -1,7 +1,7 @@
 """ECS-style systems for entity processing."""
 
 from typing import List
-from backend.simulation.entity import Entity
+from backend.engine.ecs.entity import Entity
 
 
 class MovementSystem:

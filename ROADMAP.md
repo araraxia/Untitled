@@ -26,7 +26,7 @@ The engine is not a separate product — it is the lower half of this same repos
 | Phase | Name | Status |
 | ----- | ---- | ------ |
 | 0 | WebGPU Foundation | ✅ Complete |
-| 1 | Engine–Game Separation | 🔲 Not started |
+| 1 | Engine–Game Separation | ✅ Complete |
 | 2 | Graphics Pipeline Completion | 🔲 Not started |
 | 3 | ECS Overhaul | 🔲 Not started |
 | 4 | Simulation Systems | 🔲 Not started |

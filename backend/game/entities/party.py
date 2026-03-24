@@ -1,7 +1,7 @@
 """Party management and AI."""
 
 from typing import Dict, Any, List, Optional
-from backend.simulation.entity import Entity
+from backend.engine.ecs.entity import Entity
 
 
 class PartyMember(Entity):

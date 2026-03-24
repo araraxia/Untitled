@@ -3,11 +3,11 @@
 from flask import Flask, render_template, send_from_directory
 from flask_socketio import SocketIO, emit
 import os
-from backend.config import HOST, PORT, DEBUG
+from backend.engine.config import HOST, PORT, DEBUG
 from backend.independant_logger import Logger
 from pathlib import Path
 
-from backend.simulation import player
+import threading
 
 # Initialize logger
 logger = Logger(
@@ -284,6 +284,7 @@ def handle_load_game(data):
 
     try:
         # Load existing player - PlayerCharacter handles entity loading internally
+        from backend.game.entities.player import PlayerCharacter
         player = PlayerCharacter.load_by_id(player_id, load_entities=True)
         logger.info(
             f"Loaded existing player {player_id} with {len(player.get_controlled_entities())} entities"
