@@ -92,7 +92,7 @@ def start_server():
 def main():
     """Main application entry point."""
     logger.info("=" * 50)
-    logger.info("Real-Time Simulation Game")
+    logger.info("ASCII Art Logo Placeholder")
     logger.info("=" * 50)
 
     # Start the Flask server in a separate thread

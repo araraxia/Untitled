@@ -37,7 +37,7 @@ from backend.game_loop import GameLoop
 
 game_loop = GameLoop(socketio)
 
-
+# Entry point for the application from main.py
 @app.route("/")
 def index():
     """Serve the main game page."""

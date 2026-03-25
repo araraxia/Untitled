@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Real-Time Simulation Game</title>
+    <title>Untitled Game</title>
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -15,26 +15,11 @@
                 <p>Loading Game...</p>
                 <p style="font-size: 14px; margin-top: 10px;">Connecting to server...</p>
             </div>
-            <div id="player-stats">
-                <h3>Player Stats</h3>
-                <div id="hp-bar">HP: <span id="hp-value">100/100</span></div>
-                <div id="ap-bar">AP: <span id="ap-value">100</span></div>
-            </div>
-            <div id="party-panel">
-                <h3>Party</h3>
-                <div id="party-members"></div>
-            </div>
-            <div id="controls-help">
-                <h3>Controls</h3>
-                <p>WASD/Arrow Keys: Move Player</p>
-                <p>Mouse: Select Party Members</p>
-                <p>Right Click: Party Commands</p>
-            </div>
         </div>
     </div>
 
-    <!-- Socket.IO client -->
-    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <!-- Socket.IO client (vendored 4.5.4, MIT license) -->
+    <script src="js/socket.io.min.js"></script>
     
     <!-- Sprite and animation system -->
     <script src="js/sprites/spritesheet.js"></script>
