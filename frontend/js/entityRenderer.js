@@ -3,272 +3,318 @@
  * Manages sprite sheets, animations, and visual effects for all entity types
  */
 class EntityRenderer {
-    /**
-     * Creates a new EntityRenderer instance
-     * @param {CanvasRenderingContext2D} ctx - The canvas 2D rendering context
-     * @param {string} entityId - The entity ID to render
-     * @param {Array<string>} animationDataPaths - List of animation data file paths
-     * @param {boolean} [useGPU=false] - When true, use the WebGPU render path
-     */
-    constructor(ctx, entityId, animationDataPaths = [], useGPU = false) {
-        console.log('[EntityRenderer] Constructor called - entityId:', entityId, 'paths:', animationDataPaths, 'useGPU:', useGPU);
-        this.ctx = ctx;
-        this.entityId = entityId;
-        this.animationDataPaths = animationDataPaths;
-        this.useGPU = useGPU;
-        this.spriteSheets = {};
-        this.animationControllers = {};
-        this.animationDataList = [];  // Store all animation data sorted by Z-index
-        this.loadingComplete = false;
+  /**
+   * Creates a new EntityRenderer instance
+   * @param {CanvasRenderingContext2D} ctx - The canvas 2D rendering context
+   * @param {string} entityId - The entity ID to render
+   * @param {Array<string>} animationDataPaths - List of animation data file paths
+   * @param {boolean} [useGPU=false] - When true, use the WebGPU render path
+   */
+  constructor(ctx, entityId, animationDataPaths = [], useGPU = false) {
+    console.log(
+      "[EntityRenderer] Constructor called - entityId:",
+      entityId,
+      "paths:",
+      animationDataPaths,
+      "useGPU:",
+      useGPU,
+    );
+    this.ctx = ctx;
+    this.entityId = entityId;
+    this.animationDataPaths = animationDataPaths;
+    this.useGPU = useGPU;
+    this.spriteSheets = {};
+    this.animationControllers = {};
+    this.animationDataList = []; // Store all animation data sorted by Z-index
+    this.loadingComplete = false;
 
-        if (useGPU) {
-            this._canvas = document.getElementById('game-canvas');
-            this._shaderCache = new ShaderCache(
+    if (useGPU) {
+      this._canvas = document.getElementById("game-canvas");
+      this._shaderCache = new ShaderCache(
+        gpuDevice,
+        navigator.gpu.getPreferredCanvasFormat(),
+      );
+      this._quadVertexBuffer = createQuadVertexBuffer(gpuDevice);
+      this._uniformBuffers = {}; // spriteKey → GPUBuffer
+      this._bindGroups = {}; // spriteKey → GPUBindGroup
+    }
+  }
+
+  /**
+   * Load all animation data files and sort by Z-index
+   * @returns {Promise<void>}
+   */
+  async loadAllAnimationData() {
+    console.log(
+      "[EntityRenderer] loadAllAnimationData called - paths:",
+      this.animationDataPaths,
+    );
+    try {
+      // Load all animation data files
+      const loadPromises = this.animationDataPaths.map(async (path) => {
+        const response = await fetch(path);
+        const data = await response.json();
+        return { path, data };
+      });
+
+      const loadedData = await Promise.all(loadPromises);
+
+      // Sort by relative_z_index (if present)
+      this.animationDataList = loadedData
+        .map(({ path, data }) => ({
+          path,
+          data,
+          zIndex: data.relative_z_index || 0,
+        }))
+        .sort((a, b) => a.zIndex - b.zIndex);
+
+      console.log(
+        "Animation data loaded and sorted by Z-index:",
+        this.animationDataList.map((d) => ({ path: d.path, z: d.zIndex })),
+      );
+
+      // Preload sprite sheets for all animation data
+      await this.preloadAllSpriteAnimations();
+      this.loadingComplete = true;
+    } catch (error) {
+      console.error("Failed to load animation data:", error);
+    }
+  }
+
+  /**
+   * Preload all sprite animations from all animation data sources
+   * @returns {Promise<void>}
+   */
+  async preloadAllSpriteAnimations() {
+    console.log("[EntityRenderer] preloadAllSpriteAnimations called");
+    const promises = [];
+
+    // Iterate through each animation data file
+    for (const { data: animationData } of this.animationDataList) {
+      // Iterate over each animation type and load its sprite sheet
+      for (const [animName, animConfig] of Object.entries(animationData)) {
+        if (animName === "base_model_path" || animName === "relative_z_index")
+          continue;
+
+        const spritePath =
+          animationData.base_model_path +
+          "/" +
+          animConfig.default_sprite_version +
+          "/" +
+          animConfig.default_sprite_sheet;
+        const spriteKey = `${animName}`;
+
+        // Create sprite sheet if not already loaded
+        if (!this.spriteSheets[spriteKey]) {
+          const gpuSheet = new GPUSpriteSheet(
+            gpuDevice,
+            "assets/" + spritePath,
+            animConfig.frame_width,
+            animConfig.frame_height,
+            8, // columns - standard 8 columns for character sprites
+            8, // rows - standard 8 rows for character sprites
+          );
+          promises.push(
+            gpuSheet.load().then(() => {
+              this.spriteSheets[spriteKey] = gpuSheet;
+              const pipeline = this._shaderCache.getSpritePipeline();
+              // Uniform buffer: mvp(64) + uv_rect(16) + tint(16) = 96 bytes
+              const uBuf = createUniformBuffer(gpuDevice, 96);
+              this._uniformBuffers[spriteKey] = uBuf;
+              this._bindGroups[spriteKey] = gpuSheet.createBindGroup(
                 gpuDevice,
-                navigator.gpu.getPreferredCanvasFormat(),
-            );
-            this._quadVertexBuffer = createQuadVertexBuffer(gpuDevice);
-            this._uniformBuffers = {};  // spriteKey → GPUBuffer
-            this._bindGroups = {};      // spriteKey → GPUBindGroup
+                pipeline,
+                uBuf,
+              );
+            }),
+          );
         }
+      }
     }
 
-    /**
-     * Load all animation data files and sort by Z-index
-     * @returns {Promise<void>}
-     */
-    async loadAllAnimationData() {
-        console.log('[EntityRenderer] loadAllAnimationData called - paths:', this.animationDataPaths);
-        try {
-            // Load all animation data files
-            const loadPromises = this.animationDataPaths.map(async (path) => {
-                const response = await fetch(path);
-                const data = await response.json();
-                return { path, data };
-            });
-            
-            const loadedData = await Promise.all(loadPromises);
-            
-            // Sort by relative_z_index (if present)
-            this.animationDataList = loadedData
-                .map(({ path, data }) => ({
-                    path,
-                    data,
-                    zIndex: data.relative_z_index || 0
-                }))
-                .sort((a, b) => a.zIndex - b.zIndex);
-            
-            console.log('Animation data loaded and sorted by Z-index:', this.animationDataList.map(d => ({ path: d.path, z: d.zIndex })));
-            
-            // Preload sprite sheets for all animation data
-            await this.preloadAllSpriteAnimations();
-            this.loadingComplete = true;
-        } catch (error) {
-            console.error('Failed to load animation data:', error);
+    await Promise.all(promises);
+    console.log("All sprite sheets loaded");
+  }
+
+  /**
+   * Get or create an animation controller for an entity
+   * @param {string} entityId - Unique identifier for the entity
+   * @param {string} animationType - Type of animation (e.g., 'stand', 'walk')
+   * @returns {AnimationController}
+   */
+  getAnimationController(entityId, animationType = "stand") {
+    console.log(
+      "[EntityRenderer] getAnimationController called - entityId:",
+      entityId,
+      "animationType:",
+      animationType,
+    );
+    const controllerId = `${entityId}_${animationType}`;
+
+    if (!this.animationControllers[controllerId]) {
+      // Find animation config from loaded animation data
+      let animConfig = null;
+      for (const { data } of this.animationDataList) {
+        if (data[animationType]) {
+          animConfig = data[animationType];
+          break;
         }
+      }
+
+      if (!animConfig) {
+        console.warn(`Animation type '${animationType}' not found`);
+        return null;
+      }
+
+      const spriteSheet = this.spriteSheets[animationType];
+      if (!spriteSheet) {
+        console.warn(`Sprite sheet for '${animationType}' not loaded`);
+        return null;
+      }
+
+      // Create animations for all directions
+      const animations = {};
+      const directions = ["down", "up", "left", "right"];
+
+      directions.forEach((dir) => {
+        const dirConfig = animConfig[dir];
+        if (dirConfig) {
+          // Handle frame duration (fixed or variable)
+          let frameDuration;
+          if (
+            animConfig.duration_type === "variable" &&
+            Array.isArray(animConfig.frame_duration)
+          ) {
+            // For variable duration, use average for now (can be enhanced later)
+            frameDuration =
+              animConfig.frame_duration.reduce((a, b) => a + b, 0) /
+              animConfig.frame_duration.length;
+          } else {
+            frameDuration = animConfig.frame_duration;
+          }
+
+          const animName = `${animationType}_${dir}`;
+          animations[animName] = new Animation(
+            animName,
+            dirConfig.start_frame_index,
+            animConfig.frame_count,
+            frameDuration,
+            true, // loop
+          );
+        }
+      });
+
+      this.animationControllers[controllerId] = new AnimationController(
+        spriteSheet,
+        animations,
+      );
     }
 
-    /**
-     * Preload all sprite animations from all animation data sources
-     * @returns {Promise<void>}
-     */
-    async preloadAllSpriteAnimations() {
-        console.log('[EntityRenderer] preloadAllSpriteAnimations called');
-        const promises = [];
-        
-        // Iterate through each animation data file
-        for (const { data: animationData } of this.animationDataList) {
-            // Iterate over each animation type and load its sprite sheet
-            for (const [animName, animConfig] of Object.entries(animationData)) {
-                if (animName === 'base_model_path' || animName === 'relative_z_index') continue;
-                
-                const spritePath = animationData.base_model_path + "/" + animConfig.default_sprite_version + '/' + animConfig.default_sprite_sheet;
-                const spriteKey = `${animName}`;
-                
-                // Create sprite sheet if not already loaded
-                if (!this.spriteSheets[spriteKey]) {
-                    const gpuSheet = new GPUSpriteSheet(
-                        gpuDevice,
-                        'assets/' + spritePath,
-                        animConfig.frame_width,
-                        animConfig.frame_height,
-                        8, // columns - standard 8 columns for character sprites
-                        8, // rows - standard 8 rows for character sprites
-                    );
-                    promises.push(
-                        gpuSheet.load().then(() => {
-                            this.spriteSheets[spriteKey] = gpuSheet;
-                            const pipeline = this._shaderCache.getSpritePipeline();
-                            // Uniform buffer: mvp(64) + uv_rect(16) + tint(16) = 96 bytes
-                            const uBuf = createUniformBuffer(gpuDevice, 96);
-                            this._uniformBuffers[spriteKey] = uBuf;
-                            this._bindGroups[spriteKey] = gpuSheet.createBindGroup(
-                                gpuDevice, pipeline, uBuf,
-                            );
-                        }),
-                    );
-                }
-            }
-        }
-        
-        await Promise.all(promises);
-        console.log('All sprite sheets loaded');
+    return this.animationControllers[controllerId];
+  }
+
+  /**
+   * Update entity animation state based on entity data
+   * @param {string} entityId - Unique identifier for the entity
+   * @param {Object} entity - Entity data object
+   * @param {number} deltaTime - Time elapsed since last update (milliseconds)
+   */
+  updateEntityAnimation(entityId, entity, deltaTime) {
+    console.log(
+      "[EntityRenderer] updateEntityAnimation called - entityId:",
+      entityId,
+      "state:",
+      entity.state,
+      "deltaTime:",
+      deltaTime,
+    );
+    // Determine animation type based on entity state
+    const animationType = entity.state === "moving" ? "walk" : "stand";
+    const direction = entity.facing || "down";
+
+    // Get or create animation controller
+    const controller = this.getAnimationController(entityId, animationType);
+    if (!controller) return;
+
+    // Play the appropriate direction animation (use full animation name)
+    const animationName = `${animationType}_${direction}`;
+    controller.play(animationName);
+
+    // Update animation
+    controller.update(deltaTime);
+
+    // Store controller reference for drawing
+    entity._animController = controller;
+    entity._animType = animationType;
+  }
+
+  /**
+   * Draw a single entity with its current animation.
+   *
+   * In the WebGPU path, passEncoder must be the active GPURenderPassEncoder
+   * owned by renderer.js. Draw commands are recorded onto it; the caller is
+   * responsible for beginning and ending the render pass.
+   *
+   * @param {Object} entity - Entity data object
+   * @param {Object} camera - Camera position {x, y}
+   * @param {GPURenderPassEncoder|null} [passEncoder=null] - Active render pass
+   *   encoder; only used when useGPU is true.
+   */
+  drawEntity(entity, camera, passEncoder = null) {
+    console.log(
+      "[EntityRenderer] drawEntity called - entityId:",
+      entity.id,
+      "loadingComplete:",
+      this.loadingComplete,
+    );
+    if (!this.loadingComplete) {
+      if (!this.useGPU) this.drawEntityFallback(entity, camera);
+      return;
     }
 
-    /**
-     * Get or create an animation controller for an entity
-     * @param {string} entityId - Unique identifier for the entity
-     * @param {string} animationType - Type of animation (e.g., 'stand', 'walk')
-     * @returns {AnimationController}
-     */
-    getAnimationController(entityId, animationType = 'stand') {
-        console.log('[EntityRenderer] getAnimationController called - entityId:', entityId, 'animationType:', animationType);
-        const controllerId = `${entityId}_${animationType}`;
-        
-        if (!this.animationControllers[controllerId]) {
-            // Find animation config from loaded animation data
-            let animConfig = null;
-            for (const { data } of this.animationDataList) {
-                if (data[animationType]) {
-                    animConfig = data[animationType];
-                    break;
-                }
-            }
-            
-            if (!animConfig) {
-                console.warn(`Animation type '${animationType}' not found`);
-                return null;
-            }
-            
-            const spriteSheet = this.spriteSheets[animationType];
-            if (!spriteSheet) {
-                console.warn(`Sprite sheet for '${animationType}' not loaded`);
-                return null;
-            }
-            
-            // Create animations for all directions
-            const animations = {};
-            const directions = ['down', 'up', 'left', 'right'];
-            
-            directions.forEach(dir => {
-                const dirConfig = animConfig[dir];
-                if (dirConfig) {
-                    // Handle frame duration (fixed or variable)
-                    let frameDuration;
-                    if (animConfig.duration_type === 'variable' && Array.isArray(animConfig.frame_duration)) {
-                        // For variable duration, use average for now (can be enhanced later)
-                        frameDuration = animConfig.frame_duration.reduce((a, b) => a + b, 0) / animConfig.frame_duration.length;
-                    } else {
-                        frameDuration = animConfig.frame_duration;
-                    }
-                    
-                    const animName = `${animationType}_${dir}`;
-                    animations[animName] = new Animation(
-                        animName,
-                        dirConfig.start_frame_index,
-                        animConfig.frame_count,
-                        frameDuration,
-                        true // loop
-                    );
-                }
-            });
-            
-            this.animationControllers[controllerId] = new AnimationController(spriteSheet, animations);
-        }
-        
-        return this.animationControllers[controllerId];
+    // Use interpolated position for smooth movement
+    const x = (entity.displayX || entity.x) - camera.x;
+    const y = (entity.displayY || entity.y) - camera.y;
+
+    if (!entity._animController) {
+      if (!this.useGPU) this.drawEntityFallback(entity, camera);
+      return;
     }
 
-    /**
-     * Update entity animation state based on entity data
-     * @param {string} entityId - Unique identifier for the entity
-     * @param {Object} entity - Entity data object
-     * @param {number} deltaTime - Time elapsed since last update (milliseconds)
-     */
-    updateEntityAnimation(entityId, entity, deltaTime) {
-        console.log('[EntityRenderer] updateEntityAnimation called - entityId:', entityId, 'state:', entity.state, 'deltaTime:', deltaTime);
-        // Determine animation type based on entity state
-        const animationType = entity.state === 'moving' ? 'walk' : 'stand';
-        const direction = entity.facing || 'down';
-        
-        // Get or create animation controller
-        const controller = this.getAnimationController(entityId, animationType);
-        if (!controller) return;
-        
-        // Play the appropriate direction animation (use full animation name)
-        const animationName = `${animationType}_${direction}`;
-        controller.play(animationName);
-        
-        // Update animation
-        controller.update(deltaTime);
-        
-        // Store controller reference for drawing
-        entity._animController = controller;
-        entity._animType = animationType;
+    // Find animation config from loaded data
+    let animConfig = null;
+    for (const { data } of this.animationDataList) {
+      if (data[entity._animType]) {
+        animConfig = data[entity._animType];
+        break;
+      }
     }
 
-    /**
-     * Draw a single entity with its current animation.
-     *
-     * In the WebGPU path, passEncoder must be the active GPURenderPassEncoder
-     * owned by renderer.js. Draw commands are recorded onto it; the caller is
-     * responsible for beginning and ending the render pass.
-     *
-     * @param {Object} entity - Entity data object
-     * @param {Object} camera - Camera position {x, y}
-     * @param {GPURenderPassEncoder|null} [passEncoder=null] - Active render pass
-     *   encoder; only used when useGPU is true.
-     */
-    drawEntity(entity, camera, passEncoder = null) {
-        console.log('[EntityRenderer] drawEntity called - entityId:', entity.id, 'loadingComplete:', this.loadingComplete);
-        if (!this.loadingComplete) {
-            if (!this.useGPU) this.drawEntityFallback(entity, camera);
-            return;
-        }
+    const direction = entity.facing || "down";
+    const dirConfig = animConfig?.[direction];
+    const flipX = dirConfig?.flip_x || false;
 
-        // Use interpolated position for smooth movement
-        const x = (entity.displayX || entity.x) - camera.x;
-        const y = (entity.displayY || entity.y) - camera.y;
+    if (this.useGPU) {
+      // --- WebGPU path ---
+      const spriteKey = entity._animType;
+      const gpuSheet = this.spriteSheets[spriteKey];
+      if (!gpuSheet || !gpuSheet.loaded) return;
 
-        if (!entity._animController) {
-            if (!this.useGPU) this.drawEntityFallback(entity, camera);
-            return;
-        }
+      const frameIndex = entity._animController.currentFrame;
+      const uvRect = gpuSheet.getUVRect(frameIndex);
 
-        // Find animation config from loaded data
-        let animConfig = null;
-        for (const { data } of this.animationDataList) {
-            if (data[entity._animType]) {
-                animConfig = data[entity._animType];
-                break;
-            }
-        }
+      // 2D orthographic MVP — maps the unit quad to screen space.
+      const cW = this._canvas.width;
+      const cH = this._canvas.height;
+      const scaleX = (flipX ? -1 : 1) * (animConfig.frame_width / cW);
+      const scaleY = animConfig.frame_height / cH;
+      const tx = (2 * x) / cW - 1;
+      const ty = 1 - (2 * y) / cH;
 
-        const direction = entity.facing || 'down';
-        const dirConfig = animConfig?.[direction];
-        const flipX = dirConfig?.flip_x || false;
-
-        if (this.useGPU) {
-            // --- WebGPU path ---
-            const spriteKey = entity._animType;
-            const gpuSheet = this.spriteSheets[spriteKey];
-            if (!gpuSheet || !gpuSheet.loaded) return;
-
-            const frameIndex = entity._animController.currentFrame;
-            const uvRect = gpuSheet.getUVRect(frameIndex);
-
-            // 2D orthographic MVP — maps the unit quad to screen space.
-            const cW = this._canvas.width;
-            const cH = this._canvas.height;
-            const scaleX = (flipX ? -1 : 1) * (animConfig.frame_width / cW);
-            const scaleY = animConfig.frame_height / cH;
-            const tx = (2 * x / cW) - 1;
-            const ty = 1 - (2 * y / cH);
-
-            // Column-major mat4x4 (WGSL layout):
-            // col0=[scaleX,0,0,0] col1=[0,scaleY,0,0] col2=[0,0,1,0] col3=[tx,ty,0,1]
-            // prettier-ignore
-            const uniforms = new Float32Array([
+      // Column-major mat4x4 (WGSL layout):
+      // col0=[scaleX,0,0,0] col1=[0,scaleY,0,0] col2=[0,0,1,0] col3=[tx,ty,0,1]
+      // prettier-ignore
+      const uniforms = new Float32Array([
                 scaleX,  0,  0,  0,   // col 0
                 0,  scaleY,  0,  0,   // col 1
                 0,       0,  1,  0,   // col 2
@@ -277,76 +323,111 @@ class EntityRenderer {
                 1, 1, 1, 1,           // tint
             ]);
 
-            writeUniformBuffer(gpuDevice, this._uniformBuffers[spriteKey], uniforms);
+      writeUniformBuffer(gpuDevice, this._uniformBuffers[spriteKey], uniforms);
 
-            const pipeline = this._shaderCache.getSpritePipeline();
-            passEncoder.setPipeline(pipeline);
-            passEncoder.setBindGroup(0, this._bindGroups[spriteKey]);
-            passEncoder.setVertexBuffer(0, this._quadVertexBuffer);
-            passEncoder.draw(6);
-        }
+      const pipeline = this._shaderCache.getSpritePipeline();
+      passEncoder.setPipeline(pipeline);
+      passEncoder.setBindGroup(0, this._bindGroups[spriteKey]);
+      passEncoder.setVertexBuffer(0, this._quadVertexBuffer);
+      passEncoder.draw(6);
     }
+  }
 
-    /**
-     * Draw entity as a simple circle (fallback when sprites unavailable)
-     * @param {Object} entity - Entity data object
-     * @param {Object} camera - Camera position {x, y}
-     */
-    drawEntityFallback(entity, camera) {
-        console.log('[EntityRenderer] drawEntityFallback called - entityId:', entity.id);
-        const x = (entity.displayX || entity.x) - camera.x;
-        const y = (entity.displayY || entity.y) - camera.y;
-        
-        this.ctx.beginPath();
-        this.ctx.arc(x, y, 16, 0, Math.PI * 2);
-        this.ctx.fillStyle = entity.id?.startsWith('player_') ? '#4CAF50' : '#2196F3';
-        this.ctx.fill();
-        
-        // Draw state indicator
-        if (entity.state === 'moving') {
-            this.ctx.strokeStyle = '#FFC107';
-            this.ctx.lineWidth = 2;
-            this.ctx.stroke();
-        }
+  /**
+   * Draw entity as a simple circle (fallback when sprites unavailable)
+   * @param {Object} entity - Entity data object
+   * @param {Object} camera - Camera position {x, y}
+   */
+  drawEntityFallback(entity, camera) {
+    console.log(
+      "[EntityRenderer] drawEntityFallback called - entityId:",
+      entity.id,
+    );
+    const x = (entity.displayX || entity.x) - camera.x;
+    const y = (entity.displayY || entity.y) - camera.y;
+
+    this.ctx.beginPath();
+    this.ctx.arc(x, y, 16, 0, Math.PI * 2);
+    this.ctx.fillStyle = entity.id?.startsWith("player_")
+      ? "#4CAF50"
+      : "#2196F3";
+    this.ctx.fill();
+
+    // Draw state indicator
+    if (entity.state === "moving") {
+      this.ctx.strokeStyle = "#FFC107";
+      this.ctx.lineWidth = 2;
+      this.ctx.stroke();
     }
+  }
 
-    /**
-     * Draw health bar above entity
-     * @param {Object} entity - Entity data object
-     * @param {number} x - Screen X position
-     * @param {number} y - Screen Y position
-     */
-    drawHealthBar(entity, x, y) {
-        console.log('[EntityRenderer] drawHealthBar called - entityId:', entity.id, 'hp:', entity.hp, 'max_hp:', entity.max_hp);
-        if (entity.hp === undefined) return;
-        
-        const barWidth = 32;
-        const barHeight = 4;
-        const barX = x - barWidth / 2;
-        const barY = y - 32; // Position above entity
-        
-        // Background
-        this.ctx.fillStyle = '#333';
-        this.ctx.fillRect(barX, barY, barWidth, barHeight);
-        
-        // Health
-        const healthPercent = entity.hp / entity.max_hp;
-        this.ctx.fillStyle = healthPercent > 0.5 ? '#4CAF50' : '#F44336';
-        this.ctx.fillRect(barX, barY, barWidth * healthPercent, barHeight);
+  /**
+   * Draw health bar above entity
+   * @param {Object} entity - Entity data object
+   * @param {number} x - Screen X position
+   * @param {number} y - Screen Y position
+   */
+  drawHealthBar(entity, x, y) {
+    console.log(
+      "[EntityRenderer] drawHealthBar called - entityId:",
+      entity.id,
+      "hp:",
+      entity.hp,
+      "max_hp:",
+      entity.max_hp,
+    );
+    if (entity.hp === undefined) return;
+
+    const barWidth = 32;
+    const barHeight = 4;
+    const barX = x - barWidth / 2;
+    const barY = y - 32; // Position above entity
+
+    // Background
+    this.ctx.fillStyle = "#333";
+    this.ctx.fillRect(barX, barY, barWidth, barHeight);
+
+    // Health
+    const healthPercent = entity.hp / entity.max_hp;
+    this.ctx.fillStyle = healthPercent > 0.5 ? "#4CAF50" : "#F44336";
+    this.ctx.fillRect(barX, barY, barWidth * healthPercent, barHeight);
+  }
+
+  /**
+   * Draw entity ID label
+   * @param {Object} entity - Entity data object
+   * @param {number} x - Screen X position
+   * @param {number} y - Screen Y position
+   */
+  drawEntityLabel(entity, x, y) {
+    console.log(
+      "[EntityRenderer] drawEntityLabel called - entityId:",
+      entity.id,
+    );
+    this.ctx.fillStyle = "#fff";
+    this.ctx.font = "10px Arial";
+    this.ctx.textAlign = "center";
+    this.ctx.fillText(entity.id, x, y + 35);
+  }
+
+  /**
+   * Release all GPU resources held by this renderer.
+   * Must be called when the entity is no longer needed.
+   */
+  destroy() {
+    if (this.useGPU) {
+      for (const buf of Object.values(this._uniformBuffers)) {
+        buf.destroy();
+      }
+      this._uniformBuffers = {};
+      this._bindGroups = {};
+      for (const sheet of Object.values(this.spriteSheets)) {
+        sheet.destroy?.();
+      }
+      this.spriteSheets = {};
     }
-
-    /**
-     * Draw entity ID label
-     * @param {Object} entity - Entity data object
-     * @param {number} x - Screen X position
-     * @param {number} y - Screen Y position
-     */
-    drawEntityLabel(entity, x, y) {
-        console.log('[EntityRenderer] drawEntityLabel called - entityId:', entity.id);
-        this.ctx.fillStyle = '#fff';
-        this.ctx.font = '10px Arial';
-        this.ctx.textAlign = 'center';
-        this.ctx.fillText(entity.id, x, y + 35);
-    }
-
+    this.animationControllers = {};
+    this.animationDataList = [];
+    this.loadingComplete = false;
+  }
 }

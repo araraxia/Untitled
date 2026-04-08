@@ -21,9 +21,12 @@ class GPUSpriteSheet {
    */
   constructor(device, imagePath, frameWidth, frameHeight, columns, rows) {
     console.log(
-      '[GPUSpriteSheet] Constructor called - path:', imagePath,
-      'frameSize:', frameWidth + 'x' + frameHeight,
-      'grid:', columns + 'x' + rows,
+      "[GPUSpriteSheet] Constructor called - path:",
+      imagePath,
+      "frameSize:",
+      frameWidth + "x" + frameHeight,
+      "grid:",
+      columns + "x" + rows,
     );
     this._device = device;
     this._imagePath = imagePath;
@@ -48,7 +51,7 @@ class GPUSpriteSheet {
    * @returns {Promise<void>}
    */
   async load() {
-    console.log('[GPUSpriteSheet] load() - fetching:', this._imagePath);
+    console.log("[GPUSpriteSheet] load() - fetching:", this._imagePath);
 
     const response = await fetch(this._imagePath);
     const blob = await response.blob();
@@ -56,7 +59,7 @@ class GPUSpriteSheet {
 
     this._texture = this._device.createTexture({
       size: [bitmap.width, bitmap.height, 1],
-      format: 'rgba8unorm',
+      format: "rgba8unorm",
       usage:
         GPUTextureUsage.TEXTURE_BINDING |
         GPUTextureUsage.COPY_DST |
@@ -70,12 +73,12 @@ class GPUSpriteSheet {
     );
 
     this._sampler = this._device.createSampler({
-      minFilter: 'linear',
-      magFilter: 'nearest',
+      minFilter: "linear",
+      magFilter: "nearest",
     });
 
     this._loaded = true;
-    console.log('[GPUSpriteSheet] load() complete -', this._imagePath);
+    console.log("[GPUSpriteSheet] load() complete -", this._imagePath);
   }
 
   /**
@@ -118,5 +121,18 @@ class GPUSpriteSheet {
         { binding: 2, resource: this._sampler },
       ],
     });
+  }
+
+  /**
+   * Release the GPU texture held by this sprite sheet.
+   * Call when the sheet is no longer needed to free GPU memory.
+   */
+  destroy() {
+    if (this._texture) {
+      this._texture.destroy();
+      this._texture = null;
+    }
+    this._sampler = null;
+    this._loaded = false;
   }
 }
