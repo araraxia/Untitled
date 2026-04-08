@@ -38,8 +38,21 @@ Entry points for the project include:
 ## Assets
 All assets should be stored in the `frontend/assets/` directory. This includes images, icons, audio files, and any other media used in the project. Assets should be organized into subdirectories based on their type (e.g., `assets/images/`, `assets/icons/`, `assets/audio/`). When adding new assets, ensure that they are optimized for performance and do not unnecessarily increase the size of the project.
 
+---
+
 ## Pip Packages
 All Python dependencies should be listed in the `requirements.txt` file. When adding new dependencies, ensure that they are necessary for the project and do not introduce unnecessary bloat. Use specific version numbers to ensure compatibility and reproducibility of the development environment. When installing new packages, use pip and add them to the `requirements.txt` file using the following command:
 ```cmd
 pip install <package_name>==<version> -r requirements.txt
 ```
+
+---
+
+## Markdown Prompt Management
+
+### Completing Markdown Prompts
+- Add a checkmark or some form of completion indicator to headers when completing a task in a prompt file
+- If there is progress tracking in the markdown prompt, update the progress tracker as prompt segments or phases are completed
+
+### Updating Markdown Prompts
+- When changes are made that deviate from the original markdown prompt, update the prompt file to reflect the new changes

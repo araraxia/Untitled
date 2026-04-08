@@ -20,25 +20,25 @@
 
     <!-- Socket.IO client (vendored 4.5.4, MIT license) -->
     <script src="js/socket.io.min.js"></script>
-    
-    <!-- Sprite and animation system -->
-    <script src="js/sprites/spritesheet.js"></script>
-    <script src="js/sprites/animation.js"></script>
-    <script src="js/sprites/shaderCache.js"></script>
-    <script src="js/sprites/gpuBuffers.js"></script>
-    <script src="js/sprites/gpuSpriteSheet.js"></script>
-    <script src="js/entityRenderer.js"></script>
-    
-    <!-- Character creation system -->
-    <script src="js/characterCreation.js"></script>
-    
-    <!-- Game scripts -->
-    <script src="js/playerSelect.js"></script>
-    <script src="js/network.js"></script>
-    <script src="js/interpolation.js"></script>
-    <script src="js/renderer.js"></script>
-    <script src="js/input.js"></script>
-    <script src="js/ui.js"></script>
-    <script src="js/main.js"></script>
+
+    <!-- Engine: sprite and animation system -->
+    <script src="js/engine/sprites/spritesheet.js"></script>
+    <script src="js/engine/sprites/animation.js"></script>
+    <script src="js/engine/sprites/shaderCache.js"></script>
+    <script src="js/engine/sprites/gpuBuffers.js"></script>
+    <script src="js/engine/sprites/gpuSpriteSheet.js"></script>
+    <script src="js/engine/entityRenderer.js"></script>
+
+    <!-- Engine: core systems -->
+    <script src="js/engine/network.js"></script>
+    <script src="js/engine/interpolation.js"></script>
+    <script src="js/engine/renderer.js"></script>
+    <script src="js/engine/input.js"></script>
+
+    <!-- Game: content and UI -->
+    <script src="js/game/characterCreation.js"></script>
+    <script src="js/game/playerSelect.js"></script>
+    <script src="js/game/ui.js"></script>
+    <script src="js/game/main.js"></script>
 </body>
 </html>
