@@ -60,7 +60,7 @@ The engine is not a separate product — it is the lower half of this same repos
 
 **Goal:** Establish a clear directory boundary and API contract between engine-level infrastructure and game-specific content. No engine module should import content; no content module should reach into engine internals.
 
-### 1.1 — Directory Restructure
+### 1.1 — Directory Restructure ✅ ✅
 
 Reorganise source into two top-level namespaces:
 
@@ -79,7 +79,7 @@ Key moves:
 - `frontend/js/renderer.js`, `entityRenderer.js`, `interpolation.js` → `engine/`
 - `frontend/js/characterCreation.js`, `playerSelect.js` → `game/`
 
-### 1.2 — Configuration Injection
+### 1.2 — Configuration Injection ✅
 
 Replace hard-coded constants in `config.py` with an injectable config schema:
 
@@ -87,7 +87,7 @@ Replace hard-coded constants in `config.py` with an injectable config schema:
 - `GameConfig` dataclass: race definitions, base stats, starting conditions
 - Both loaded from JSON at startup; validated against a schema
 
-### 1.3 — Engine API Surface
+### 1.3 — Engine API Surface ✅
 
 Define the stable API that game code calls into:
 

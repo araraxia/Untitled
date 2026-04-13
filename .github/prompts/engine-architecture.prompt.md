@@ -252,10 +252,10 @@ Once the smoke test passes:
 
 ## Success Criteria
 
-- [ ] `python main.py` starts without errors
-- [ ] `backend/engine/` contains: `config.py`, `spatial.py`, `ecs/entity.py`
-- [ ] `backend/game/` contains: `config.py`, `area.py`, `world.py`, `entities/`, `systems/`
-- [ ] `backend/simulation/` contains only `__init__.py` (empty) and `backgrounds.py`, `new_game.py` (not yet migrated — defer to Phase 3 ECS overhaul)
-- [ ] `backend/config.py` re-exports both engine and game config symbols
-- [ ] All original `from backend.simulation.X import Y` statements in `game_loop.py` and `app.py` point to the new namespaces
-- [ ] No new features introduced; behaviour is identical to pre-refactor
+- [x] `python main.py` starts without errors
+- [x] `backend/engine/` contains: `config.py`, `spatial.py`, `ecs/entity.py`
+- [x] `backend/game/` contains: `config.py`, `area.py`, `world.py`, `entities/`, `systems/`
+- [x] `backend/simulation/` contains only `__init__.py` (empty) and `backgrounds.py`, `new_game.py` (not yet migrated — defer to Phase 3 ECS overhaul)
+- [x] `backend/config.py` re-exports both engine and game config symbols
+- [x] All original `from backend.simulation.X import Y` statements in `game_loop.py` and `app.py` point to the new namespaces
+- [x] No new features introduced; behaviour is identical to pre-refactor

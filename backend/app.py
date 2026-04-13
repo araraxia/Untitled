@@ -4,10 +4,16 @@ from flask import Flask, render_template, send_from_directory
 from flask_socketio import SocketIO, emit
 import os
 from backend.engine.config import HOST, PORT, DEBUG
+from backend.engine.config import load_engine_config
+from backend.game.config import load_game_config
 from backend.independant_logger import Logger
 from pathlib import Path
 
 import threading
+
+# Load configs at startup (falls back to defaults if JSON absent)
+engine_config = load_engine_config()
+game_config = load_game_config()
 
 # Initialize logger
 logger = Logger(
@@ -33,9 +39,10 @@ app.config["SECRET_KEY"] = "your-secret-key-here"
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 # Import game loop after socketio is created
-from backend.game_loop import GameLoop
+from backend.game.tick import GameTick
 
-game_loop = GameLoop(socketio)
+game_loop = GameTick(socketio)
+
 
 # Entry point for the application from main.py
 @app.route("/")
@@ -125,7 +132,7 @@ def handle_request_player_list():
 def handle_request_races():
     """Handle request for available races."""
     logger.info("Client requested races list")
-    from backend.simulation.new_game import NewGameManager
+    from backend.game.new_game import NewGameManager
 
     try:
         new_game_manager = NewGameManager(game_loop)
@@ -142,7 +149,7 @@ def handle_request_backgrounds(data):
     """Handle request for backgrounds for a specific race."""
     race_id = data.get("race_id", "human")
     logger.info(f"Client requested backgrounds for race: {race_id}")
-    from backend.simulation.new_game import NewGameManager
+    from backend.game.new_game import NewGameManager
 
     try:
         new_game_manager = NewGameManager(game_loop)
@@ -157,7 +164,7 @@ def handle_request_backgrounds(data):
 @socketio.on("new_player")
 def handle_new_game(data):
     """Handle creating a new player and initializing their character."""
-    from backend.simulation.new_game import NewGameManager
+    from backend.game.new_game import NewGameManager
 
     new_game_manager = NewGameManager(game_loop)
 
@@ -177,7 +184,7 @@ def handle_new_game(data):
 @socketio.on("new_character")
 def handle_new_character(data):
     """Handle creating a new character for an existing player."""
-    from backend.simulation.new_game import NewGameManager
+    from backend.game.new_game import NewGameManager
 
     try:
         # Get the player character that was initialized in new_player
@@ -285,6 +292,7 @@ def handle_load_game(data):
     try:
         # Load existing player - PlayerCharacter handles entity loading internally
         from backend.game.entities.player import PlayerCharacter
+
         player = PlayerCharacter.load_by_id(player_id, load_entities=True)
         logger.info(
             f"Loaded existing player {player_id} with {len(player.get_controlled_entities())} entities"

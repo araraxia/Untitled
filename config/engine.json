@@ -1,0 +1,11 @@
+{
+  "tick_rate": 20,
+  "max_entities": 1000,
+  "world_width": 1000,
+  "world_height": 1000,
+  "grid_cell_size": 32,
+  "host": "0.0.0.0",
+  "port": 5000,
+  "debug": true,
+  "log_dir": "logs"
+}

@@ -75,7 +75,8 @@ class Race:
 
     def get_backgrounds(self) -> Dict[str, object]:
         """Get available backgrounds for this race"""
-        from backend.simulation.backgrounds import get_classes_by_tag as get_bg_by_tag
+        from backend.game.backgrounds import get_classes_by_tag as get_bg_by_tag
+
         return get_bg_by_tag(self.id)
 
     def generate_attributes(self, max_attempts: int = 100) -> dict:

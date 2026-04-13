@@ -1,0 +1,20 @@
+{
+  "default_area_width": 1000,
+  "default_area_height": 1000,
+  "spatial_grid_size": 32,
+  "starting_world_id": "overworld_001",
+  "starting_area_id": "town_start",
+  "default_base_stats": {
+    "strength": 10,
+    "dexterity": 10,
+    "intelligence": 10,
+    "willpower": 10,
+    "charisma": 10,
+    "perception": 10,
+    "endurance": 10,
+    "luck": 10,
+    "speed": 10,
+    "soul_power": 10,
+    "combat_sense": 10
+  }
+}

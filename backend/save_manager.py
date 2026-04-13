@@ -1,13 +1,11 @@
-
 from pathlib import Path
 import sys
 from typing import Optional
-from backend import game_loop
 from backend.game.entities.player import PlayerCharacter
 from backend.engine.ecs.entity import Entity
 from backend.game.world import World
 from backend.game.area import Area
-from backend.game_loop import GameLoop
+from backend.game.tick import GameTick as GameLoop
 import threading
 
 FILE_PATH = Path(__file__).resolve()
@@ -15,18 +13,20 @@ PROJECT_ROOT = FILE_PATH.parent.parent
 DATA_PATH = PROJECT_ROOT / "frontend" / "assets" / "data"
 PLAYER_DIR = DATA_PATH / "player"
 
-class SaveManager():
+
+class SaveManager:
     """Class to handle loading and saving game data."""
+
     def __init__(self, socketio, player_id: Optional[str] = None):
         self.socketio = socketio
         self.game_loop = None
-        
+
         import uuid
+
         self.player_id = player_id
         if self.player_id is None:
             self.player_id = str(uuid.uuid4())
-        
-            
+
         self.player_data_dir: Path | None = None
         self.player = None
         self.player_controlled_entity_ids: list[str] = []
@@ -47,15 +47,15 @@ class SaveManager():
             if self.game_loop.running:
                 self.game_loop.stop()
 
-        # Get player object, load attributes from file. 
+        # Get player object, load attributes from file.
         self.player = PlayerCharacter.load_from_file(
             file_path=self.player_file, load_entities=False
         )
         self.player_controlled_entity_ids = self.player.controlled_entity_ids
-        
+
         self.world_id = self.player.world_id
         self.world = World.load_world(self.player_data_dir, self.world_id)
-        
+
         self.current_area_id = self.player.area_id
         self.current_area = Area.load_area(
             self.player_data_dir, area_id=self.current_area_id
@@ -81,10 +81,10 @@ class SaveManager():
         self.game_loop.pause()
 
         self.player.save_to_file()
-        
+
         # Save area state
         current_area = self.game_loop.current_area
-        
+
         # Save world and area
         self.world = self.game_loop.world
         self.current_area = self.world.get_area(self.player.area_id)
