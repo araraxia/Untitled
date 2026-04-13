@@ -9,6 +9,13 @@
  *   binding 0 — uniform buffer  (mvp / uv_rect / tint)
  *   binding 1 — texture_2d<f32> (albedo atlas)
  *   binding 2 — sampler
+ *
+ * Bind group layout produced by createMaterialBindGroup() matches the
+ * material pipelines (group 0):
+ *   binding 0 — uniform buffer  (MatUniforms — 128 B)
+ *   binding 1 — texture_2d<f32> (albedo atlas)
+ *   binding 2 — texture_2d<f32> (RGBA param map)
+ *   binding 3 — sampler
  */
 class GPUSpriteSheet {
   /**
@@ -18,8 +25,19 @@ class GPUSpriteSheet {
    * @param {number} frameHeight - Height of one frame in pixels.
    * @param {number} columns - Number of columns in the atlas grid.
    * @param {number} rows - Number of rows in the atlas grid.
+   * @param {string|null} [paramMapPath=null] - Optional path to an RGBA
+   *   parameter map image.  When provided, the image is uploaded as a
+   *   second GPUTexture available via the paramTexture getter.
    */
-  constructor(device, imagePath, frameWidth, frameHeight, columns, rows) {
+  constructor(
+    device,
+    imagePath,
+    frameWidth,
+    frameHeight,
+    columns,
+    rows,
+    paramMapPath = null,
+  ) {
     console.log(
       "[GPUSpriteSheet] Constructor called - path:",
       imagePath,
@@ -30,12 +48,14 @@ class GPUSpriteSheet {
     );
     this._device = device;
     this._imagePath = imagePath;
+    this._paramMapPath = paramMapPath;
     this._frameWidth = frameWidth;
     this._frameHeight = frameHeight;
     this._columns = columns;
     this._rows = rows;
 
     this._texture = null;
+    this._paramTexture = null;
     this._sampler = null;
     this._loaded = false;
   }
@@ -77,8 +97,46 @@ class GPUSpriteSheet {
       magFilter: "nearest",
     });
 
+    if (this._paramMapPath) {
+      const pmResponse = await fetch(this._paramMapPath);
+      if (!pmResponse.ok) {
+        console.warn(
+          "[GPUSpriteSheet] Failed to fetch param map:",
+          this._paramMapPath,
+        );
+      } else {
+        const pmBlob = await pmResponse.blob();
+        const pmBitmap = await createImageBitmap(pmBlob);
+        this._paramTexture = this._device.createTexture({
+          size: [pmBitmap.width, pmBitmap.height, 1],
+          format: "rgba8unorm",
+          usage:
+            GPUTextureUsage.TEXTURE_BINDING |
+            GPUTextureUsage.COPY_DST |
+            GPUTextureUsage.RENDER_ATTACHMENT,
+        });
+        this._device.queue.copyExternalImageToTexture(
+          { source: pmBitmap },
+          { texture: this._paramTexture },
+          [pmBitmap.width, pmBitmap.height],
+        );
+      }
+    }
+
     this._loaded = true;
     console.log("[GPUSpriteSheet] load() complete -", this._imagePath);
+  }
+
+  /**
+   * The uploaded RGBA param map texture, or null if no paramMapPath
+   * was provided (or the load has not yet completed).
+   * Pass this to createMaterialBindGroup as the paramTexture argument,
+   * or use the MaterialLoader fallback texture when null.
+   *
+   * @returns {GPUTexture|null}
+   */
+  get paramTexture() {
+    return this._paramTexture;
   }
 
   /**
@@ -132,7 +190,44 @@ class GPUSpriteSheet {
       this._texture.destroy();
       this._texture = null;
     }
+    if (this._paramTexture) {
+      this._paramTexture.destroy();
+      this._paramTexture = null;
+    }
     this._sampler = null;
     this._loaded = false;
+  }
+
+  /**
+   * Create a GPUBindGroup for the material pipeline (4-binding layout).
+   *
+   * Use this when the entity has a material JSON and you need to bind
+   * the albedo atlas from this sheet alongside a separate param map
+   * and sampler from MaterialLoader.
+   *
+   * @param {GPUBindGroupLayout} bindGroupLayout - The explicit layout
+   *   from MaterialLoader.bindGroupLayout (or
+   *   ShaderCache.getMaterialBindGroupLayout).
+   * @param {GPUBuffer} uniformBuffer - 128-B MatUniforms buffer.
+   * @param {GPUTexture} paramTexture - RGBA param map texture (use the
+   *   MaterialLoader fallback when no param map is defined).
+   * @param {GPUSampler} sampler - Shared sampler for both texture slots.
+   * @returns {GPUBindGroup}
+   */
+  createMaterialBindGroup(
+    bindGroupLayout,
+    uniformBuffer,
+    paramTexture,
+    sampler,
+  ) {
+    return this._device.createBindGroup({
+      layout: bindGroupLayout,
+      entries: [
+        { binding: 0, resource: { buffer: uniformBuffer } },
+        { binding: 1, resource: this._texture.createView() },
+        { binding: 2, resource: paramTexture.createView() },
+        { binding: 3, resource: sampler },
+      ],
+    });
   }
 }

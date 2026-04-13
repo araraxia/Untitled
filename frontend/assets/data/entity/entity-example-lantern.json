@@ -1,9 +1,12 @@
 {
-  "uuid": "00000000-0000-0000-0000-000000000002",
-  "name": "Lantern",
-  "type": "object",
-  "material": "material/material-example-lantern.json",
-  "animation_clip": "animation/animation-example-lantern-idle.json",
+  "id": "00000000-0000-0000-0000-000000000002",
+  "name": "lantern",
+  "material_id": "mat-lantern-001",
+  "animations": {
+    "idle": "11111111-0000-0000-0000-000000000001"
+  },
+  "size": [16, 32],
+  "pivot": [0.5, 1.0],
   "runtime": {
     "glow_intensity": 0.8
   }

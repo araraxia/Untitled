@@ -1,16 +1,26 @@
 """
 Pack four greyscale images into a single RGBA parameter map PNG.
 
-Each source image is assigned to one channel:
-  R → specular / custom channel 0
-  G → emissive mask / custom channel 1
-  B → normal offset / custom channel 2
-  A → shape mask / custom channel 3
+Channel semantics (matches the material system param map layout):
+  R → roughness         — surface roughness / specular intensity
+  G → emission mask     — controls per-pixel glow/emission strength
+  B → palette index     — colour remap / palette swap weight
+  A → alpha mask        — shape transparency boundary
+
+Shader reads:
+  params.r  → roughness
+  params.g  → emission mask (drives overlay / glow in FS_OVERLAY)
+  params.b  → palette index (reserved for Phase 2.3 colour ramp)
+  params.a  → alpha for shape masking
 
 Usage:
-    python tools/pack_param_map.py -r R.png -g G.png -b B.png -a A.png -o output.png
+    python tools/pack_param_map.py \\
+        -r roughness.png -g emission.png \\
+        -b palette.png   -a alpha.png    \\
+        -o frontend/assets/images/param_maps/output.png
 
-Any of the four inputs can be omitted; missing channels default to solid black (0).
+Any of the four inputs can be omitted; missing channels default to
+solid black (0).
 """
 
 import argparse
@@ -62,10 +72,30 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Pack four greyscale images into one RGBA parameter map PNG."
     )
-    parser.add_argument("-r", "--red", metavar="FILE", help="Image for the R channel")
-    parser.add_argument("-g", "--green", metavar="FILE", help="Image for the G channel")
-    parser.add_argument("-b", "--blue", metavar="FILE", help="Image for the B channel")
-    parser.add_argument("-a", "--alpha", metavar="FILE", help="Image for the A channel")
+    parser.add_argument(
+        "-r",
+        "--red",
+        metavar="FILE",
+        help="Roughness map → R channel",
+    )
+    parser.add_argument(
+        "-g",
+        "--green",
+        metavar="FILE",
+        help="Emission mask → G channel",
+    )
+    parser.add_argument(
+        "-b",
+        "--blue",
+        metavar="FILE",
+        help="Palette index map → B channel",
+    )
+    parser.add_argument(
+        "-a",
+        "--alpha",
+        metavar="FILE",
+        help="Alpha / shape mask → A channel",
+    )
     parser.add_argument(
         "-o",
         "--output",

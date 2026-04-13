@@ -17,6 +17,22 @@ let gpuContext = null;
 /** @type {boolean} */
 let useGPU = false;
 
+/**
+ * Offscreen scene texture — base sprite pass renders here so the
+ * lighting pass can sample it.  Null until WebGPU is initialised.
+ * @type {GPUTexture|null}
+ */
+let sceneTexture = null;
+
+/**
+ * Lighting pass (Phase 2.4).  Null until initLightingPass() is called.
+ * When set, renderer.js uses a two-pass approach:
+ *   Pass 1 — sprites → sceneTexture
+ *   Pass 2 — LightingPass → swap chain
+ * @type {LightingPass|null}
+ */
+let lightingPass = null;
+
 async function initWebGPU() {
   if (!navigator.gpu) {
     console.warn(
@@ -52,6 +68,37 @@ async function initWebGPU() {
   return true;
 }
 
+/**
+ * Allocate (or reallocate) the offscreen scene texture.
+ * Called once after WebGPU init and again on every canvas resize.
+ *
+ * @param {number} width
+ * @param {number} height
+ * @returns {GPUTexture}
+ */
+function createSceneTexture(width, height) {
+  return gpuDevice.createTexture({
+    size: [width, height],
+    format: navigator.gpu.getPreferredCanvasFormat(),
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+  });
+}
+
+/**
+ * Initialise the LightingPass and allocate the first scene texture.
+ * Safe to call multiple times — re-creates resources if already active.
+ */
+function initLightingPass() {
+  if (sceneTexture) sceneTexture.destroy();
+  sceneTexture = createSceneTexture(canvas.width, canvas.height);
+  lightingPass = new LightingPass(
+    gpuDevice,
+    navigator.gpu.getPreferredCanvasFormat(),
+  );
+  lightingPass.setSceneTexture(sceneTexture);
+  console.log("[Renderer] LightingPass initialised");
+}
+
 async function initRenderer() {
   console.log("[Renderer] initRenderer called");
   canvas = document.getElementById("game-canvas");
@@ -68,6 +115,8 @@ async function initRenderer() {
   if (gpuReady) {
     // WebGPU owns game-canvas; use the transparent overlay for 2D HUD/grid.
     ctx = overlayCanvas.getContext("2d");
+    // Initialise the lighting pass (Phase 2.4).
+    initLightingPass();
   } else {
     // No WebGPU — fall back to Canvas 2D on the main canvas.
     ctx = canvas.getContext("2d");
@@ -149,6 +198,12 @@ function resizeCanvas(width = window.innerWidth, height = window.innerHeight) {
     overlayCanvas.width = width;
     overlayCanvas.height = height;
   }
+  // Reallocate the offscreen scene texture at the new dimensions.
+  if (useGPU && lightingPass) {
+    if (sceneTexture) sceneTexture.destroy();
+    sceneTexture = createSceneTexture(width, height);
+    lightingPass.setSceneTexture(sceneTexture);
+  }
 }
 
 async function render(gameState, deltaTime) {
@@ -162,10 +217,22 @@ async function render(gameState, deltaTime) {
   if (useGPU) {
     // --- WebGPU path ---
     const commandEncoder = gpuDevice.createCommandEncoder();
+    const swapChainView = gpuContext.getCurrentTexture().createView();
+
+    // Compute pass: simulate all active particle systems (Phase 2.5).
+    // Must run before the render pass so the GPU sees updated positions.
+    for (const [, er] of entityRenderers) {
+      er.simulateParticles(commandEncoder, deltaTime / 1000.0);
+    }
+
+    // Pass 1 — render sprites into the scene texture (when lighting is
+    // active) or directly to the swap chain (when lighting is disabled).
+    const pass1View = lightingPass ? sceneTexture.createView() : swapChainView;
+
     const passEncoder = commandEncoder.beginRenderPass({
       colorAttachments: [
         {
-          view: gpuContext.getCurrentTexture().createView(),
+          view: pass1View,
           clearValue: { r: 42 / 255, g: 42 / 255, b: 42 / 255, a: 1 },
           loadOp: "clear",
           storeOp: "store",
@@ -176,6 +243,20 @@ async function render(gameState, deltaTime) {
     await renderEntities(gameState, deltaTime, passEncoder);
 
     passEncoder.end();
+
+    // Pass 2 — lighting: accumulate point lights from game state and
+    // runtime-registered sources, then composite onto the swap chain.
+    if (lightingPass) {
+      const lights = _gatherLights(gameState);
+      lightingPass.updateLights(
+        lights,
+        gameState.camera,
+        canvas.width,
+        canvas.height,
+      );
+      lightingPass.render(commandEncoder, swapChainView);
+    }
+
     gpuDevice.queue.submit([commandEncoder.finish()]);
 
     // Canvas 2D overlay: debug info still uses ctx
@@ -195,6 +276,43 @@ async function render(gameState, deltaTime) {
     // Draw debug info
     drawDebugInfo(gameState);
   }
+}
+
+/**
+ * Collect the active light list for the current frame from two sources:
+ *
+ *  1. Entities in gameState whose data contains a `light` component
+ *     `{ color: [r,g,b], radius: number }` (backend-driven).
+ *  2. Runtime lights registered on each EntityRenderer via
+ *     `registerLight()` (frontend-driven overrides).
+ *
+ * @param {Object} gameState
+ * @returns {Array<{x:number, y:number, color:number[], radius:number}>}
+ */
+function _gatherLights(gameState) {
+  const lights = [];
+
+  // Backend-driven lights: entities with a `light` component.
+  for (const entity of Object.values(gameState.entities || {})) {
+    if (entity.light) {
+      lights.push({
+        x: entity.displayX ?? entity.x,
+        y: entity.displayY ?? entity.y,
+        color: entity.light.color || [1.0, 1.0, 0.9],
+        radius: entity.light.radius || 150,
+      });
+    }
+  }
+
+  // Frontend-registered lights: attached via EntityRenderer.registerLight().
+  for (const [entityId, er] of entityRenderers) {
+    const entity = (gameState.entities || {})[entityId];
+    if (!entity) continue;
+    const regLight = er.getRegisteredLight(entity);
+    if (regLight) lights.push(regLight);
+  }
+
+  return lights;
 }
 
 function drawGrid(camera) {

@@ -112,31 +112,31 @@ Define the stable API that game code calls into:
 
 **Goal:** Complete the material system, parameter maps, and combiner as specified in `docs/graphics/OVERVIEW.md` (steps 3–5), then extend with lighting.
 
-### 2.1 — Material System (OVERVIEW.md Step 3)
+### 2.1 — Material System (OVERVIEW.md Step 3) ✅
 
 - Define bind group layout for: uniform buffer (slot 0), albedo texture (slot 1), param map (slot 2), sampler (slot 3)
 - `MaterialLoader` class: parses `material/*.json`, creates `GPUBindGroup` per material
 - `EntityRenderer` selects bind group by entity material key
 
-### 2.2 — Parameter Map Support (OVERVIEW.md Step 4)
+### 2.2 — Parameter Map Support (OVERVIEW.md Step 4) ✅
 
 - Complete `tools/pack_param_map.py`: packs R=roughness, G=emission mask, B=palette index, A=alpha into a single RGBA texture per sprite
 - Upload param maps as `GPUTexture` objects in `GPUSpriteSheet`
 - Update material JSON schema (see `docs/graphics/DATA_STRUCTURES.md`)
 
-### 2.3 — Combiner / Fragment Shader (OVERVIEW.md Step 5)
+### ✅ 2.3 — Combiner / Fragment Shader (OVERVIEW.md Step 5)
 
 - Parameterise the WGSL fragment shader with combiner formula driven by material JSON
 - `ShaderCache` generates pipeline variants from material flags (emission, palette swap, etc.)
 - See `docs/graphics/COMBINER.md` and `RENDER_WORKFLOWS.md` for full specification
 
-### 2.4 — Lighting Pass
+### ✅ 2.4 — Lighting Pass
 
 - Second render pass: additive point-light contribution; lights defined as entities with a `light` component
 - WGSL shader: screen-space light accumulation, output multiplied into base pass
 - Deferred or simple forward approach (TBD based on entity count)
 
-### 2.5 — Particle System (Compute)
+### ✅ 2.5 — Particle System (Compute)
 
 - `GPUComputePipeline` for particle simulation (position + velocity integration)
 - Emitter component on entities; particle data lives entirely on GPU

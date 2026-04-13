@@ -1,0 +1,15 @@
+{
+  "$schema": "../../../schemas/material.schema.json",
+  "id": "mat-fire-001",
+  "name": "fire_cosine",
+  "atlas": "human_atlas",
+  "param_map": null,
+  "color_ramp": {
+    "type": "cosine",
+    "a": [0.5, 0.2, 0.1],
+    "b": [0.5, 0.3, 0.1],
+    "c": [1.0, 1.0, 1.0],
+    "d": [0.0, 0.1, 0.2]
+  },
+  "overlays": []
+}
