@@ -6,8 +6,12 @@ import time
 from typing import Any, Dict, List, Optional
 
 from backend.engine.config import TICK_DURATION
+from backend.engine.events import EventBus
 from backend.engine.game_loop import GameLoop
+from backend.engine.ecs.world import World
+from backend.engine.ecs.scheduler import SystemScheduler
 from backend.game.area import Area
+from backend.game.systems.systems import AISystem, MovementSystem
 
 
 class GameTick(GameLoop):
@@ -15,6 +19,9 @@ class GameTick(GameLoop):
 
     Handles player action queues, area simulation updates, and
     client state broadcasting via SocketIO.
+
+    A :class:`SystemScheduler` drives ECS systems each tick in
+    dependency order.  Systems operate on the shared :attr:`ecs_world`.
     """
 
     def __init__(self, socketio):
@@ -24,6 +31,28 @@ class GameTick(GameLoop):
         self.player_instance = None
         self.player_action_queue: List[Dict[str, Any]] = []
         self.party_command_queue: List[Dict[str, Any]] = []
+
+        self.ecs_world: World = World()
+        self.event_bus: EventBus = EventBus()
+        movement = MovementSystem(self.event_bus)
+        self._scheduler: SystemScheduler = SystemScheduler()
+        self._scheduler.register(movement)
+        self._scheduler.register(AISystem())
+        self._scheduler.build()
+
+        # Update the spatial grid whenever an entity moves.
+        self.event_bus.subscribe("entity_moved", self._on_entity_moved)
+
+    def _on_entity_moved(self, payload: Dict[str, Any]) -> None:
+        """Update the spatial grid when an entity moves."""
+        if not self.current_area:
+            return
+        entity_id = payload.get("id")
+        if entity_id is None:
+            return
+        entity = self.current_area.entities.get(entity_id)
+        if entity is not None:
+            self.current_area.spatial_grid.update(entity)
 
     def queue_player_action(self, action: Dict[str, Any]) -> None:
         """Queue a player action to be processed on the next tick."""
@@ -65,6 +94,7 @@ class GameTick(GameLoop):
         if not self.current_area:
             return
 
+        self._scheduler.run(self.ecs_world, TICK_DURATION)
         self.current_area.update(TICK_DURATION)
         state_delta = self.current_area.get_state_delta()
         if state_delta:

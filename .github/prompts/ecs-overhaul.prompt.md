@@ -48,7 +48,7 @@ Read these files before writing any code:
 
 ---
 
-## Step 1 — Audit Current State
+## Step 1 — Audit Current State ✅
 
 Before writing any code, read the key files listed above. Produce a short summary covering:
 
@@ -62,7 +62,7 @@ Do not create or edit any files in this step. Output your findings and then proc
 
 ---
 
-## Step 2 — Component Registry (Phase 3.1)
+## Step 2 — Component Registry (Phase 3.1) ✅
 
 **Files to create/modify:**
 
@@ -138,7 +138,7 @@ print('component:', c.x, c.y)  # expect 1.0 2.0
 
 ---
 
-## Step 3 — World Queries (Phase 3.2)
+## Step 3 — World Queries (Phase 3.2) ✅
 
 **Files to modify:**
 
@@ -177,7 +177,7 @@ print('count:', len(results))  # expect 3
 
 ---
 
-## Step 4 — System Scheduler (Phase 3.3)
+## Step 4 — System Scheduler (Phase 3.3) ✅
 
 **New file:** `backend/engine/ecs/scheduler.py`
 **Files to modify:** `backend/engine/ecs/__init__.py`, `backend/game/tick.py`
@@ -220,7 +220,7 @@ python -c "from backend.app import app; print('app ok')"
 
 ---
 
-## Step 5 — EventBus Integration (Phase 3.4)
+## Step 5 — EventBus Integration (Phase 3.4) ✅
 
 **Files to modify:** `backend/game/systems/systems.py`, `backend/game/tick.py`
 
@@ -249,7 +249,7 @@ print('received:', received)  # expect [{'id': 'e1', 'x': 10.0, 'y': 5.0}]
 
 ---
 
-## Step 6 — Smoke Test
+## Step 6 — Smoke Test ✅
 
 Run the application and confirm no errors:
 
@@ -265,24 +265,24 @@ python main.py
 
 Manual checks:
 
-- [ ] `World.add()`, `World.get()`, `World.remove()`, `World.all()` work as before.
-- [ ] `world.query(PositionComponent, VelocityComponent)` returns only entities with both components.
-- [ ] `SystemScheduler.run()` calls systems in dependency order (not alphabetical, not registration order).
-- [ ] `EventBus` delivers `'entity_moved'` events to the spatial grid handler each tick.
-- [ ] `python -c "from backend.app import app; print('app ok')"` passes cleanly.
+- [x] `World.add()`, `World.get()`, `World.remove()`, `World.all()` work as before.
+- [x] `world.query(PositionComponent, VelocityComponent)` returns only entities with both components.
+- [x] `SystemScheduler.run()` calls systems in dependency order (not alphabetical, not registration order).
+- [x] `EventBus` delivers `'entity_moved'` events to the spatial grid handler each tick.
+- [x] `python -c "from backend.app import app; print('app ok')"` passes cleanly.
 - [ ] No existing game behaviour has changed from the player's perspective.
 
 ---
 
 ## Success Criteria
 
-- [ ] `backend/engine/ecs/component.py` — `Component` base class with `type_id`; six concrete component types
-- [ ] `backend/engine/ecs/world.py` — `add_component`, `remove_component`, `get_component`, `query(*component_types)`, `query_with_components(*component_types)`; existing CRUD methods intact
-- [ ] `backend/engine/ecs/system.py` — `System.update(world, delta_time)` signature; `dependencies` class variable
-- [ ] `backend/engine/ecs/scheduler.py` — `SystemScheduler` with topological sort; cycle detection
-- [ ] `backend/game/systems/systems.py` — `MovementSystem` and `AISystem` use `world.query_with_components()`; `CombatSystem` publishes `EventBus` events
-- [ ] `backend/game/tick.py` — drives systems through `SystemScheduler`; `EventBus` instance created and passed to systems
-- [ ] `backend/engine/events.py` — unchanged (already correct)
-- [ ] `backend/engine/spatial.py` — unchanged (already correct)
-- [ ] SocketIO `state_update` event payload format unchanged
-- [ ] No frontend or JavaScript files modified
+- [x] `backend/engine/ecs/component.py` — `Component` base class with `type_id`; six concrete component types
+- [x] `backend/engine/ecs/world.py` — `add_component`, `remove_component`, `get_component`, `query(*component_types)`, `query_with_components(*component_types)`; existing CRUD methods intact
+- [x] `backend/engine/ecs/system.py` — `System.update(world, delta_time)` signature; `dependencies` class variable
+- [x] `backend/engine/ecs/scheduler.py` — `SystemScheduler` with topological sort; cycle detection
+- [x] `backend/game/systems/systems.py` — `MovementSystem` and `AISystem` use `world.query_with_components()`; `CombatSystem` publishes `EventBus` events
+- [x] `backend/game/tick.py` — drives systems through `SystemScheduler`; `EventBus` instance created and passed to systems
+- [x] `backend/engine/events.py` — unchanged (already correct)
+- [x] `backend/engine/spatial.py` — unchanged (already correct)
+- [x] SocketIO `state_update` event payload format unchanged
+- [x] No frontend or JavaScript files modified
