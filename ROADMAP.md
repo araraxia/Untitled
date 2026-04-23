@@ -28,7 +28,7 @@ The engine is not a separate product — it is the lower half of this same repos
 | 0 | WebGPU Foundation | ✅ Complete |
 | 1 | Engine–Game Separation | ✅ Complete |
 | 2 | Graphics Pipeline Completion | 🔲 Not started |
-| 3 | ECS Overhaul | 🔲 Not started |
+| 3 | ECS Overhaul | ✅ Complete |
 | 4 | Simulation Systems | 🔲 Not started |
 | 5 | Asset Pipeline | 🔲 Not started |
 | 6 | Save / Load / Persistence | 🔲 In Progress |
@@ -146,29 +146,29 @@ Define the stable API that game code calls into:
 
 ---
 
-## Phase 3 — ECS Overhaul
+## Phase 3 — ECS Overhaul ✅
 
 **Goal:** Replace the current loose entity class hierarchy with a proper Entity-Component-System that scales to hundreds of entity types and thousands of instances.
 
-### 3.1 — Component Registry
+### 3.1 — Component Registry ✅
 
 - `Component` base class with a unique type ID
 - `ComponentRegistry` maps type → storage array
 - Struct-of-arrays storage layout for cache efficiency on hot paths (movement, AI)
 
-### 3.2 — World Queries
+### 3.2 — World Queries ✅
 
 - `world.query(ComponentA, ComponentB)` — yields entities possessing all listed component types
 - Archetype-based storage (optional optimisation if benchmarks demand it)
 - Iterator-compatible; systems iterate queries in their `update()` method
 
-### 3.3 — System Scheduler
+### 3.3 — System Scheduler ✅
 
 - `System` base class with `dependencies: list[type[System]]`
 - Topological sort constructs an execution order per tick
 - Systems can declare `PARALLEL` flag; scheduler runs non-overlapping parallel groups via `concurrent.futures`
 
-### 3.4 — Event Bus
+### 3.4 — Event Bus ✅
 
 - `EventBus.publish(event_type, payload)` — synchronous dispatch within a tick
 - `EventBus.subscribe(event_type, handler)` — handler registration
@@ -348,7 +348,7 @@ Each phase has a companion agent prompt in `.github/prompts/`:
 | 0 | `webgpu-migration.prompt.md` ✅ |
 | 1 | `engine-architecture.prompt.md` |
 | 2 | `material-system.prompt.md` |
-| 3 | `ecs-overhaul.prompt.md` |
+| 3 | `ecs-overhaul.prompt.md` ✅ |
 | 4 | `simulation-systems.prompt.md` |
 | 5 | `asset-pipeline.prompt.md` |
 | 6 | `save-load.prompt.md` |

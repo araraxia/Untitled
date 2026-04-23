@@ -1,16 +1,22 @@
 """ECS-style systems for entity processing."""
 
-from typing import Optional
+import math
+from typing import TYPE_CHECKING, Optional
 
 from backend.engine.ecs.system import System
 from backend.engine.ecs.world import World
 from backend.engine.ecs.component import (
+    PathComponent,
     PositionComponent,
-    VelocityComponent,
+    StatsComponent,
     StateComponent,
+    VelocityComponent,
 )
 from backend.engine.ecs.entity import Entity
 from backend.engine.events import EventBus
+
+if TYPE_CHECKING:
+    from backend.engine.spatial import SpatialGrid
 
 
 class MovementSystem(System):
@@ -37,6 +43,73 @@ class MovementSystem(System):
                         "entity_moved",
                         {"id": eid, "x": pos.x, "y": pos.y},
                     )
+
+
+class PathfindingSystem(System):
+    """Advances entities along pre-computed movement paths.
+
+    Each tick, pathing entities move toward the next waypoint in
+    their ``PathComponent`` at a speed derived from their
+    ``StatsComponent`` (if present) or a default fallback speed.
+    The ``PathComponent`` is removed when all waypoints are reached.
+    """
+
+    # Multiplier: StatsComponent.speed * _STEP_SPEED = world units/s
+    _STEP_SPEED: float = 50.0
+
+    def __init__(
+        self,
+        spatial_grid: Optional["SpatialGrid"] = None,
+        event_bus: Optional[EventBus] = None,
+    ) -> None:
+        self._grid = spatial_grid
+        self._bus = event_bus
+
+    def update(self, world: World, delta_time: float) -> None:
+        """Move each entity one step along its PathComponent."""
+        for eid, (pos, path) in world.query_with_components(
+            PositionComponent, PathComponent
+        ):
+            if path.current_index >= len(path.waypoints):
+                world.remove_component(eid, PathComponent)
+                continue
+
+            stats: Optional[StatsComponent] = world.get_component(eid, StatsComponent)
+            speed = (
+                stats.speed * self._STEP_SPEED
+                if stats is not None
+                else self._STEP_SPEED
+            )
+
+            wx, wy = path.waypoints[path.current_index]
+            dx = wx - pos.x
+            dy = wy - pos.y
+            dist = math.sqrt(dx * dx + dy * dy)
+            step = speed * delta_time
+
+            if step >= dist:
+                pos.x = wx
+                pos.y = wy
+                path.current_index += 1
+            else:
+                factor = step / dist
+                pos.x += dx * factor
+                pos.y += dy * factor
+
+            entity = world.get(eid)
+            if entity is not None:
+                entity.x = pos.x
+                entity.y = pos.y
+                entity.is_dirty = True
+
+            if self._bus is not None:
+                self._bus.publish(
+                    "entity_moved",
+                    {"id": eid, "x": pos.x, "y": pos.y},
+                )
+
+            if path.current_index >= len(path.waypoints):
+                world.remove_component(eid, PathComponent)
 
 
 class AISystem(System):

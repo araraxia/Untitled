@@ -11,7 +11,11 @@ from backend.engine.game_loop import GameLoop
 from backend.engine.ecs.world import World
 from backend.engine.ecs.scheduler import SystemScheduler
 from backend.game.area import Area
-from backend.game.systems.systems import AISystem, MovementSystem
+from backend.game.systems.systems import (
+    AISystem,
+    MovementSystem,
+    PathfindingSystem,
+)
 
 
 class GameTick(GameLoop):
@@ -35,7 +39,9 @@ class GameTick(GameLoop):
         self.ecs_world: World = World()
         self.event_bus: EventBus = EventBus()
         movement = MovementSystem(self.event_bus)
+        pathfinding = PathfindingSystem(event_bus=self.event_bus)
         self._scheduler: SystemScheduler = SystemScheduler()
+        self._scheduler.register(pathfinding)
         self._scheduler.register(movement)
         self._scheduler.register(AISystem())
         self._scheduler.build()

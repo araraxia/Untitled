@@ -66,3 +66,60 @@ class EmitterComponent(Component):
     """Stores particle emitter configuration for an entity."""
 
     config: Dict = field(default_factory=dict)
+
+
+@dataclass
+class PathComponent(Component):
+    """Stores a pre-computed movement path for an entity."""
+
+    waypoints: List[tuple] = field(default_factory=list)
+    current_index: int = 0
+
+
+@dataclass
+class AIComponent(Component):
+    """Links an entity to a behaviour tree definition."""
+
+    behaviour_tree_id: str = ""
+    active_node_path: List[str] = field(default_factory=list)
+
+
+@dataclass
+class StatsComponent(Component):
+    """Stores combat and movement statistics for an entity."""
+
+    max_hp: int = 100
+    hp: int = 100
+    attack: int = 10
+    defence: int = 5
+    action_points: int = 0
+    max_action_points: int = 100
+    speed: float = 1.0
+
+
+@dataclass
+class StatusComponent(Component):
+    """Tracks active status effects on an entity.
+
+    Each effect is a dict with keys ``type`` (str),
+    ``duration`` (int ticks remaining), and
+    ``magnitude`` (float strength of the effect).
+    """
+
+    effects: List[Dict] = field(default_factory=list)
+
+
+@dataclass
+class ColliderComponent(Component):
+    """Defines an axis-aligned bounding box for collision detection."""
+
+    width: float = 1.0
+    height: float = 1.0
+    solid: bool = True
+
+
+@dataclass
+class FactionComponent(Component):
+    """Assigns an entity to a named faction for AI targeting."""
+
+    faction: str = "neutral"
