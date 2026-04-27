@@ -1,22 +1,35 @@
 """ECS-style systems for entity processing."""
 
+import json
+import logging
 import math
-from typing import TYPE_CHECKING, Optional
+import random
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from backend.engine.ecs.system import System
 from backend.engine.ecs.world import World
 from backend.engine.ecs.component import (
+    AIComponent,
     PathComponent,
     PositionComponent,
     StatsComponent,
     StateComponent,
+    StatusComponent,
     VelocityComponent,
 )
 from backend.engine.ecs.entity import Entity
 from backend.engine.events import EventBus
+from backend.engine.behaviour_tree import BehaviourTree, BehaviourTreeLoader
 
 if TYPE_CHECKING:
     from backend.engine.spatial import SpatialGrid
+
+logger = logging.getLogger(__name__)
+
+_GAME_CONFIG_PATH: Path = (
+    Path(__file__).resolve().parent.parent.parent.parent / "config" / "game.json"
+)
 
 
 class MovementSystem(System):
@@ -113,31 +126,152 @@ class PathfindingSystem(System):
 
 
 class AISystem(System):
-    """Handles AI behaviour for entities that have a StateComponent."""
+    """Drives entity AI via behaviour trees each tick.
 
-    dependencies = [MovementSystem]
+    Each entity with an :class:`AIComponent` maps to a named
+    :class:`BehaviourTree`.  Trees are loaded from
+    ``config/game.json`` under the ``behaviour_trees`` key and
+    cached in memory to avoid repeated JSON parsing.
+    """
+
+    dependencies = [PathfindingSystem]
+
+    def __init__(
+        self,
+        event_bus: Optional[EventBus] = None,
+        trees_config: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        self._bus: EventBus = event_bus if event_bus is not None else EventBus()
+        if trees_config is not None:
+            self._trees_config: Dict[str, Any] = trees_config
+        else:
+            self._trees_config = self._load_trees_config()
+        self._loader: BehaviourTreeLoader = BehaviourTreeLoader()
+        self._cache: Dict[str, BehaviourTree] = {}
+
+    @staticmethod
+    def _load_trees_config() -> Dict[str, Any]:
+        """Load the behaviour_trees section from game.json."""
+        try:
+            with _GAME_CONFIG_PATH.open("r", encoding="utf-8") as fh:
+                data: Dict[str, Any] = json.load(fh)
+            return data.get("behaviour_trees", {})
+        except (OSError, json.JSONDecodeError):
+            return {}
+
+    def _get_tree(self, tree_id: str) -> Optional[BehaviourTree]:
+        """Return a cached or freshly loaded BehaviourTree by ID."""
+        if tree_id in self._cache:
+            return self._cache[tree_id]
+        if tree_id not in self._trees_config:
+            logger.warning(
+                "AISystem: behaviour tree '%s' not found.",
+                tree_id,
+            )
+            return None
+        tree = self._loader.load_from_config(tree_id, self._trees_config)
+        self._cache[tree_id] = tree
+        return tree
 
     def update(self, world: World, delta_time: float) -> None:
-        """Update AI-controlled entities."""
-        for _eid, (_state,) in world.query_with_components(StateComponent):
-            # Placeholder for AI logic.
-            pass
+        """Tick the behaviour tree for each AI-controlled entity."""
+        for eid, (ai, _pos) in world.query_with_components(
+            AIComponent, PositionComponent
+        ):
+            tree = self._get_tree(ai.behaviour_tree_id)
+            if tree is None:
+                continue
+            tree.tick(eid, world, self._bus)
 
 
-class CombatSystem:
-    """Handles combat resolution."""
+class CombatSystem(System):
+    """Resolves combat actions and processes status effects each tick.
+
+    Action points accumulate each tick based on each entity's speed.
+    Combat actions arrive via the ``'combat_action'`` event (published
+    by the ``Attack`` behaviour-tree leaf) and are resolved
+    immediately.  Status effects tick down and are purged when their
+    duration expires.
+    """
+
+    dependencies = [AISystem]
+
+    _AP_COST: int = 10  # action points spent per attack
 
     def __init__(self, event_bus: Optional[EventBus] = None) -> None:
-        self._bus = event_bus
+        self._bus: EventBus = event_bus if event_bus is not None else EventBus()
+        self._world: Optional[World] = None
+        self._bus.subscribe("combat_action", self._on_combat_action)
 
-    def resolve_attack(self, attacker: Entity, defender: Entity) -> None:
-        """Resolve an attack between entities."""
-        # Placeholder for combat logic.
-        if self._bus is not None:
-            self._bus.publish(
-                "entity_attacked",
-                {
-                    "attacker": attacker.entity_id,
-                    "defender": defender.entity_id,
-                },
+    def update(self, world: World, delta_time: float) -> None:
+        """Accumulate action points and process status effects."""
+        self._world = world
+
+        # Accumulate action points for all entities with stats.
+        for _eid, (stats,) in world.query_with_components(StatsComponent):
+            stats.action_points = min(
+                stats.action_points + stats.speed,
+                stats.max_action_points,
             )
+
+        # Process status effects for entities that have both.
+        for _eid, (status, stats) in world.query_with_components(
+            StatusComponent, StatsComponent
+        ):
+            remaining: List[Dict] = []
+            for effect in status.effects:
+                effect["duration"] -= 1
+                etype: str = effect.get("type", "")
+                magnitude: float = float(effect.get("magnitude", 0.0))
+                if etype == "poisoned":
+                    stats.hp -= int(magnitude)
+                elif etype == "stunned":
+                    stats.action_points = 0
+                if effect["duration"] > 0:
+                    remaining.append(effect)
+            status.effects = remaining
+
+    def _on_combat_action(self, payload: Dict[str, Any]) -> None:
+        """Handle a ``'combat_action'`` event from an Attack leaf node."""
+        if self._world is None:
+            return
+        if payload.get("action") != "attack":
+            return
+
+        attacker_id: str = payload.get("attacker", "")
+        target_id: str = payload.get("target", "")
+
+        atk_stats: Optional[StatsComponent] = self._world.get_component(
+            attacker_id, StatsComponent
+        )
+        tgt_stats: Optional[StatsComponent] = self._world.get_component(
+            target_id, StatsComponent
+        )
+        if atk_stats is None or tgt_stats is None:
+            return
+
+        if atk_stats.action_points < self._AP_COST:
+            return
+        atk_stats.action_points -= self._AP_COST
+
+        raw_chance = 0.65 + (atk_stats.attack - tgt_stats.defence) * 0.05
+        hit_chance = max(0.05, min(0.95, raw_chance))
+        is_hit = random.random() < hit_chance
+
+        damage: int = 0
+        if is_hit:
+            damage = max(1, atk_stats.attack - tgt_stats.defence // 2)
+            tgt_stats.hp -= damage
+
+        self._bus.publish(
+            "combat_result",
+            {
+                "attacker": attacker_id,
+                "target": target_id,
+                "hit": is_hit,
+                "damage": damage,
+                "target_hp": tgt_stats.hp,
+            },
+        )
+        if tgt_stats.hp <= 0:
+            self._bus.publish("entity_died", {"entity_id": target_id})

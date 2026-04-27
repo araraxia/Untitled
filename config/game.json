@@ -16,5 +16,11 @@
     "speed": 10,
     "soul_power": 10,
     "combat_sense": 10
+  },
+  "behaviour_trees": {
+    "default_enemy": {
+      "type": "Selector",
+      "children": [{ "type": "Seek" }, { "type": "Idle" }]
+    }
   }
 }

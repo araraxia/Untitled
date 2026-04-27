@@ -200,7 +200,7 @@ print('last waypoint:', path[-1])
 
 ---
 
-## Step 4 — AI / Behaviour Trees (Phase 4.2)
+## Step 4 — AI / Behaviour Trees (Phase 4.2) ✅
 
 **New file:** `backend/engine/behaviour_tree.py`
 **Files to modify:** `backend/game/systems/systems.py`, `backend/game/tick.py`, `config/game.json`
@@ -312,7 +312,7 @@ print('behaviour_tree imports ok')
 
 ---
 
-## Step 5 — Combat System (Phase 4.3)
+## Step 5 — Combat System (Phase 4.3) ✅
 
 **Files to modify:** `backend/game/systems/systems.py`, `backend/game/tick.py`
 
@@ -379,7 +379,7 @@ print('StatsComponent ok:', s.hp, s.attack)
 
 ---
 
-## Step 6 — Simple Physics (Phase 4.4)
+## Step 6 — Simple Physics (Phase 4.4) ✅
 
 **New file:** `backend/engine/physics.py`
 **Files to modify:** `backend/game/systems/systems.py`, `backend/game/tick.py`

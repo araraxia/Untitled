@@ -13,6 +13,7 @@ from backend.engine.ecs.scheduler import SystemScheduler
 from backend.game.area import Area
 from backend.game.systems.systems import (
     AISystem,
+    CombatSystem,
     MovementSystem,
     PathfindingSystem,
 )
@@ -40,10 +41,13 @@ class GameTick(GameLoop):
         self.event_bus: EventBus = EventBus()
         movement = MovementSystem(self.event_bus)
         pathfinding = PathfindingSystem(event_bus=self.event_bus)
+        ai = AISystem(event_bus=self.event_bus)
+        combat = CombatSystem(event_bus=self.event_bus)
         self._scheduler: SystemScheduler = SystemScheduler()
         self._scheduler.register(pathfinding)
         self._scheduler.register(movement)
-        self._scheduler.register(AISystem())
+        self._scheduler.register(ai)
+        self._scheduler.register(combat)
         self._scheduler.build()
 
         # Update the spatial grid whenever an entity moves.
