@@ -16,6 +16,7 @@ from backend.game.systems.systems import (
     CombatSystem,
     MovementSystem,
     PathfindingSystem,
+    PhysicsSystem,
 )
 
 
@@ -40,10 +41,12 @@ class GameTick(GameLoop):
         self.ecs_world: World = World()
         self.event_bus: EventBus = EventBus()
         movement = MovementSystem(self.event_bus)
+        physics = PhysicsSystem(event_bus=self.event_bus)
         pathfinding = PathfindingSystem(event_bus=self.event_bus)
         ai = AISystem(event_bus=self.event_bus)
         combat = CombatSystem(event_bus=self.event_bus)
         self._scheduler: SystemScheduler = SystemScheduler()
+        self._scheduler.register(physics)
         self._scheduler.register(pathfinding)
         self._scheduler.register(movement)
         self._scheduler.register(ai)

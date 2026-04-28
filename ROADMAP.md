@@ -178,31 +178,31 @@ Define the stable API that game code calls into:
 
 ---
 
-## Phase 4 — Simulation Systems
+## Phase 4 — Simulation Systems ✅
 
 **Goal:** Replace placeholder system bodies with real implementations.
 
-### 4.1 — Pathfinding
+### 4.1 — Pathfinding ✅
 
 - A* over the spatial grid; heuristic = Chebyshev distance for 8-directional movement
 - Flow fields for large groups (party members all moving toward same goal)
 - Path cache with invalidation on entity add/remove near path tiles
 
-### 4.2 — AI / Behaviour Trees
+### 4.2 — AI / Behaviour Trees ✅
 
 - `BehaviourTree` + `BehaviourNode` base classes
 - Leaf nodes: `Seek`, `Flee`, `Idle`, `UseItem`, `Attack`
 - Composite nodes: `Sequence`, `Selector`, `Parallel`
 - Party members use BTs; tree data loaded from JSON for moddability
 
-### 4.3 — Combat System
+### 4.3 — Combat System ✅
 
 - Turn-based resolution within real-time simulation (action points)
 - Stat derivation: damage formula, dodge, hit chance from entity stats
 - Status effects as Components (poisoned, stunned, burning)
 - `CombatEvent` published to `EventBus`; other systems (audio, UI, particles) subscribe
 
-### 4.4 — Simple Physics
+### 4.4 — Simple Physics ✅
 
 - AABB collision response for solid entities
 - Velocity damping; slope/terrain friction coefficients

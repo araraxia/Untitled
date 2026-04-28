@@ -11,6 +11,7 @@ from backend.engine.ecs.system import System
 from backend.engine.ecs.world import World
 from backend.engine.ecs.component import (
     AIComponent,
+    ColliderComponent,
     PathComponent,
     PositionComponent,
     StatsComponent,
@@ -18,6 +19,7 @@ from backend.engine.ecs.component import (
     StatusComponent,
     VelocityComponent,
 )
+from backend.engine.physics import aabb_overlap, get_terrain_friction
 from backend.engine.ecs.entity import Entity
 from backend.engine.events import EventBus
 from backend.engine.behaviour_tree import BehaviourTree, BehaviourTreeLoader
@@ -58,6 +60,97 @@ class MovementSystem(System):
                     )
 
 
+class PhysicsSystem(System):
+    """Integrates velocity, damps motion, and resolves AABB collisions.
+
+    Each tick, entities with velocity are stepped forward, terrain
+    friction (or a default 0.85 multiplier) is applied, and solid
+    collider pairs are separated via the minimum translation vector
+    returned by ``aabb_overlap``.  The entity's record in the
+    spatial grid is refreshed after each integration step.
+    """
+
+    _DAMPING: float = 0.85
+    _MIN_VELOCITY: float = 0.001
+
+    def __init__(
+        self,
+        spatial_grid: Optional["SpatialGrid"] = None,
+        event_bus: Optional[EventBus] = None,
+    ) -> None:
+        self._grid = spatial_grid
+        self._bus = event_bus
+
+    def update(self, world: World, delta_time: float) -> None:
+        """Integrate velocity, apply damping, and resolve collisions."""
+        # Pre-collect all solid colliders for overlap tests.
+        solid: List[tuple] = [
+            (eid, pos, col)
+            for eid, (pos, col) in world.query_with_components(
+                PositionComponent, ColliderComponent
+            )
+            if col.solid
+        ]
+
+        for eid, (pos, vel, col) in world.query_with_components(
+            PositionComponent, VelocityComponent, ColliderComponent
+        ):
+            # 1. Integrate position.
+            pos.x += vel.vx * delta_time
+            pos.y += vel.vy * delta_time
+
+            # 2. Terrain friction or default velocity damping.
+            friction = get_terrain_friction(self._grid, pos.x, pos.y)
+            if friction > 0.0:
+                factor = 1.0 - friction * delta_time
+                vel.vx *= factor
+                vel.vy *= factor
+            else:
+                vel.vx *= self._DAMPING
+                vel.vy *= self._DAMPING
+            if abs(vel.vx) < self._MIN_VELOCITY:
+                vel.vx = 0.0
+            if abs(vel.vy) < self._MIN_VELOCITY:
+                vel.vy = 0.0
+
+            # 3. Resolve collisions against all solid entities.
+            for other_eid, other_pos, other_col in solid:
+                if other_eid == eid:
+                    continue
+                mtv = aabb_overlap(
+                    pos.x,
+                    pos.y,
+                    col.width,
+                    col.height,
+                    other_pos.x,
+                    other_pos.y,
+                    other_col.width,
+                    other_col.height,
+                )
+                if mtv is not None:
+                    dx, dy = mtv
+                    pos.x += dx
+                    pos.y += dy
+                    if dx != 0.0:
+                        vel.vx = 0.0
+                    if dy != 0.0:
+                        vel.vy = 0.0
+
+            # 4. Sync entity object and refresh spatial grid.
+            entity = world.get(eid)
+            if entity is not None:
+                entity.x = pos.x
+                entity.y = pos.y
+                entity.is_dirty = True
+                if self._grid is not None:
+                    self._grid.update(entity)
+            if self._bus is not None:
+                self._bus.publish(
+                    "entity_moved",
+                    {"id": eid, "x": pos.x, "y": pos.y},
+                )
+
+
 class PathfindingSystem(System):
     """Advances entities along pre-computed movement paths.
 
@@ -66,6 +159,8 @@ class PathfindingSystem(System):
     ``StatsComponent`` (if present) or a default fallback speed.
     The ``PathComponent`` is removed when all waypoints are reached.
     """
+
+    dependencies = [PhysicsSystem]
 
     # Multiplier: StatsComponent.speed * _STEP_SPEED = world units/s
     _STEP_SPEED: float = 50.0

@@ -430,7 +430,7 @@ print('no overlap:', no_overlap)  # expect None
 
 ---
 
-## Step 7 — Smoke Test
+## Step 7 — Smoke Test ✅
 
 Run the full import check and then launch the server:
 

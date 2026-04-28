@@ -1,0 +1,18 @@
+{
+  "player_id": "0f42de40-2097-4f97-ae5a-7779af18c55f",
+  "player_name": "New_Player",
+  "world_id": "overworld_001",
+  "area_id": "character_creation",
+  "active_entity_index": 0,
+  "controlled_entity_ids": [],
+  "controlled_entity_history": [],
+  "current_selected_entities": [],
+  "player_inventory": {},
+  "player_stats": {
+    "total_playtime": 0.0,
+    "entities_controlled": 0,
+    "achievements": [],
+    "last_save_timestamptz": null
+  },
+  "current_action": null
+}
