@@ -88,6 +88,47 @@ class AssetLoader {
   unregister(key) {
     this._registry.delete(key);
   }
+
+  /**
+   * Fetch the asset manifest JSON and register all entries.
+   * Entries already registered via registerAll() are NOT overwritten.
+   *
+   * @param {string} manifestUrl - URL to manifest.json relative to origin.
+   * @returns {Promise<void>}
+   */
+  async loadManifest(manifestUrl) {
+    let manifest;
+    try {
+      const response = await fetch(manifestUrl);
+      if (!response.ok) {
+        console.warn(
+          `[AssetLoader] Failed to fetch manifest (${response.status}): ${manifestUrl}`,
+        );
+        return;
+      }
+      manifest = await response.json();
+    } catch (err) {
+      console.warn("[AssetLoader] Could not load manifest:", err);
+      return;
+    }
+
+    const categories = ["images", "animations", "materials", "audio"];
+    let registered = 0;
+    for (const category of categories) {
+      const entries = manifest[category];
+      if (!entries || typeof entries !== "object") continue;
+      for (const [id, entry] of Object.entries(entries)) {
+        if (this._registry.has(id)) continue;
+        if (entry && typeof entry.path === "string") {
+          this.register(id, entry.path);
+          registered += 1;
+        }
+      }
+    }
+    console.log(
+      `[AssetLoader] Manifest loaded: ${registered} entries registered from ${manifestUrl}`,
+    );
+  }
 }
 
 // ------------------------------------------------------------------
@@ -118,3 +159,7 @@ assetLoader.registerAll({
   ice_ramp: "assets/images/color_ramps/ice_ramp.png",
   poison_ramp: "assets/images/color_ramps/poison_ramp.png",
 });
+
+// Load manifest asynchronously. Modules that depend on manifest assets
+// must await assetLoader.manifestReady before resolving keys.
+assetLoader.manifestReady = assetLoader.loadManifest("assets/manifest.json");

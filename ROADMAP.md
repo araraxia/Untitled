@@ -30,7 +30,7 @@ The engine is not a separate product — it is the lower half of this same repos
 | 2 | Graphics Pipeline Completion | 🔲 Not started |
 | 3 | ECS Overhaul | ✅ Complete |
 | 4 | Simulation Systems | 🔲 Not started |
-| 5 | Asset Pipeline | 🔲 Not started |
+| 5 | Asset Pipeline | ✅ Complete |
 | 6 | Save / Load / Persistence | 🔲 In Progress |
 | 7 | UI Framework | 🔲 Not started |
 | 8 | Audio | 🔲 Not started |

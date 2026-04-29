@@ -5,6 +5,7 @@ pywebview
 python-engineio
 simple-websocket
 Pillow
+watchdog==6.0.0
 
 # Linux dependencies (install system packages first - see DEBIAN_SETUP.md)
 PyGObject>=3.42.0; sys_platform == 'linux'

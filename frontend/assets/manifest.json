@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "generated_at": "2026-04-29T20:08:35.007711+00:00",
+  "images": {
+    "char_a_p1_0bas_humn": {
+      "path": "assets/images/sprites/human/base/v00/char_a_p1_0bas_humn.png",
+      "type": "atlas",
+      "width": 512,
+      "height": 512,
+      "hash": "6aaa516679708670"
+    },
+    "char_a_pONE1_0bas_humn": {
+      "path": "assets/images/sprites/human/base/v00/char_a_pONE1_0bas_humn.png",
+      "type": "atlas",
+      "width": 512,
+      "height": 512,
+      "hash": "9152246d33b6363f"
+    }
+  },
+  "animations": {
+    "animation-00000000-0000-0000-0000-000000000001": {
+      "path": "assets/data/animation/animation-00000000-0000-0000-0000-000000000001.json",
+      "hash": "a97b48478f6c4ad0"
+    },
+    "animation-example-lantern-glow": {
+      "path": "assets/data/animation/animation-example-lantern-glow.json",
+      "hash": "e181cdcaf7a058ce"
+    }
+  },
+  "materials": {
+    "mat-fire-001": {
+      "path": "assets/data/material/material-example-fire.json",
+      "hash": "1ce988433120075e"
+    },
+    "mat-lantern-001": {
+      "path": "assets/data/material/material-example-lantern.json",
+      "hash": "3d9db23fdcb4b073"
+    }
+  },
+  "audio": {}
+}

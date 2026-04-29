@@ -22,5 +22,34 @@
       "type": "Selector",
       "children": [{ "type": "Seek" }, { "type": "Idle" }]
     }
+  },
+  "wfc_tile_rules": {
+    "grass": {
+      "weight": 10,
+      "allowed": {
+        "north": ["grass", "dirt"],
+        "south": ["grass", "dirt"],
+        "east": ["grass", "dirt"],
+        "west": ["grass", "dirt"]
+      }
+    },
+    "dirt": {
+      "weight": 5,
+      "allowed": {
+        "north": ["grass", "dirt", "water"],
+        "south": ["grass", "dirt", "water"],
+        "east": ["grass", "dirt", "water"],
+        "west": ["grass", "dirt", "water"]
+      }
+    },
+    "water": {
+      "weight": 3,
+      "allowed": {
+        "north": ["water", "dirt"],
+        "south": ["water", "dirt"],
+        "east": ["water", "dirt"],
+        "west": ["water", "dirt"]
+      }
+    }
   }
 }

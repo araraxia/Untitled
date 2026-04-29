@@ -64,7 +64,7 @@ Do not create or edit any files in this step. Output your findings and then proc
 
 ---
 
-## Step 2 — Asset Manifest (Phase 5.1)
+## Step 2 — Asset Manifest (Phase 5.1) ✓
 
 **New file:** `frontend/assets/manifest.json` (generated, not hand-authored)
 **New file:** `tools/build_manifest.py`
@@ -144,7 +144,7 @@ print('image count:', len(m['images']))
 
 ---
 
-## Step 3 — Manifest-Driven AssetLoader (Phase 5.1 continued)
+## Step 3 — Manifest-Driven AssetLoader (Phase 5.1 continued) ✓
 
 **Files to modify:** `frontend/js/engine/assetLoader.js`
 
@@ -181,7 +181,7 @@ Verify manually: open the browser, open the DevTools console, and confirm no `[A
 
 ---
 
-## Step 4 — Build Tools (Phase 5.2)
+## Step 4 — Build Tools (Phase 5.2) ✓
 
 **New file:** `tools/build_assets.py`
 **Files to modify:** `setup.bat`
@@ -221,7 +221,7 @@ Expect: no errors; manifest rebuilt; summary line printed.
 
 ---
 
-## Step 5 — Procedural Generation Framework (Phase 5.3)
+## Step 5 — Procedural Generation Framework (Phase 5.3) ✓
 
 **New directory:** `backend/engine/procgen/`
 **New files:** `backend/engine/procgen/__init__.py`, `backend/engine/procgen/wfc.py`
@@ -346,7 +346,7 @@ python -c "from backend.app import app; print('app ok')"
 
 ---
 
-## Step 6 — Hot Reload (Phase 5.4, Dev Mode)
+## Step 6 — Hot Reload (Phase 5.4, Dev Mode) ✓
 
 **New file:** `backend/engine/hot_reload.py`
 **Files to modify:** `backend/app.py`, `setup.bat`
@@ -434,7 +434,7 @@ python -c "from backend.app import app; print('app ok')"
 
 ---
 
-## Step 7 — Smoke Test
+## Step 7 — Smoke Test ✓
 
 Run the full import check:
 
@@ -473,28 +473,28 @@ print('wfc ok')
 
 Manual checks:
 
-- [ ] `python tools/build_assets.py` runs without errors and prints a summary.
-- [ ] `frontend/assets/manifest.json` exists, is valid JSON, and contains `"version": 1`.
+- [x] `python tools/build_assets.py` runs without errors and prints a summary.
+- [x] `frontend/assets/manifest.json` exists, is valid JSON, and contains `"version": 1`.
 - [ ] `assetLoader.loadManifest()` resolves without error in the browser console.
-- [ ] `WFCSolver` produces an 8×8 grid with no `WFCContradiction`.
+- [x] `WFCSolver` produces an 8×8 grid with no `WFCContradiction`.
 - [ ] `HotReloadWatcher` starts when `DEV_HOT_RELOAD=1` and does not affect the non-dev boot path.
-- [ ] `python -c "from backend.app import app; print('app ok')"` passes cleanly.
+- [x] `python -c "from backend.app import app; print('app ok')"` passes cleanly.
 
 ---
 
 ## Success Criteria
 
-- [ ] `tools/build_manifest.py` — generates `frontend/assets/manifest.json` from the assets directory
-- [ ] `tools/build_assets.py` — orchestrates param map packing, manifest build, and animation validation; hash-cached
-- [ ] `tools/.asset_cache.json` — hash cache written by `build_assets.py`
-- [ ] `frontend/assets/manifest.json` — auto-generated; contains `images`, `animations`, `materials`, `audio` sections
-- [ ] `frontend/js/engine/assetLoader.js` — `loadManifest()` method; `manifestReady` promise; backward-compatible with hard-coded entries
-- [ ] `config/engine.json` — `"asset_manifest_path"` key added
-- [ ] `config/game.json` — `"wfc_tile_rules"` key with at least `"grass"`, `"dirt"`, `"water"` tiles
-- [ ] `backend/engine/procgen/__init__.py` — exports `WFCSolver`, `TileRule`, `WFCContradiction`, `load_rules`
-- [ ] `backend/engine/procgen/wfc.py` — `WFCSolver`, `TileRule`, `WFCContradiction`, `load_rules`
-- [ ] `backend/engine/hot_reload.py` — `HotReloadWatcher`; only activated when `DEV_HOT_RELOAD=1`
-- [ ] `requirements.txt` — `watchdog==6.0.0` added
-- [ ] `setup.bat` — `python tools/build_assets.py` added; hot-reload opt-in comment added
-- [ ] SocketIO `state_update` payload unchanged
-- [ ] No game-layer Python files modified
+- [x] `tools/build_manifest.py` — generates `frontend/assets/manifest.json` from the assets directory
+- [x] `tools/build_assets.py` — orchestrates param map packing, manifest build, and animation validation; hash-cached
+- [x] `tools/.asset_cache.json` — hash cache written by `build_assets.py`
+- [x] `frontend/assets/manifest.json` — auto-generated; contains `images`, `animations`, `materials`, `audio` sections
+- [x] `frontend/js/engine/assetLoader.js` — `loadManifest()` method; `manifestReady` promise; backward-compatible with hard-coded entries
+- [x] `config/engine.json` — `"asset_manifest_path"` key added
+- [x] `config/game.json` — `"wfc_tile_rules"` key with at least `"grass"`, `"dirt"`, `"water"` tiles
+- [x] `backend/engine/procgen/__init__.py` — exports `WFCSolver`, `TileRule`, `WFCContradiction`, `load_rules`
+- [x] `backend/engine/procgen/wfc.py` — `WFCSolver`, `TileRule`, `WFCContradiction`, `load_rules`
+- [x] `backend/engine/hot_reload.py` — `HotReloadWatcher`; only activated when `DEV_HOT_RELOAD=1`
+- [x] `requirements.txt` — `watchdog==6.0.0` added
+- [x] `setup.bat` — `python tools/build_assets.py` added; hot-reload opt-in comment added
+- [x] SocketIO `state_update` payload unchanged
+- [x] No game-layer Python files modified

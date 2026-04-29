@@ -321,6 +321,16 @@ def handle_load_game(data):
         emit("error", {"message": f"Failed to load player: {str(e)}"})
 
 
+if os.environ.get("DEV_HOT_RELOAD", "0") == "1":
+    from backend.engine.hot_reload import HotReloadWatcher
+
+    _hot_reload = HotReloadWatcher(
+        socketio,
+        "frontend/assets",
+        "frontend/js/engine/sprites",
+    )
+    _hot_reload.start()
+
 if __name__ == "__main__":
     # Note: Game loop will start automatically when first player loads
 
