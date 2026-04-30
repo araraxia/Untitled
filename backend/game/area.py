@@ -1,20 +1,22 @@
 """World state manager."""
 
-from typing import Dict, List, Any, Optional
-from backend.game.config import DEF_AREA_WIDTH, DEF_AREA_HEIGHT
-from backend.engine.ecs.entity import Entity
-from backend.game.entities.player import PlayerCharacter
-from backend.engine.spatial import SpatialGrid
+from __future__ import annotations
+
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 import json
+
+from backend.engine.ecs.entity import Entity
+from backend.engine.save_format import SAVE_VERSION, migrate
+from backend.engine.spatial import SpatialGrid
+from backend.game.config import DEF_AREA_WIDTH, DEF_AREA_HEIGHT
+from backend.game.entities.player import PlayerCharacter
 
 
 class Area:
     """Manages the game world state and entities."""
 
-    def __init__(
-        self, area_id: Optional[str] = None, area_name: str = "Untitled Area"
-    ):
+    def __init__(self, area_id: Optional[str] = None, area_name: str = "Untitled Area"):
         self.area_id = area_id
         self.area_name = area_name
         self.width = DEF_AREA_WIDTH  # Default world dimensions
@@ -124,48 +126,99 @@ class Area:
         pass  # Implementation depends on file format
 
     @classmethod
-    def load_area(
-        cls, data_dir: Path, area_id: str
-    ) -> "Area":
+    def load_area(cls, data_dir: Path, area_id: str) -> Area:
         """Load an area from a JSON file.
 
+        Tries ``data_dir/area-<area_id>.json`` first, then falls back
+        to ``data_dir/current_area_data.json`` for legacy saves.
+        Runs :func:`~backend.engine.save_format.migrate` on the raw
+        data before deserialising.
+
         Args:
-            data_dir: Directory where area files are stored
-            area_id: ID of the area to load
-            world_id: ID of the world the area belongs to
+            data_dir: Directory where area files are stored.
+            area_id: ID of the area to load.
+
+        Returns:
+            Populated Area instance.
+
+        Raises:
+            FileNotFoundError: If neither file path exists.
         """
-        area_file = data_dir / f"area-{area_id}.json"
-        if not area_file.exists():
-            raise FileNotFoundError(f"Area file {area_file} does not exist.")
+        primary = data_dir / f"area-{area_id}.json"
+        legacy = data_dir / "current_area_data.json"
 
-        with open(area_file, "r") as f:
-            data = json.load(f)
+        if primary.exists():
+            area_file = primary
+        elif legacy.exists():
+            area_file = legacy
+        else:
+            raise FileNotFoundError(
+                f"Area file not found for area_id={area_id!r} " f"in {data_dir}"
+            )
 
-        area = cls(area_id=area_id, area_name=data.get("area_name", "Untitled Area"))
+        with open(area_file, "r", encoding="utf-8") as fh:
+            raw = json.load(fh)
+
+        data = migrate(raw)
+        return cls.from_dict(data)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize the area to a dictionary."""
+        return {
+            "save_version": SAVE_VERSION,
+            "area_id": self.area_id,
+            "area_name": self.area_name,
+            "width": self.width,
+            "height": self.height,
+            "entities": [entity.to_dict() for entity in self.entities.values()],
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> Area:
+        """Reconstruct an Area from a serialised dict.
+
+        Rebuilds the spatial grid from loaded entity positions.
+
+        Args:
+            data: Dict produced by :meth:`to_dict`, already migrated.
+
+        Returns:
+            Populated Area instance.
+        """
+        area = cls(
+            area_id=data.get("area_id"),
+            area_name=data.get("area_name", "Untitled Area"),
+        )
         area.width = data.get("width", DEF_AREA_WIDTH)
         area.height = data.get("height", DEF_AREA_HEIGHT)
+        area.spatial_grid = SpatialGrid(area.width, area.height)
 
-        # Load entities
-        entities_data = data.get("entities", {})
-        for entity_id, entity_data in entities_data.items():
+        entities_raw = data.get("entities", [])
+        # Support both list (new format) and dict (legacy format).
+        if isinstance(entities_raw, dict):
+            entity_iter = entities_raw.values()
+        else:
+            entity_iter = entities_raw
+        for entity_data in entity_iter:
             entity = Entity.deserialize(entity_data)
             area.add_entity(entity)
 
         return area
 
-    def to_dict(self) -> Dict[str, Any]:
-        """Serialize the area to a dictionary."""
-        return {
-            "area_id": self.area_id,
-            "area_name": self.area_name,
-            "width": self.width,
-            "height": self.height,
-            "entities": {
-                eid: entity.serialize() for eid, entity in self.entities.items()
-            },
-        }
+    def save_to_file(self, save_dir: Path) -> None:
+        """Save the area to ``save_dir/area-<area_id>.json``.
 
-    def save_area_to_file(self, data_dir: Path, file_name: str = "current_area_data.json"):
+        Args:
+            save_dir: Target directory (e.g. ``saves/<player_id>/``).
+        """
+        save_dir.mkdir(parents=True, exist_ok=True)
+        area_file = save_dir / f"area-{self.area_id or 'unknown'}.json"
+        with open(area_file, "w", encoding="utf-8") as fh:
+            json.dump(self.to_dict(), fh, indent=4)
+
+    def save_area_to_file(
+        self, data_dir: Path, file_name: str = "current_area_data.json"
+    ):
         """Save the area to a JSON file.
 
         Args:

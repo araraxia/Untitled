@@ -16,94 +16,107 @@ let socket;
  * @returns {void}
  */
 function initNetwork() {
-    // Connect to server
-    socket = io();
-    
-    // Make socket globally accessible for player selection
-    window.socket = socket;
-    
-    socket.on('connect', () => {
-        console.log('[Network] Connected to server');
-        
-        // If we're in player select context, request the player list
-        if (gameState && gameState.context === GameContext.PLAYER_SELECT) {
-            console.log('[Network] Auto-requesting player list after connection');
-            socket.emit('request_player_list');
-        }
-    });
-    
-    socket.on('disconnect', () => {
-        console.log('[Network] Disconnected from server');
-    });
-    
-    socket.on('connection_response', (data) => {
-        console.log('[Network] Connection response:', data);
-    });
-    
-    socket.on('initial_state', (data) => {
-        console.log('[Network] Received initial state:', data);
-        handleInitialState(data);
-    });
-    
-    socket.on('state_update', (data) => {
-        handleStateUpdate(data);
-    });
-    
-    socket.on('player_list', (data) => {
-        console.log('[Network] Received player list:', data);
-        populatePlayerList(data.players);
-    });
-    
-    socket.on('player_loaded', (data) => {
-        console.log('[Network] Player loaded:', data);
-        handleInitialState(data);
-    });
-    
-    socket.on('error', (data) => {
-        console.error('[Network] Server error:', data.message);
-        alert('Error: ' + data.message);
-    });
-    
-    socket.on('player_deleted', (data) => {
-        console.log('[Network] Player deleted:', data.player_id);
-        // Refresh the player list
-        socket.emit('request_player_list');
-    });
-    
-    socket.on('new_player_initialized', (data) => {
-        console.log('[Network] New player initialized:', data.player_id);
-        console.log('[Network] Starting character creation UI');
-        // Clear all existing UI elements
-        const gameContainer = document.getElementById('game-container');
-        const playerSelectContainer = document.getElementById('player-select-container');
-        const uiElements = document.getElementById('ui-elements');
-        
-        if (gameContainer) gameContainer.remove();
-        if (playerSelectContainer) playerSelectContainer.remove();
-        if (uiElements) uiElements.remove();
-        
-        // Start character creation process
-        if (typeof initCharacterCreation === 'function') {
-            initCharacterCreation();
-        } else {
-            console.error('[Network] Character creation function not available');
-        }
-    });
-    
-    socket.on('character_created', (data) => {
-        console.log('[Network] Character created successfully:', data);
-        // Close character creation overlay
-        const overlay = document.getElementById('character-creation-overlay');
-        if (overlay) {
-            overlay.remove();
-        }
-        
-        // Reload the page to show player select with the new character
-        console.log('[Network] Reloading page to show player select');
-        window.location.reload();
-    });
+  // Connect to server
+  socket = io();
 
-    console.log('[Network] Network initialized');
+  // Make socket globally accessible for player selection
+  window.socket = socket;
+
+  socket.on("connect", () => {
+    console.log("[Network] Connected to server");
+
+    // If we're in player select context, request the save list
+    if (gameState && gameState.context === GameContext.PLAYER_SELECT) {
+      console.log("[Network] Auto-requesting save list after connection");
+      socket.emit("request_save_list");
+    }
+  });
+
+  socket.on("disconnect", () => {
+    console.log("[Network] Disconnected from server");
+  });
+
+  socket.on("connection_response", (data) => {
+    console.log("[Network] Connection response:", data);
+  });
+
+  socket.on("initial_state", (data) => {
+    console.log("[Network] Received initial state:", data);
+    handleInitialState(data);
+  });
+
+  socket.on("state_update", (data) => {
+    handleStateUpdate(data);
+  });
+
+  socket.on("save_list", (data) => {
+    console.log("[Network] Received save list:", data);
+    populatePlayerList(data.saves);
+  });
+
+  socket.on("save_complete", (data) => {
+    console.log("[Network] Save complete:", data);
+    if (data.status === "error") {
+      console.error("[Network] Save failed:", data.message);
+    }
+  });
+
+  socket.on("autosave_complete", (data) => {
+    console.debug("[Network] Autosave:", data.status, "at tick", data.tick);
+  });
+
+  socket.on("player_loaded", (data) => {
+    console.log("[Network] Player loaded:", data);
+    handleInitialState(data);
+  });
+
+  socket.on("error", (data) => {
+    console.error("[Network] Server error:", data.message);
+    alert("Error: " + data.message);
+  });
+
+  socket.on("player_deleted", (data) => {
+    console.log("[Network] Player deleted:", data.player_id);
+    // Refresh the save list
+    socket.emit("request_save_list");
+  });
+
+  socket.on("new_player_initialized", (data) => {
+    console.log("[Network] New player initialized:", data.player_id);
+    console.log("[Network] Starting character creation UI");
+    // Clear all existing UI elements
+    const gameContainer = document.getElementById("game-container");
+    const playerSelectContainer = document.getElementById(
+      "player-select-container",
+    );
+    const uiElements = document.getElementById("ui-elements");
+
+    if (gameContainer) gameContainer.remove();
+    if (playerSelectContainer) playerSelectContainer.remove();
+    if (uiElements) uiElements.remove();
+
+    // Start character creation process
+    if (typeof initCharacterCreation === "function") {
+      initCharacterCreation();
+    } else {
+      console.error("[Network] Character creation function not available");
+    }
+  });
+
+  socket.on("character_created", (data) => {
+    console.log("[Network] Character created successfully:", data);
+    // Close character creation overlay
+    const overlay = document.getElementById("character-creation-overlay");
+    if (overlay) {
+      overlay.remove();
+    }
+
+    // Reload the page to show player select with the new character
+    console.log("[Network] Reloading page to show player select");
+    window.location.reload();
+  });
+
+  console.log("[Network] Network initialized");
 }
 
 /**
@@ -113,10 +126,10 @@ function initNetwork() {
  * @returns {void}
  */
 function sendPlayerAction(actionType, params = {}) {
-    socket.emit('player_action', {
-        type: actionType,
-        ...params
-    });
+  socket.emit("player_action", {
+    type: actionType,
+    ...params,
+  });
 }
 
 /**
@@ -127,9 +140,9 @@ function sendPlayerAction(actionType, params = {}) {
  * @returns {void}
  */
 function sendPartyCommand(memberId, commandType, params = {}) {
-    socket.emit('party_command', {
-        member_id: memberId,
-        type: commandType,
-        ...params
-    });
+  socket.emit("party_command", {
+    member_id: memberId,
+    type: commandType,
+    ...params,
+  });
 }

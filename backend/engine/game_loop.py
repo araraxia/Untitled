@@ -30,6 +30,9 @@ class GameLoop:
     def _do_tick(self, tick_start: float) -> None:
         """Execute one simulation tick. Override in subclasses."""
 
+    def _after_tick(self) -> None:
+        """Called after tick_count is incremented. Override in subclasses."""
+
     def run(self) -> None:
         """Main loop. Runs until stop() is called."""
         self.running = True
@@ -42,6 +45,7 @@ class GameLoop:
             tick_start = time.time()
             self._do_tick(tick_start)
             self.tick_count += 1
+            self._after_tick()
 
             elapsed = time.time() - tick_start
             sleep_time = max(0, TICK_DURATION - elapsed)

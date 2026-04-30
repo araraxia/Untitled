@@ -7,13 +7,13 @@
  * @returns {void}
  */
 function showPlayerSelectionMenu() {
-    console.log('[PlayerSelect] Displaying player selection menu');
-    gameState.context = GameContext.PLAYER_SELECT;
-    
-    // Create menu overlay
-    const menuOverlay = document.createElement('div');
-    menuOverlay.id = 'player-select-menu';
-    menuOverlay.style.cssText = `
+  console.log("[PlayerSelect] Displaying player selection menu");
+  gameState.context = GameContext.PLAYER_SELECT;
+
+  // Create menu overlay
+  const menuOverlay = document.createElement("div");
+  menuOverlay.id = "player-select-menu";
+  menuOverlay.style.cssText = `
         position: fixed;
         top: 0;
         left: 0;
@@ -25,9 +25,9 @@ function showPlayerSelectionMenu() {
         justify-content: center;
         z-index: 1000;
     `;
-    
-    const menuContainer = document.createElement('div');
-    menuContainer.style.cssText = `
+
+  const menuContainer = document.createElement("div");
+  menuContainer.style.cssText = `
         background: #2a2a2a;
         border: 2px solid #4CAF50;
         border-radius: 8px;
@@ -36,8 +36,8 @@ function showPlayerSelectionMenu() {
         width: 90%;
         color: #fff;
     `;
-    
-    menuContainer.innerHTML = `
+
+  menuContainer.innerHTML = `
         <h2 style="margin: 0 0 20px 0; text-align: center; color: #4CAF50;">Select Player</h2>
         <div id="player-list" style="margin-bottom: 20px;">
             <p style="text-align: center; color: #888;">Loading players...</p>
@@ -54,31 +54,35 @@ function showPlayerSelectionMenu() {
             margin-top: 10px;
         ">Create New Player</button>
     `;
-    
-    // Display menu
-    menuOverlay.appendChild(menuContainer);
-    document.body.appendChild(menuOverlay);
-    
-    // Player list will be requested automatically when socket connects (see network.js)
-    // If already connected, request now
-    if (window.socket && window.socket.connected) {
-        console.debug('[PlayerSelect] Socket already connected, requesting player list now');
-        window.socket.emit('request_player_list');
-    } else {
-        console.debug('[PlayerSelect] Waiting for socket connection to request player list');
-    }
-    
-    // Set up new player button
-    document.getElementById('new-player-btn').addEventListener('click', () => {
-        createNewPlayer();
-    });
+
+  // Display menu
+  menuOverlay.appendChild(menuContainer);
+  document.body.appendChild(menuOverlay);
+
+  // Save list will be requested automatically when socket connects (see network.js)
+  // If already connected, request now
+  if (window.socket && window.socket.connected) {
+    console.debug(
+      "[PlayerSelect] Socket already connected, requesting save list now",
+    );
+    window.socket.emit("request_save_list");
+  } else {
+    console.debug(
+      "[PlayerSelect] Waiting for socket connection to request save list",
+    );
+  }
+
+  // Set up new player button
+  document.getElementById("new-player-btn").addEventListener("click", () => {
+    createNewPlayer();
+  });
 }
 
 function createNewPlayer() {
-    console.log('[PlayerSelect] Creating new player');
-    // Create input dialog
-    const inputDialog = document.createElement('div');
-    inputDialog.style.cssText = `
+  console.log("[PlayerSelect] Creating new player");
+  // Create input dialog
+  const inputDialog = document.createElement("div");
+  inputDialog.style.cssText = `
         position: fixed;
         top: 50%;
         left: 50%;
@@ -90,8 +94,8 @@ function createNewPlayer() {
         z-index: 1001;
         min-width: 300px;
     `;
-    
-    inputDialog.innerHTML = `
+
+  inputDialog.innerHTML = `
         <h3 style="margin: 0 0 15px 0; color: #4CAF50;">New Player</h3>
         <input type="text" id="player-name-input" placeholder="Enter player name" style="
             width: 100%;
@@ -127,54 +131,70 @@ function createNewPlayer() {
             ">Cancel</button>
         </div>
     `;
-    
-    document.body.appendChild(inputDialog);
-    
-    const input = document.getElementById('player-name-input');
-    input.focus();
-    
-    const submitName = () => {
-        const playerName = input.value.trim();
-        if (playerName) {
-            console.log('[PlayerSelect] Creating new player:', playerName);
-            if (window.socket && window.socket.connected) {
-                window.socket.emit('new_player', { player_id: playerName });
-            }
-            inputDialog.remove();
-        }
-    };
-    
-    document.getElementById('create-confirm-btn').addEventListener('click', submitName);
-    document.getElementById('create-cancel-btn').addEventListener('click', () => {
-        inputDialog.remove();
-    });
-    
-    input.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            submitName();
-        }
-    });
+
+  document.body.appendChild(inputDialog);
+
+  const input = document.getElementById("player-name-input");
+  input.focus();
+
+  const submitName = () => {
+    const playerName = input.value.trim();
+    if (playerName) {
+      console.log("[PlayerSelect] Creating new player:", playerName);
+      if (window.socket && window.socket.connected) {
+        window.socket.emit("new_player", { player_id: playerName });
+      }
+      inputDialog.remove();
+    }
+  };
+
+  document
+    .getElementById("create-confirm-btn")
+    .addEventListener("click", submitName);
+  document.getElementById("create-cancel-btn").addEventListener("click", () => {
+    inputDialog.remove();
+  });
+
+  input.addEventListener("keypress", (e) => {
+    if (e.key === "Enter") {
+      submitName();
+    }
+  });
 }
 
 /**
- * Populate player list with available players
- * @param {Array<Object>} players - List of player data
+ * Format an ISO-8601 timestamp for display.
+ * Returns 'Never' if the value is null/undefined.
+ * @param {string|null} isoString - ISO-8601 timestamp or null
+ * @returns {string}
+ */
+function formatSaveDate(isoString) {
+  if (!isoString) return "Never";
+  const d = new Date(isoString);
+  if (isNaN(d.getTime())) return isoString;
+  return d.toLocaleString();
+}
+
+/**
+ * Populate the player list from save-slot summaries.
+ * @param {Array<Object>} saves - List of save-slot summary objects
  * @returns {void}
  */
-function populatePlayerList(players) {
-    const playerList = document.getElementById('player-list');
-    if (!playerList) return;
-    
-    if (!players || players.length === 0) {
-        playerList.innerHTML = '<p style="text-align: center; color: #888;">No saved players found</p>';
-        return;
-    }
-    
-    playerList.innerHTML = '';
-    
-    players.forEach(player => {
-        const playerItem = document.createElement('div');
-        playerItem.style.cssText = `
+function populatePlayerList(saves) {
+  const playerList = document.getElementById("player-list");
+  if (!playerList) return;
+
+  if (!saves || saves.length === 0) {
+    playerList.innerHTML =
+      '<p style="text-align: center; color: #888;">No saved players found</p>';
+    return;
+  }
+
+  playerList.innerHTML = "";
+
+  saves.forEach((save) => {
+    const playerItem = document.createElement("div");
+    playerItem.style.cssText = `
             padding: 15px;
             margin-bottom: 10px;
             background: #333;
@@ -184,13 +204,17 @@ function populatePlayerList(players) {
             transition: all 0.2s;
             position: relative;
         `;
-        
-        playerItem.innerHTML = `
-            <div style="font-weight: bold; margin-bottom: 5px;">${player.player_id}</div>
+
+    const displayName = save.player_name || save.player_id;
+    const lastSaved = formatSaveDate(save.last_save);
+    const tickCount = save.tick_count != null ? save.tick_count : 0;
+
+    playerItem.innerHTML = `
+            <div style="font-weight: bold; margin-bottom: 5px;">${displayName}</div>
             <div style="font-size: 12px; color: #aaa;">
-                Entities Controlled: ${player.controlled_entity_ids ? player.controlled_entity_ids.length : 0}
+                Last saved: ${lastSaved} &middot; Tick: ${tickCount}
             </div>
-            <button class="delete-player-btn" data-player-id="${player.player_id}" style="
+            <button class="delete-player-btn" data-player-id="${save.player_id}" style="
                 position: absolute;
                 top: 10px;
                 right: 10px;
@@ -204,42 +228,42 @@ function populatePlayerList(players) {
                 transition: background 0.2s;
             ">Delete</button>
         `;
-        
-        const deleteBtn = playerItem.querySelector('.delete-player-btn');
-        
-        // Delete button hover
-        deleteBtn.addEventListener('mouseenter', (e) => {
-            e.stopPropagation();
-            deleteBtn.style.background = '#b71c1c';
-        });
-        
-        deleteBtn.addEventListener('mouseleave', (e) => {
-            e.stopPropagation();
-            deleteBtn.style.background = '#d32f2f';
-        });
-        
-        // Delete button click
-        deleteBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            deletePlayer(player.player_id);
-        });
-        
-        playerItem.addEventListener('mouseenter', () => {
-            playerItem.style.background = '#444';
-            playerItem.style.borderColor = '#4CAF50';
-        });
-        
-        playerItem.addEventListener('mouseleave', () => {
-            playerItem.style.background = '#333';
-            playerItem.style.borderColor = '#555';
-        });
-        
-        playerItem.addEventListener('click', () => {
-            selectPlayer(player.player_id);
-        });
-        
-        playerList.appendChild(playerItem);
+
+    const deleteBtn = playerItem.querySelector(".delete-player-btn");
+
+    // Delete button hover
+    deleteBtn.addEventListener("mouseenter", (e) => {
+      e.stopPropagation();
+      deleteBtn.style.background = "#b71c1c";
     });
+
+    deleteBtn.addEventListener("mouseleave", (e) => {
+      e.stopPropagation();
+      deleteBtn.style.background = "#d32f2f";
+    });
+
+    // Delete button click
+    deleteBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      deletePlayer(save.player_id);
+    });
+
+    playerItem.addEventListener("mouseenter", () => {
+      playerItem.style.background = "#444";
+      playerItem.style.borderColor = "#4CAF50";
+    });
+
+    playerItem.addEventListener("mouseleave", () => {
+      playerItem.style.background = "#333";
+      playerItem.style.borderColor = "#555";
+    });
+
+    playerItem.addEventListener("click", () => {
+      selectPlayer(save.player_id);
+    });
+
+    playerList.appendChild(playerItem);
+  });
 }
 
 /**
@@ -248,25 +272,25 @@ function populatePlayerList(players) {
  * @returns {void}
  */
 function selectPlayer(playerId) {
-    console.log('[PlayerSelect] Player selected:', playerId);
-    gameState.selectedPlayerId = playerId;
-    
-    // Remove menu
-    const menu = document.getElementById('player-select-menu');
-    if (menu) {
-        menu.remove();
-    }
-    
-    // Set loading context
-    gameState.context = GameContext.LOADING;
-    
-    // Request player data and controlled entities from server
-    if (window.socket && window.socket.connected) {
-        console.log('[PlayerSelect] Requesting player data from server');
-        window.socket.emit('load_player', { player_id: playerId });
-    } else {
-        console.error('[PlayerSelect] Cannot load player: socket not connected');
-    }
+  console.log("[PlayerSelect] Player selected:", playerId);
+  gameState.selectedPlayerId = playerId;
+
+  // Remove menu
+  const menu = document.getElementById("player-select-menu");
+  if (menu) {
+    menu.remove();
+  }
+
+  // Set loading context
+  gameState.context = GameContext.LOADING;
+
+  // Request player data and controlled entities from server
+  if (window.socket && window.socket.connected) {
+    console.log("[PlayerSelect] Requesting player data from server");
+    window.socket.emit("load_player", { player_id: playerId });
+  } else {
+    console.error("[PlayerSelect] Cannot load player: socket not connected");
+  }
 }
 
 /**
@@ -280,65 +304,74 @@ function selectPlayer(playerId) {
  * @returns {void}
  */
 function loadGameState(data) {
-    console.log('[PlayerSelect] Loading game state...', data);
-    
-    // Hide loading indicator
-    const loadingIndicator = document.getElementById('loading-indicator');
-    if (loadingIndicator) {
-        loadingIndicator.style.display = 'none';
-    }
-    
-    // Set up the game world
-    if (data.world) {
-        gameState.worldSize = data.world;
-    }
-    
-    // Store player info
-    if (data.player_id) {
-        gameState.selectedPlayerId = data.player_id;
-    }
-    
-    // Initialize all entities
-    if (data.entities) {
-        gameState.entities = {};
-        for (const [entityId, entityData] of Object.entries(data.entities)) {
-            // Ensure entity has required properties for animation system
-            if (!entityData.state) entityData.state = 'idle';
-            if (!entityData.facing) entityData.facing = 'down';
-            
-            gameState.entities[entityId] = entityData;
-            
-            // Find the first controlled entity as the primary focus
-            if (data.controlled_entity_ids && data.controlled_entity_ids.includes(entityId)) {
-                if (!gameState.player) {
-                    gameState.player = entityData;
-                    // Center camera on first controlled entity
-                    gameState.camera.x = entityData.x - (window.innerWidth / 2);
-                    gameState.camera.y = entityData.y - (window.innerHeight / 2);
-                }
-            }
-            // Fallback to player type
-            else if (entityData.type === 'player' && !gameState.player) {
-                gameState.player = entityData;
-                // Center camera on player
-                gameState.camera.x = entityData.x - (window.innerWidth / 2);
-                gameState.camera.y = entityData.y - (window.innerHeight / 2);
-            }
-            
-            // Initialize interpolation for this entity
-            initEntityInterpolation(entityId, entityData);
+  console.log("[PlayerSelect] Loading game state...", data);
+
+  // Hide loading indicator
+  const loadingIndicator = document.getElementById("loading-indicator");
+  if (loadingIndicator) {
+    loadingIndicator.style.display = "none";
+  }
+
+  // Set up the game world
+  if (data.world) {
+    gameState.worldSize = data.world;
+  }
+
+  // Store player info
+  if (data.player_id) {
+    gameState.selectedPlayerId = data.player_id;
+  }
+
+  // Initialize all entities
+  if (data.entities) {
+    gameState.entities = {};
+    for (const [entityId, entityData] of Object.entries(data.entities)) {
+      // Ensure entity has required properties for animation system
+      if (!entityData.state) entityData.state = "idle";
+      if (!entityData.facing) entityData.facing = "down";
+
+      gameState.entities[entityId] = entityData;
+
+      // Find the first controlled entity as the primary focus
+      if (
+        data.controlled_entity_ids &&
+        data.controlled_entity_ids.includes(entityId)
+      ) {
+        if (!gameState.player) {
+          gameState.player = entityData;
+          // Center camera on first controlled entity
+          gameState.camera.x = entityData.x - window.innerWidth / 2;
+          gameState.camera.y = entityData.y - window.innerHeight / 2;
         }
+      }
+      // Fallback to player type
+      else if (entityData.type === "player" && !gameState.player) {
+        gameState.player = entityData;
+        // Center camera on player
+        gameState.camera.x = entityData.x - window.innerWidth / 2;
+        gameState.camera.y = entityData.y - window.innerHeight / 2;
+      }
+
+      // Initialize interpolation for this entity
+      initEntityInterpolation(entityId, entityData);
     }
-    
-    // Switch to in-game context
-    gameState.context = GameContext.IN_GAME;
-    
-    console.log('[PlayerSelect] Game state loaded. Entities:', Object.keys(gameState.entities).length);
-    console.log('[PlayerSelect] Controlled entities:', data.controlled_entity_ids);
-    
-    // Start render loop now that game is loaded
-    requestAnimationFrame(renderLoop);
-    console.log('[PlayerSelect] Game render loop started');
+  }
+
+  // Switch to in-game context
+  gameState.context = GameContext.IN_GAME;
+
+  console.log(
+    "[PlayerSelect] Game state loaded. Entities:",
+    Object.keys(gameState.entities).length,
+  );
+  console.log(
+    "[PlayerSelect] Controlled entities:",
+    data.controlled_entity_ids,
+  );
+
+  // Start render loop now that game is loaded
+  requestAnimationFrame(renderLoop);
+  console.log("[PlayerSelect] Game render loop started");
 }
 
 /**
@@ -347,11 +380,11 @@ function loadGameState(data) {
  * @returns {void}
  */
 function deletePlayer(playerId) {
-    console.log('[PlayerSelect] Delete player requested:', playerId);
-    
-    // Create confirmation dialog
-    const confirmDialog = document.createElement('div');
-    confirmDialog.style.cssText = `
+  console.log("[PlayerSelect] Delete player requested:", playerId);
+
+  // Create confirmation dialog
+  const confirmDialog = document.createElement("div");
+  confirmDialog.style.cssText = `
         position: fixed;
         top: 0;
         left: 0;
@@ -363,8 +396,8 @@ function deletePlayer(playerId) {
         justify-content: center;
         z-index: 1002;
     `;
-    
-    confirmDialog.innerHTML = `
+
+  confirmDialog.innerHTML = `
         <div style="
             background: #2a2a2a;
             border: 2px solid #d32f2f;
@@ -402,31 +435,34 @@ function deletePlayer(playerId) {
             </div>
         </div>
     `;
-    
-    document.body.appendChild(confirmDialog);
-    
-    document.getElementById('delete-confirm-btn').addEventListener('click', () => {
-        console.log('[PlayerSelect] Deleting player:', playerId);
-        if (window.socket && window.socket.connected) {
-            window.socket.emit('delete_player', { player_id: playerId });
-        }
-        confirmDialog.remove();
+
+  document.body.appendChild(confirmDialog);
+
+  document
+    .getElementById("delete-confirm-btn")
+    .addEventListener("click", () => {
+      console.log("[PlayerSelect] Deleting player:", playerId);
+      if (window.socket && window.socket.connected) {
+        window.socket.emit("delete_player", { player_id: playerId });
+      }
+      confirmDialog.remove();
+      // Refresh handled by network.js player_deleted → request_save_list
     });
-    
-    document.getElementById('delete-cancel-btn').addEventListener('click', () => {
-        confirmDialog.remove();
-    });
+
+  document.getElementById("delete-cancel-btn").addEventListener("click", () => {
+    confirmDialog.remove();
+  });
 }
 
 /**
- * Save current game state to server
- * TODO: Implement game state saving functionality
+ * Trigger a manual save via SocketIO and notify the player.
  * @returns {void}
  */
 function saveGameState() {
-    console.log('[PlayerSelect] Save game state - NOT YET IMPLEMENTED');
-    // TODO: Implement saving functionality
-    // - Serialize current game state
-    // - Send to server via socket
-    // - Handle save confirmation/errors
+  console.log("[PlayerSelect] Requesting manual save");
+  if (window.socket && window.socket.connected) {
+    window.socket.emit("save_game");
+  } else {
+    console.error("[PlayerSelect] Cannot save: socket not connected");
+  }
 }

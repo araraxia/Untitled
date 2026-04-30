@@ -1,8 +1,12 @@
 """Entity base class."""
 
+from __future__ import annotations
+
 import json
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional, Type
+
+from backend.engine.ecs.component import Component, _COMPONENT_REGISTRY
 
 ENTITY_DIR = Path("data/entities")
 
@@ -423,6 +427,135 @@ class Entity:
 
         # Equipment
         self.equipment = {}
+
+        # ECS component storage: type_id -> Component instance
+        self._components: Dict[int, Component] = {}
+
+    def add_component(self, component: Component) -> None:
+        """Attach *component* to this entity, replacing any existing
+        component of the same type."""
+        self._components[type(component).type_id] = component
+
+    def get_component(self, component_type: Type[Component]) -> Optional[Component]:
+        """Return the attached component of *component_type*, or None."""
+        return self._components.get(component_type.type_id)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialise the entity and all attached ECS components.
+
+        Returns a JSON-compatible dict suitable for persistence.  The
+        ``components`` list stores each component's :meth:`to_dict`
+        output so they can be fully reconstructed via
+        :meth:`from_dict`.
+        """
+        return {
+            "entity_id": self.entity_id,
+            "current_area_id": self.current_area_id,
+            "x": self.x,
+            "y": self.y,
+            "z": self.z,
+            "vx": self.vx,
+            "vy": self.vy,
+            "state": self.state,
+            "facing": self.facing,
+            "animation_data_paths": self.animation_data_paths,
+            "name": self.name,
+            "race": self.race,
+            "model_version": self.model_version,
+            "height": self.height,
+            "weight": self.weight,
+            "age": self.age,
+            "dob": self.dob,
+            "gender": self.gender,
+            "hair_style": self.hair_style,
+            "hair_color": self.hair_color,
+            "left_eye_color": self.left_eye_color,
+            "left_eye_type": self.left_eye_type,
+            "right_eye_color": self.right_eye_color,
+            "right_eye_type": self.right_eye_type,
+            "experience": self.experience,
+            "level": self.level,
+            "modifiers": self.modifiers,
+            "stats": self.stats,
+            "skills": self.skills,
+            "abilities": self.abilities,
+            "health": self.health,
+            "equipment": self.equipment,
+            "components": [comp.to_dict() for comp in self._components.values()],
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> Entity:
+        """Reconstruct an entity and its ECS components from a
+        serialised dict produced by :meth:`to_dict`.
+
+        Args:
+            data: Persistence dict with an ``entity_id`` key.
+
+        Returns:
+            Fully populated Entity instance.
+        """
+        entity = cls(
+            entity_id=data["entity_id"],
+            x=data.get("x"),
+            y=data.get("y"),
+            z=data.get("z"),
+            state=data.get("state", "idle"),
+            facing=data.get("facing", "down"),
+            animation_data_paths=data.get("animation_data_paths", []),
+        )
+        entity.current_area_id = data.get("current_area_id")
+        entity.vx = data.get("vx", 0.0)
+        entity.vy = data.get("vy", 0.0)
+        entity.name = data.get("name", "default")
+        entity.race = data.get("race", "human")
+        entity.model_version = data.get("model_version", "00")
+        entity.height = data.get("height", 0)
+        entity.weight = data.get("weight", 0)
+        entity.age = data.get("age", 0)
+        entity.dob = data.get("dob", "01/01/0001")
+        entity.gender = data.get("gender", "unspecified")
+        entity.hair_style = data.get("hair_style", 0)
+        entity.hair_color = data.get("hair_color", 0)
+        entity.left_eye_color = data.get("left_eye_color", 0)
+        entity.left_eye_type = data.get("left_eye_type", 0)
+        entity.right_eye_color = data.get("right_eye_color", 0)
+        entity.right_eye_type = data.get("right_eye_type", 0)
+        entity.experience = data.get("experience", 0)
+        entity.level = data.get("level", 1)
+        entity.modifiers.update(data.get("modifiers", {}))
+        entity.stats.update(data.get("stats", {}))
+        entity.skills = data.get("skills", {})
+        entity.abilities = data.get("abilities", {})
+        if "health" in data:
+            entity.health = data["health"]
+        entity.equipment = data.get("equipment", {})
+        for comp_data in data.get("components", []):
+            try:
+                comp = Component.from_dict(comp_data)
+                entity.add_component(comp)
+            except (ValueError, KeyError):
+                pass
+        return entity
+
+    @classmethod
+    def deserialize(cls, data: Dict[str, Any]) -> Entity:
+        """Reconstruct an entity from a serialised dict.
+
+        Accepts both the legacy network format (``"id"`` key produced
+        by :meth:`serialize`) and the persistence format
+        (``"entity_id"`` key produced by :meth:`to_dict`).
+
+        Args:
+            data: Dict from either :meth:`serialize` or :meth:`to_dict`.
+
+        Returns:
+            Reconstructed Entity instance.
+        """
+        # Normalise legacy key so from_dict can handle both formats.
+        if "entity_id" not in data and "id" in data:
+            data = dict(data, entity_id=data["id"])
+        return cls.from_dict(data)
 
     def update(self, delta_time: float):
         """Update entity state."""

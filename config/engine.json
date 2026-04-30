@@ -8,5 +8,7 @@
   "port": 5000,
   "debug": true,
   "log_dir": "logs",
-  "asset_manifest_path": "frontend/assets/manifest.json"
+  "asset_manifest_path": "frontend/assets/manifest.json",
+  "autosave_interval_ticks": 300,
+  "save_dir": "saves"
 }

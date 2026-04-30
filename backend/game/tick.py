@@ -3,9 +3,10 @@ broadcasts state deltas over SocketIO.
 """
 
 import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any, Dict, List, Optional
 
-from backend.engine.config import TICK_DURATION
+from backend.engine.config import TICK_DURATION, load_engine_config
 from backend.engine.events import EventBus
 from backend.engine.game_loop import GameLoop
 from backend.engine.ecs.world import World
@@ -55,6 +56,11 @@ class GameTick(GameLoop):
 
         # Update the spatial grid whenever an entity moves.
         self.event_bus.subscribe("entity_moved", self._on_entity_moved)
+
+        # Auto-save executor (single worker keeps saves serialised).
+        _engine_cfg = load_engine_config()
+        self._autosave_interval: int = _engine_cfg.autosave_interval_ticks
+        self._autosave_executor: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=1)
 
     def _on_entity_moved(self, payload: Dict[str, Any]) -> None:
         """Update the spatial grid when an entity moves."""
@@ -115,6 +121,34 @@ class GameTick(GameLoop):
                 "state_update",
                 {"tick": self.tick_count, "delta": state_delta},
             )
+
+    def _run_autosave(self) -> None:
+        """Execute a save in the background executor thread."""
+        from backend.save_manager import SaveManager
+
+        if not self.player_instance:
+            return
+        try:
+            sm = SaveManager(
+                self.socketio,
+                player_id=self.player_instance.player_id,
+            )
+            sm.save_game(self.player_instance, self)
+            self.socketio.emit(
+                "autosave_complete",
+                {"tick": self.tick_count, "status": "ok"},
+            )
+        except Exception:  # pragma: no cover
+            self.socketio.emit(
+                "autosave_complete",
+                {"tick": self.tick_count, "status": "error"},
+            )
+
+    def _after_tick(self) -> None:
+        """Submit an auto-save if the interval has elapsed."""
+        interval = self._autosave_interval
+        if interval > 0 and self.tick_count % interval == 0:
+            self._autosave_executor.submit(self._run_autosave)
 
     def start(self) -> object:
         """Start the game loop, resetting action queues first."""

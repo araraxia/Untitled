@@ -19,6 +19,8 @@ HOST: str = "0.0.0.0"
 PORT: int = 5000
 DEBUG: bool = True
 LOG_DIR: str = "logs"
+AUTOSAVE_INTERVAL_TICKS: int = 300
+SAVE_DIR: str = "saves"
 
 # ---------------------------------------------------------------------------
 # Injectable config schema
@@ -50,6 +52,8 @@ class EngineConfig:
     port: int = PORT
     debug: bool = DEBUG
     log_dir: str = LOG_DIR
+    autosave_interval_ticks: int = AUTOSAVE_INTERVAL_TICKS
+    save_dir: str = SAVE_DIR
 
 
 _SCHEMA: Dict[str, type] = {
@@ -62,6 +66,8 @@ _SCHEMA: Dict[str, type] = {
     "port": int,
     "debug": bool,
     "log_dir": str,
+    "autosave_interval_ticks": int,
+    "save_dir": str,
 }
 
 _DEFAULT_PATH: Path = (

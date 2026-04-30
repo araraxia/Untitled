@@ -78,7 +78,7 @@ Read these files before writing any code:
 
 ---
 
-## Step 1 — Audit Current State
+## Step 1 — Audit Current State ✅
 
 Before writing any code, read the key files listed above and produce a
 short summary covering:
@@ -100,7 +100,7 @@ proceed.
 
 ---
 
-## Step 2 — Save File Format & Directory Layout (Phase 6.1)
+## Step 2 — Save File Format & Directory Layout (Phase 6.1) ✅
 
 **Files to modify:** `config/engine.json`
 **New file:** `backend/engine/save_format.py`
@@ -166,7 +166,7 @@ class SaveVersionError(Exception):
 
 ---
 
-## Step 3 — Component Serialisation (Phase 6.2)
+## Step 3 — Component Serialisation (Phase 6.2) ✅
 
 **Files to modify:** `backend/engine/ecs/component.py`,
 `backend/engine/ecs/entity.py`
@@ -251,7 +251,7 @@ print('entity round-trip ok')
 
 ---
 
-## Step 4 — Area & World Serialisation (Phase 6.2 continued)
+## Step 4 — Area & World Serialisation (Phase 6.2 continued) ✅
 
 **Files to modify:** `backend/game/area.py`, `backend/game/world.py`
 
@@ -372,7 +372,7 @@ Used by the save management UI.
 
 ---
 
-## Step 6 — Auto-Save (Phase 6.3)
+## Step 6 — Auto-Save (Phase 6.3) ✅
 
 **Files to modify:** `backend/game/tick.py`, `backend/app.py`
 
@@ -407,7 +407,7 @@ and emit `save_complete` with `{'status': 'ok'|'error', 'message': '...'}`.
 
 ---
 
-## Step 7 — Save Management UI (Phase 6.3)
+## Step 7 — Save Management UI (Phase 6.3) ✅
 
 **Files to modify:** `frontend/js/game/playerSelect.js`
 
@@ -437,7 +437,7 @@ def handle_request_save_list():
 
 ---
 
-## Step 8 — Smoke Tests
+## Step 8 — Smoke Tests ✅
 
 Run all checks. All must pass before marking Phase 6 complete.
 

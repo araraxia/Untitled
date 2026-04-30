@@ -321,6 +321,37 @@ def handle_load_game(data):
         emit("error", {"message": f"Failed to load player: {str(e)}"})
 
 
+@socketio.on("save_game")
+def handle_save_game():
+    """Trigger a manual save for the current player."""
+    from backend.save_manager import SaveManager
+
+    player = game_loop.player_instance
+    if not player:
+        emit(
+            "save_complete",
+            {"status": "error", "message": "No active player."},
+        )
+        return
+    try:
+        sm = SaveManager(socketio, player_id=player.player_id)
+        sm.save_game(player, game_loop)
+        emit("save_complete", {"status": "ok", "message": "Game saved."})
+        logger.info(f"Manual save completed for player {player.player_id}")
+    except Exception as e:
+        logger.error(f"Error saving game: {e}")
+        emit("save_complete", {"status": "error", "message": str(e)})
+
+
+@socketio.on("request_save_list")
+def handle_request_save_list():
+    """Return a list of save-slot summaries."""
+    from backend.save_manager import SaveManager
+
+    saves = SaveManager.list_saves()
+    emit("save_list", {"saves": saves})
+
+
 if os.environ.get("DEV_HOT_RELOAD", "0") == "1":
     from backend.engine.hot_reload import HotReloadWatcher
 
