@@ -1,6 +1,6 @@
 ---
 agent: agent
-description: Implement the integrated audio engine for music and spatial sound effects (Phase 8 of ROADMAP.md). Covers Web Audio API wrapper, music bus with crossfade, spatial SFX, audio manifest, and backend SocketIO events.
+description: Implement the integrated audio engine for Phase 8 with SuperCollider + OSC event mapping as the primary method, and the in-engine Web Audio path focused on basic fallback tasks.
 tools:
   - read_file
   - create_file
@@ -15,8 +15,13 @@ tools:
 # Task: Audio (Phase 8)
 
 You are implementing the audio engine for this project. This is Phase 8
-of `ROADMAP.md`. Phase 5 (Asset Pipeline) is a prerequisite and is
-complete.
+of `ROADMAP.md` (sections 8.1-8.4). Phase 5 (Asset Pipeline) is a
+prerequisite and is complete.
+
+Treat SuperCollider + OSC as the primary runtime audio path for
+event-driven music behavior. The in-engine Web Audio `AudioEngine`
+remains required, but should focus on basic tasks (UI sounds, simple
+fallback music, and safe degraded behavior when OSC is unavailable).
 
 Complete all steps in order. Each step must leave the application in a
 runnable state before proceeding to the next.
@@ -27,7 +32,7 @@ runnable state before proceeding to the next.
 
 Read these files before writing any code:
 
-- `ROADMAP.md` — Phase 8 specification (sections 8.1–8.3)
+- `ROADMAP.md` — Phase 8 specification (sections 8.1-8.4)
 - `frontend/assets/manifest.json` — current asset registry; the `"audio"`
   section is an empty object; audio entries will be added here
 - `frontend/js/engine/assetLoader.js` — `AssetLoader`; audio file URLs
@@ -53,9 +58,17 @@ Read these files before writing any code:
 - Follow the Airbnb JavaScript style guide for all JS: 2-space indent,
   single quotes, semicolons.
 - All new JS classes and public functions must have JSDoc comments.
+- SuperCollider + OSC event mapping is the default orchestration path
+  for dynamic music and game-state-reactive audio behavior.
+- SocketIO naming must follow existing project conventions:
+  client->server events use `request_*`, server->client events use
+  descriptive snake_case names (for example: `play_music`,
+  `play_sfx`, `save_complete`). Payload keys must use snake_case.
 - `AudioContext` must not be created until after a user gesture (click
   or keydown) to comply with browser autoplay policy. Gate all
   `AudioEngine` initialisation behind this interaction.
+- Web Audio is the fallback/basic path and must remain available when
+  SuperCollider is disabled, not installed, or fails at runtime.
 - All audio routed through the three gain buses (`music`, `sfx`,
   `ambient`) before the master gain. Never connect a source node
   directly to `AudioContext.destination`.
@@ -139,170 +152,132 @@ add two placeholder stubs so the loader has something to exercise:
 
 ---
 
-## Step 3 — AudioEngine (Phase 8.1)
+## Step 3 — Primary Audio Path: SuperCollider + OSC Event Mapping
 
-**New file:** `frontend/js/engine/audioEngine.js`  
-**Files to modify:** `frontend/index.html`, `frontend/js/game/main.js`
+**Files to modify:** `backend/app.py`, `config/engine.json`,
+`requirements.txt`, `frontend/js/engine/network.js`,
+`frontend/js/game/main.js`
 
-### `frontend/js/engine/audioEngine.js`
+Implement SuperCollider + OSC as the primary event-driven audio runtime.
+This step is not optional.
 
-```js
-/**
- * AudioEngine — Web Audio API wrapper providing master gain, three
- * named buses (music, sfx, ambient), and spatial SFX support.
- *
- * Initialisation is deferred until the first user gesture.
- */
-```
+### Config and dependency setup
 
-The class must expose:
+1. Add an `audio.supercollider` block to `config/engine.json`:
 
-```js
-class AudioEngine {
-  /**
-   * @param {object} config  - The engine config `audio` block.
-   * @param {AssetLoader} assetLoader
-   */
-  constructor(config, assetLoader) { ... }
-
-  /**
-   * Create the AudioContext and bus graph.
-   * Must be called from a user-gesture handler (click / keydown).
-   * Safe to call more than once — subsequent calls are no-ops.
-   */
-  init() { ... }
-
-  /**
-   * Pre-fetch and decode an audio asset into an AudioBuffer.
-   * Resolved buffers are cached by asset ID.
-   * @param {string} assetId - Key from manifest `audio` section.
-   * @returns {Promise<AudioBuffer>}
-   */
-  async load(assetId) { ... }
-
-  /**
-   * Set the gain for a named bus.
-   * @param {'master'|'music'|'sfx'|'ambient'} bus
-   * @param {number} value - 0.0–1.0
-   */
-  setVolume(bus, value) { ... }
-
-  /**
-   * Play a music track, optionally crossfading from the current one.
-   * @param {string} assetId
-   * @param {object} [opts]
-   * @param {boolean} [opts.crossfade=true]
-   */
-  playMusic(assetId, opts = {}) { ... }
-
-  /**
-   * Stop the current music track.
-   * @param {object} [opts]
-   * @param {boolean} [opts.fade=true]
-   */
-  stopMusic(opts = {}) { ... }
-
-  /**
-   * Fire-and-forget spatial SFX.
-   * @param {string}  assetId
-   * @param {number}  worldX  - World-space X of the source.
-   * @param {number}  worldY  - World-space Y of the source.
-   */
-  playSFX(assetId, worldX, worldY) { ... }
-
-  /**
-   * Play a non-spatial (UI) SFX.
-   * @param {string} assetId
-   */
-  playUISFX(assetId) { ... }
-
-  /**
-   * Update the Web Audio listener position from the camera.
-   * Call once per frame before spatial SFX are fired.
-   * @param {number} cameraX
-   * @param {number} cameraY
-   */
-  updateListener(cameraX, cameraY) { ... }
+```json
+"supercollider": {
+  "enabled": true,
+  "host": "127.0.0.1",
+  "port": 57120,
+  "auto_launch": false,
+  "launch_command": "scsynth"
 }
 ```
 
-#### Bus graph
+2. Add `python-osc` to `requirements.txt` with a pinned version.
 
+### Backend OSC bridge (`backend/app.py`)
+
+1. Add an OSC sender wrapper initialised from config.
+2. Add helpers:
+
+```python
+def osc_send_tempo(bpm: float) -> None: ...
+def osc_send_pattern(name: str, payload: dict) -> None: ...
+def osc_send_event(event_name: str, payload: dict) -> None: ...
 ```
-[source nodes]
-     │
-[PannerNode]  ← spatial SFX only; UI SFX bypass the panner
-     │
-[sfx GainNode]  /  [music GainNode]  /  [ambient GainNode]
-     └─────────────────┬────────────────────────┘
-               [master GainNode]
-                       │
-            [AudioContext.destination]
-```
 
-#### Music crossfade
+3. Add optional process launch/supervision when
+   `audio.supercollider.auto_launch` is true.
+4. Ensure send paths are no-op safe when disabled or unavailable.
 
-`playMusic(assetId, { crossfade: true })` must:
+### Required event mapping
 
-1. Start the new track at gain 0 on the music bus (a separate per-source
-   `GainNode` chained into the music bus).
-2. Ramp the new track gain from 0 → 1 over `crossfade_duration_ms`.
-3. Ramp the previous track gain from 1 → 0 over the same duration, then
-   stop the old source node.
+- `area_enter` -> tempo or scene pattern change
+- `combat_start` -> intensity layer/pattern trigger
+- `low_health` -> warning texture/sidechain cue
 
-Use `AudioParam.linearRampToValueAtTime` for ramps.
+Payloads should include `event_name`, `timestamp`, `area_id`, `intensity`,
+`hp_ratio` where applicable.
 
-#### Loop points
+### Frontend control wiring
 
-When creating a `BufferSourceNode` for a `loop: true` asset, set:
+Add client->server debug controls in `network.js`/`main.js` for local
+validation of OSC dispatches without full gameplay.
 
-```js
-source.loop = true;
-source.loopStart = manifest.audio[assetId].loop_start_s;
-if (manifest.audio[assetId].loop_end_s !== null) {
-  source.loopEnd = manifest.audio[assetId].loop_end_s;
+Use these SocketIO event names for OSC dispatch requests/results:
+
+- client -> server: `request_osc_event`
+- server -> client: `osc_dispatch_complete`
+
+Use this payload schema for `request_osc_event`:
+
+```json
+{
+  "event_name": "area_enter|combat_start|low_health",
+  "timestamp": 0,
+  "area_id": "string-or-null",
+  "intensity": 0.0,
+  "hp_ratio": 1.0
 }
 ```
 
-#### Spatial positioning
+Use this payload schema for `osc_dispatch_complete`:
 
-`playSFX` creates a `PannerNode` configured as:
-
-```js
-panner.panningModel = "HRTF";
-panner.distanceModel = "inverse";
-panner.refDistance = config.spatial_ref_distance;
-panner.maxDistance = config.spatial_max_distance;
-panner.rolloffFactor = 1;
-panner.setPosition(worldX, worldY, 0);
+```json
+{
+  "status": "ok|error|fallback",
+  "event_name": "string",
+  "message": "string"
+}
 ```
-
-The Web Audio listener (`audioContext.listener`) must be updated each
-frame via `updateListener(cameraX, cameraY)`. Set only `positionX` /
-`positionY` (and `positionZ = 0`); do not alter orientation.
-
-### Wiring into `main.js`
-
-1. Add a module-level `let audioEngine = null;` variable.
-2. In the first-user-interaction handler (or create one if absent):
-   ```js
-   audioEngine = new AudioEngine(engineConfig.audio, assetLoader);
-   audioEngine.init();
-   ```
-3. Call `audioEngine.updateListener(gameState.camera.x, gameState.camera.y)`
-   in the render loop, after camera state is updated.
-
-### `frontend/index.html`
-
-Add the script tag for `audioEngine.js` in the Engine section, before
-`network.js`.
 
 ---
 
-## Step 4 — Music Playback Integration (Phase 8.2)
+## Step 4 — Event Routing Integration (OSC-first)
 
 **Files to modify:** `frontend/js/engine/network.js`,
-`frontend/js/game/main.js`
+`frontend/js/game/main.js`, `backend/app.py`
+
+Create an OSC-first event routing contract:
+
+1. Server emits snake_case audio intent events (`play_music`,
+   `stop_music`, `play_sfx`) and gameplay event signals mapped to OSC
+   (`area_enter`, `combat_start`, `low_health`).
+2. Frontend routes those intents to backend OSC dispatch endpoints first.
+3. If OSC is unavailable, frontend invokes basic `AudioEngine` fallback
+   handlers for simple playback.
+
+Add or extend callbacks to preserve this order:
+
+```text
+intent event -> OSC dispatch attempt -> fallback Web Audio action
+```
+
+---
+
+## Step 5 — Basic Audio Engine Fallback (Phase 8.1-8.3 subset)
+
+**New file:** `frontend/js/engine/audioEngine.js`
+**Files to modify:** `frontend/index.html`,
+`frontend/js/engine/network.js`, `frontend/js/game/main.js`
+
+### Scope of this step
+
+Implement only the basic in-engine behaviors needed as fallback:
+
+- UI SFX playback
+- Simple music start/stop with optional fade
+- Spatial SFX support sufficient for degraded mode
+- Listener position updates from camera
+
+Do not treat this step as the primary orchestration layer.
+
+Create a minimal `AudioEngine` wrapper with only the fallback APIs used
+in this prompt (`init`, `load`, `playMusic`, `stopMusic`, `playSFX`,
+`playUISFX`, `updateListener`). Add its script in `frontend/index.html`
+before `network.js`.
 
 ### SocketIO events in `network.js`
 
@@ -334,7 +309,7 @@ function setStopMusicCallback(fn) {
 
 ### Wiring into `main.js`
 
-After `audioEngine` is created, register the callbacks:
+After `audioEngine` is created, register fallback callbacks:
 
 ```js
 setPlayMusicCallback(({ asset_id, crossfade = true }) => {
@@ -347,7 +322,7 @@ setStopMusicCallback(({ fade = true }) => audioEngine.stopMusic({ fade }));
 
 ---
 
-## Step 5 — Spatial SFX Integration (Phase 8.3)
+## Step 6 — Spatial SFX Fallback Integration
 
 **Files to modify:** `frontend/js/engine/network.js`,
 `frontend/js/game/main.js`
@@ -378,7 +353,7 @@ setPlaySFXCallback(({ asset_id, world_x, world_y }) => {
 
 ---
 
-## Step 6 — Backend SocketIO Stubs
+## Step 7 — Backend SocketIO Stubs
 
 **File to modify:** `backend/app.py`
 
@@ -387,14 +362,19 @@ that let the frontend be exercised without a full game session; they will
 be replaced with real game-driven emissions in a later phase.
 
 ```python
-@socketio.on('request_play_music')
+@socketio.on("request_play_music")
 def handle_request_play_music(data):
     """Debug: emit a play_music event back to the requesting client."""
     ...
 
-@socketio.on('request_play_sfx')
+@socketio.on("request_play_sfx")
 def handle_request_play_sfx(data):
     """Debug: emit a play_sfx event back to the requesting client."""
+    ...
+
+@socketio.on("request_osc_event")
+def handle_request_osc_event(data):
+    """Dispatch an OSC event and report completion status to client."""
     ...
 ```
 
@@ -404,7 +384,17 @@ on area transition:
 ```python
 def emit_play_music(asset_id: str, crossfade: bool = True) -> None:
     """Broadcast a play_music event to all connected clients."""
-    socketio.emit('play_music', {'asset_id': asset_id, 'crossfade': crossfade})
+    socketio.emit(
+        "play_music",
+        {"asset_id": asset_id, "crossfade": crossfade},
+    )
+
+def emit_play_sfx(asset_id: str, world_x: float, world_y: float) -> None:
+    """Broadcast a play_sfx event to all connected clients."""
+    socketio.emit(
+        "play_sfx",
+        {"asset_id": asset_id, "world_x": world_x, "world_y": world_y},
+    )
 ```
 
 Verify:
@@ -415,7 +405,7 @@ python -c "from backend.app import app; print('app ok')"
 
 ---
 
-## Step 7 — Asset Pipeline Update
+## Step 8 — Asset Pipeline Update
 
 **Files to modify:** `tools/build_assets.py`, `tools/build_manifest.py`
 (or whichever script generates `manifest.json`)
@@ -440,7 +430,42 @@ included in its run sequence.
 
 ---
 
-## Step 8 — ROADMAP Update
+## Step 9 — OSC Production Hardening
+
+**Files to modify:** `backend/app.py`, `config/engine.json`,
+`requirements.txt`, `frontend/js/engine/network.js`,
+`frontend/js/game/main.js`
+
+Harden the primary SuperCollider + OSC pipeline for production behavior
+and observability. Do not re-implement setup from Step 3.
+
+### Hardening tasks
+
+1. Add OSC health tracking and last-send status for diagnostics.
+2. Add rate limiting/debouncing for high-frequency game events.
+3. Add bounded retry logic for transient OSC send failures.
+4. Add a dead-letter log path for dropped OSC messages.
+5. Add structured warning logs that include event name and payload size.
+6. Add a clear fallback decision path in logs when Web Audio handles an
+   event due to OSC unavailability.
+
+### Frontend diagnostics
+
+Expose a debug callback/state in `main.js` that reports whether each
+audio intent was handled by OSC or fallback Web Audio.
+
+### Verification
+
+```bash
+python -c "from backend.app import app; print('app ok')"
+```
+
+When SuperCollider is unavailable, verify startup succeeds, a warning is
+logged, and basic Web Audio fallback still works.
+
+---
+
+## Step 10 — ROADMAP Update
 
 **File to modify:** `ROADMAP.md`
 

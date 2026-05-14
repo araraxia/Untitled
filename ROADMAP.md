@@ -212,7 +212,7 @@ Define the stable API that game code calls into:
 
 ---
 
-## Phase 5 — Asset Pipeline
+## Phase 5 — Asset Pipeline ✅
 
 **Goal:** Build a reliable, repeatable pipeline from source assets to engine-ready data.
 
@@ -312,6 +312,15 @@ Define the stable API that game code calls into:
 - `PannerNode` per active sound source
 - Entity position → panner x/y, camera defines listener position
 - Fire-and-forget API: `audioEngine.playSFX(sfxId, worldX, worldY)`
+
+### 8.4 — Live Coding Option (SuperCollider + OSC)
+
+- Optional external audio pipeline for live-coded or procedural music design
+- Launch and supervise SuperCollider (`scsynth`/`sclang`) from backend startup
+- Use OSC bridge (`python-osc`) to send tempo, pattern, and event messages
+- Map game events (`area_enter`, `combat_start`, `low_health`) to OSC cues
+- Fallback to in-engine Web Audio playback if SuperCollider is unavailable
+- Keep this path optional so packaged builds can ship without requiring SuperCollider
 
 ---
 
