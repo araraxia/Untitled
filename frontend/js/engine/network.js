@@ -6,6 +6,71 @@
 let socket;
 
 /**
+ * Character flow callbacks.
+ * Network layer forwards onboarding-related events through this object.
+ */
+const characterFlowCallbacks = {
+  onSaveList: null,
+  onNewPlayerInitialized: null,
+  onCharacterCreated: null,
+  onRacesList: null,
+  onBackgroundsList: null,
+  onCharacterFlowError: null,
+};
+
+/**
+ * Register character flow callbacks.
+ *
+ * @param {Object} callbacks - Callback map.
+ * @param {Function|null} [callbacks.onSaveList]
+ * @param {Function|null} [callbacks.onNewPlayerInitialized]
+ * @param {Function|null} [callbacks.onCharacterCreated]
+ * @param {Function|null} [callbacks.onRacesList]
+ * @param {Function|null} [callbacks.onBackgroundsList]
+ * @param {Function|null} [callbacks.onCharacterFlowError]
+ * @returns {void}
+ */
+function setCharacterFlowCallbacks(callbacks) {
+  if (!callbacks || typeof callbacks !== 'object') {
+    return;
+  }
+
+  characterFlowCallbacks.onSaveList = callbacks.onSaveList || null;
+  characterFlowCallbacks.onNewPlayerInitialized =
+    callbacks.onNewPlayerInitialized || null;
+  characterFlowCallbacks.onCharacterCreated =
+    callbacks.onCharacterCreated || null;
+  characterFlowCallbacks.onRacesList = callbacks.onRacesList || null;
+  characterFlowCallbacks.onBackgroundsList =
+    callbacks.onBackgroundsList || null;
+  characterFlowCallbacks.onCharacterFlowError =
+    callbacks.onCharacterFlowError || null;
+}
+
+/**
+ * Invoke a registered character flow callback safely.
+ *
+ * @param {'onSaveList'|'onNewPlayerInitialized'|'onCharacterCreated'|'onRacesList'|'onBackgroundsList'|'onCharacterFlowError'} callbackName
+ * @param {Object} payload
+ * @returns {void}
+ */
+function invokeCharacterFlowCallback(callbackName, payload) {
+  const callback = characterFlowCallbacks[callbackName];
+  if (typeof callback !== 'function') {
+    return;
+  }
+
+  try {
+    callback(payload);
+  } catch (error) {
+    console.error(
+      `[Network] Character flow callback failed: ${callbackName}`,
+      error,
+    );
+  }
+}
+
+/**
  * Initialize WebSocket connection and set up event handlers
  * Connects to the server and registers handlers for:
  * - connect: Connection established
@@ -51,7 +116,15 @@ function initNetwork() {
 
   socket.on("save_list", (data) => {
     console.log("[Network] Received save list:", data);
-    populatePlayerList(data.saves);
+    invokeCharacterFlowCallback('onSaveList', data);
+  });
+
+  socket.on('races_list', (data) => {
+    invokeCharacterFlowCallback('onRacesList', data);
+  });
+
+  socket.on('backgrounds_list', (data) => {
+    invokeCharacterFlowCallback('onBackgroundsList', data);
   });
 
   socket.on("save_complete", (data) => {
@@ -72,7 +145,7 @@ function initNetwork() {
 
   socket.on("error", (data) => {
     console.error("[Network] Server error:", data.message);
-    alert("Error: " + data.message);
+    invokeCharacterFlowCallback('onCharacterFlowError', data);
   });
 
   socket.on("player_deleted", (data) => {
@@ -83,37 +156,12 @@ function initNetwork() {
 
   socket.on("new_player_initialized", (data) => {
     console.log("[Network] New player initialized:", data.player_id);
-    console.log("[Network] Starting character creation UI");
-    // Clear all existing UI elements
-    const gameContainer = document.getElementById("game-container");
-    const playerSelectContainer = document.getElementById(
-      "player-select-container",
-    );
-    const uiElements = document.getElementById("ui-elements");
-
-    if (gameContainer) gameContainer.remove();
-    if (playerSelectContainer) playerSelectContainer.remove();
-    if (uiElements) uiElements.remove();
-
-    // Start character creation process
-    if (typeof initCharacterCreation === "function") {
-      initCharacterCreation();
-    } else {
-      console.error("[Network] Character creation function not available");
-    }
+    invokeCharacterFlowCallback('onNewPlayerInitialized', data);
   });
 
   socket.on("character_created", (data) => {
     console.log("[Network] Character created successfully:", data);
-    // Close character creation overlay
-    const overlay = document.getElementById("character-creation-overlay");
-    if (overlay) {
-      overlay.remove();
-    }
-
-    // Reload the page to show player select with the new character
-    console.log("[Network] Reloading page to show player select");
-    window.location.reload();
+    invokeCharacterFlowCallback('onCharacterCreated', data);
   });
 
   console.log("[Network] Network initialized");
