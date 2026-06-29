@@ -27,11 +27,11 @@ The engine is not a separate product — it is the lower half of this same repos
 | ----- | ---- | ------ |
 | 0 | WebGPU Foundation | ✅ Complete |
 | 1 | Engine–Game Separation | ✅ Complete |
-| 2 | Graphics Pipeline Completion | 🔲 Not started |
+| 2 | Graphics Pipeline Completion | ✅ Complete |
 | 3 | ECS Overhaul | ✅ Complete |
-| 4 | Simulation Systems | 🔲 Not started |
+| 4 | Simulation Systems | ✅ Complete |
 | 5 | Asset Pipeline | ✅ Complete |
-| 6 | Save / Load / Persistence | 🔲 In Progress |
+| 6 | Save / Load / Persistence | ✅ Complete |
 | 7 | UI Framework | 🔲 Not started |
 | 8 | Audio | 🔲 Not started |
 | 9 | Distribution & Tooling | 🔲 Not started |
@@ -108,7 +108,7 @@ Define the stable API that game code calls into:
 
 ---
 
-## Phase 2 — Graphics Pipeline Completion
+## Phase 2 — Graphics Pipeline Completion ✅
 
 **Goal:** Complete the material system, parameter maps, and combiner as specified in `docs/graphics/OVERVIEW.md` (steps 3–5), then extend with lighting.
 
@@ -241,7 +241,7 @@ Define the stable API that game code calls into:
 
 ---
 
-## Phase 6 — Save / Load / Persistence
+## Phase 6 — Save / Load / Persistence ✅
 
 **Goal:** Persistent game state that survives process restarts, with clean versioning.
 
@@ -356,11 +356,11 @@ Each phase has a companion agent prompt in `.github/prompts/`:
 | ----- | ----------- |
 | 0 | `webgpu-migration.prompt.md` ✅ |
 | 1 | `engine-architecture.prompt.md` |
-| 2 | `material-system.prompt.md` |
+| 2 | `material-system.prompt.md` ✅ |
 | 3 | `ecs-overhaul.prompt.md` ✅ |
 | 4 | `simulation-systems.prompt.md` |
 | 5 | `asset-pipeline.prompt.md` |
-| 6 | `save-load.prompt.md` |
+| 6 | `save-load.prompt.md` ✅ |
 | 7 | `ui-framework.prompt.md` |
 | 8 | `audio.prompt.md` |
 | 9 | `distribution.prompt.md` |

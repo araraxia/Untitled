@@ -176,6 +176,15 @@ def handle_load_game(data):
         emit("error", {"message": f"Failed to load player: {str(e)}"})
 
 
+@socketio.on("request_save_list")
+def handle_request_save_list():
+    """Return a list of save-slot summaries to the requesting client."""
+    from backend.save_manager import SaveManager
+
+    saves = SaveManager.list_saves()
+    emit("save_list", {"saves": saves})
+
+
 @socketio.on("save_game")
 def handle_save_game():
     """Trigger a manual save for the current player."""
