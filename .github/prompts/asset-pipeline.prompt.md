@@ -50,7 +50,7 @@ Read these files before writing any code:
 
 ---
 
-## Step 1 — Audit Current State
+## Step 1 — Audit Current State ✅
 
 Before writing any code, read the key files listed above and produce a short summary covering:
 
@@ -64,7 +64,7 @@ Do not create or edit any files in this step. Output your findings and then proc
 
 ---
 
-## Step 2 — Asset Manifest (Phase 5.1) ✓
+## Step 2 — Asset Manifest (Phase 5.1) ✅
 
 **New file:** `frontend/assets/manifest.json` (generated, not hand-authored)
 **New file:** `tools/build_manifest.py`
@@ -144,7 +144,7 @@ print('image count:', len(m['images']))
 
 ---
 
-## Step 3 — Manifest-Driven AssetLoader (Phase 5.1 continued) ✓
+## Step 3 — Manifest-Driven AssetLoader (Phase 5.1 continued) ✅
 
 **Files to modify:** `frontend/js/engine/assetLoader.js`
 
@@ -181,7 +181,7 @@ Verify manually: open the browser, open the DevTools console, and confirm no `[A
 
 ---
 
-## Step 4 — Build Tools (Phase 5.2) ✓
+## Step 4 — Build Tools (Phase 5.2) ✅
 
 **New file:** `tools/build_assets.py`
 **Files to modify:** `setup.bat`
@@ -221,7 +221,7 @@ Expect: no errors; manifest rebuilt; summary line printed.
 
 ---
 
-## Step 5 — Procedural Generation Framework (Phase 5.3) ✓
+## Step 5 — Procedural Generation Framework (Phase 5.3) ✅
 
 **New directory:** `backend/engine/procgen/`
 **New files:** `backend/engine/procgen/__init__.py`, `backend/engine/procgen/wfc.py`
@@ -346,7 +346,7 @@ python -c "from backend.app import app; print('app ok')"
 
 ---
 
-## Step 6 — Hot Reload (Phase 5.4, Dev Mode) ✓
+## Step 6 — Hot Reload (Phase 5.4, Dev Mode) ✅
 
 **New file:** `backend/engine/hot_reload.py`
 **Files to modify:** `backend/app.py`, `setup.bat`
@@ -434,7 +434,7 @@ python -c "from backend.app import app; print('app ok')"
 
 ---
 
-## Step 7 — Smoke Test ✓
+## Step 7 — Smoke Test ✅
 
 Run the full import check:
 

@@ -39,7 +39,7 @@ Read these files before writing any code:
 
 ---
 
-## Step 1 — Audit Current Coupling
+## Step 1 — Audit Current Coupling ✅
 
 Before moving a single file, produce a coupling map. Read every Python file and list:
 
@@ -51,7 +51,7 @@ Do not create or edit any files in this step. Output your findings as a brief su
 
 ---
 
-## Step 2 — Create Package Skeletons
+## Step 2 — Create Package Skeletons ✅
 
 Create the new directory structure without moving any code yet. Add only `__init__.py` files:
 
@@ -69,7 +69,7 @@ Verify: `python -m py_compile backend/engine/__init__.py` and equivalent for eac
 
 ---
 
-## Step 3 — Split `config.py`
+## Step 3 — Split `config.py` ✅
 
 Separate configuration into two files:
 
@@ -103,7 +103,7 @@ This preserves all existing `from backend.config import X` statements without ch
 
 ---
 
-## Step 4 — Move Spatial Partitioning to Engine
+## Step 4 — Move Spatial Partitioning to Engine ✅
 
 `backend/simulation/spatial.py` is pure-infrastructure; it has no game-specific content.
 
@@ -124,7 +124,7 @@ Tasks:
 
 ---
 
-## Step 5 — Move `Entity` Base Class to Engine ECS
+## Step 5 — Move `Entity` Base Class to Engine ECS ✅
 
 `backend/simulation/entity.py` contains the `Entity` base class, which should be engine-level. Game-specific entity types will subclass it.
 
@@ -144,7 +144,7 @@ Tasks:
 
 ---
 
-## Step 6 — Move Game Entities to `backend/game/entities/`
+## Step 6 — Move Game Entities to `backend/game/entities/` ✅
 
 The concrete entity classes (`player.py`, `party.py`, `races.py`) are game content, not engine infrastructure.
 
@@ -164,7 +164,7 @@ Tasks:
 
 ---
 
-## Step 7 — Move Game Systems to `backend/game/systems/`
+## Step 7 — Move Game Systems to `backend/game/systems/` ✅
 
 `backend/simulation/systems.py` and `backend/simulation/actions.py` contain game-specific logic.
 
@@ -183,7 +183,7 @@ Tasks:
 
 ---
 
-## Step 8 — Move `area.py` and `world.py`
+## Step 8 — Move `area.py` and `world.py` ✅
 
 `backend/simulation/area.py` and `backend/simulation/world.py` are game-state managers that use game entities. They belong in `backend/game/`.
 
@@ -196,7 +196,7 @@ Tasks:
 
 ---
 
-## Step 9 — Update `game_loop.py` and `app.py`
+## Step 9 — Update `game_loop.py` and `app.py` ✅
 
 `backend/game_loop.py` imports from `backend.simulation.*`. Update all imports to use the new namespaces.
 
@@ -208,7 +208,7 @@ Tasks:
 
 ---
 
-## Step 10 — Smoke Test
+## Step 10 — Smoke Test ✅
 
 Run the application and confirm it reaches the ready state:
 
@@ -240,7 +240,7 @@ print('all imports ok')
 
 ---
 
-## Step 11 — Remove Shims (Cleanup)
+## Step 11 — Remove Shims (Cleanup) ✅
 
 Once the smoke test passes:
 

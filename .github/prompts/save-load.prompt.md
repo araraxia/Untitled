@@ -330,7 +330,7 @@ with tempfile.TemporaryDirectory() as tmp:
 
 ---
 
-## Step 5 — SaveManager Overhaul (Phase 6.1 + 6.2)
+## Step 5 — SaveManager Overhaul (Phase 6.1 + 6.2) ✅
 
 **Files to modify:** `backend/save_manager.py`
 
@@ -484,37 +484,37 @@ python tools/build_assets.py
 
 Manual checks:
 
-- [ ] `python -c "from backend.app import app; print('app ok')"` passes.
-- [ ] Entity + component round-trip serialisation passes.
-- [ ] Area round-trip serialisation passes.
-- [ ] `save_game` SocketIO event writes files to `saves/<player_id>/`.
-- [ ] `load_game` reconstructs the area with the correct entity positions.
-- [ ] Auto-save fires after N ticks and emits `autosave_complete`.
-- [ ] `request_save_list` returns a list with the correct metadata.
-- [ ] Delete button in the UI removes the slot and refreshes the list.
-- [ ] Legacy `frontend/assets/data/player/` files still load correctly.
+- [x] `python -c "from backend.app import app; print('app ok')"` passes.
+- [x] Entity + component round-trip serialisation passes.
+- [x] Area round-trip serialisation passes.
+- [x] `save_game` SocketIO event writes files to `saves/<player_id>/`.
+- [x] `load_game` reconstructs the area with the correct entity positions.
+- [x] Auto-save fires after N ticks and emits `autosave_complete`.
+- [x] `request_save_list` returns a list with the correct metadata.
+- [x] Delete button in the UI removes the slot and refreshes the list.
+- [x] Legacy `frontend/assets/data/player/` files still load correctly.
 
 ---
 
 ## Success Criteria
 
-- [ ] `backend/engine/save_format.py` — `SAVE_VERSION`, `migrate()`,
+- [x] `backend/engine/save_format.py` — `SAVE_VERSION`, `migrate()`,
       `SaveVersionError`, `register_migration()`
-- [ ] `config/engine.json` — `autosave_interval_ticks` and `save_dir` added
-- [ ] `backend/engine/ecs/component.py` — all concrete components have
+- [x] `config/engine.json` — `autosave_interval_ticks` and `save_dir` added
+- [x] `backend/engine/ecs/component.py` — all concrete components have
       `to_dict()` / `from_dict()`; component registry auto-populated
-- [ ] `backend/engine/ecs/entity.py` — `to_dict()` / `from_dict()`
-- [ ] `backend/game/area.py` — full entity serialisation in `to_dict()`;
+- [x] `backend/engine/ecs/entity.py` — `to_dict()` / `from_dict()`
+- [x] `backend/game/area.py` — full entity serialisation in `to_dict()`;
       `from_dict()`; `save_to_file()` / `load_area()` use new save dir
-- [ ] `backend/game/world.py` — `to_dict()` includes `tick_count`;
+- [x] `backend/game/world.py` — `to_dict()` includes `tick_count`;
       save/load uses new save dir
-- [ ] `backend/save_manager.py` — new dir layout; `list_saves()`;
+- [x] `backend/save_manager.py` — new dir layout; `list_saves()`;
       backward-compatible load fallback
-- [ ] `backend/game/tick.py` — auto-save hook; non-blocking background thread
-- [ ] `backend/app.py` — `save_game` and `request_save_list` SocketIO handlers;
+- [x] `backend/game/tick.py` — auto-save hook; non-blocking background thread
+- [x] `backend/app.py` — `save_game` and `request_save_list` SocketIO handlers;
       `autosave_complete` emission
-- [ ] `frontend/js/game/playerSelect.js` — slot metadata display; Delete button;
+- [x] `frontend/js/game/playerSelect.js` — slot metadata display; Delete button;
       list refresh on delete
-- [ ] `saves/` directory created on first save
-- [ ] No game-layer Python files modified beyond what is listed above
-- [ ] SocketIO `state_update` payload unchanged
+- [x] `saves/` directory created on first save
+- [x] No game-layer Python files modified beyond what is listed above
+- [x] SocketIO `state_update` payload unchanged

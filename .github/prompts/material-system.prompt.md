@@ -45,7 +45,7 @@ Read these files before writing any code:
 
 ---
 
-## Step 1 — Audit Current State
+## Step 1 — Audit Current State ✅
 
 Before writing any code, read the four key JS files (`shaderCache.js`, `gpuSpriteSheet.js`, `entityRenderer.js`, `renderer.js`) and the example material/entity JSON files. Produce a short summary covering:
 
@@ -58,7 +58,7 @@ Do not create or edit any files in this step. Output your findings and then proc
 
 ---
 
-## Step 2 — `MaterialLoader` Class
+## Step 2 — `MaterialLoader` Class ✅
 
 **New file:** `frontend/js/sprites/materialLoader.js`
 
@@ -117,7 +117,7 @@ Verify: `python -m http.server` or the Flask dev server. Import `MaterialLoader`
 
 ---
 
-## Step 3 — Update `ShaderCache` for Material Pipelines
+## Step 3 — Update `ShaderCache` for Material Pipelines ✅
 
 **File:** `frontend/js/sprites/shaderCache.js`
 
@@ -158,7 +158,7 @@ Verify: call `shaderCache.getMaterialPipeline('base')` in the browser console �
 
 ---
 
-## Step 4 — Extend `GPUSpriteSheet` for Param Maps
+## Step 4 — Extend `GPUSpriteSheet` for Param Maps ✅
 
 **File:** `frontend/js/sprites/gpuSpriteSheet.js`
 
@@ -175,7 +175,7 @@ Verify: instantiate a `GPUSpriteSheet` with the lantern atlas path. Call `create
 
 ---
 
-## Step 5 — Wire `EntityRenderer` to Use Materials
+## Step 5 — Wire `EntityRenderer` to Use Materials ✅
 
 **File:** `frontend/js/entityRenderer.js`
 
@@ -195,7 +195,7 @@ Verify: place the lantern entity in the scene. It should render with its glow ov
 
 ---
 
-## Step 6 — Lighting Pass (Phase 2.4)
+## Step 6 — Lighting Pass (Phase 2.4) ✅
 
 **New file:** `frontend/js/sprites/lightingPass.js`
 
@@ -238,7 +238,7 @@ Verify: add a light entity in the scene data. The area around it should be brigh
 
 ---
 
-## Step 7 — Particle System via Compute (Phase 2.5)
+## Step 7 — Particle System via Compute (Phase 2.5) ✅
 
 **New file:** `frontend/js/sprites/particleSystem.js`
 
@@ -272,7 +272,7 @@ Verify: attach an emitter to the lantern entity. Particles should stream upward 
 
 ---
 
-## Step 8 — Smoke Test
+## Step 8 — Smoke Test ✅
 
 Run the application and confirm:
 
@@ -288,23 +288,23 @@ python -c "from backend.app import app; print('app ok')"
 
 Visual checks (in browser via `run_browser.py`):
 
-- [ ] Non-material entities render identically to before (Workflow A path unchanged).
-- [ ] Lantern entity renders with pulsing glow overlay (Workflow B).
-- [ ] A light entity produces a visible soft light contribution on surrounding sprites.
-- [ ] Particle emitter on lantern entity streams particles upward.
-- [ ] No WebGPU validation errors in the browser console (`GPUValidationError`).
-- [ ] No JS errors in the console.
+- [x] Non-material entities render identically to before (Workflow A path unchanged).
+- [x] Lantern entity renders with pulsing glow overlay (Workflow B).
+- [x] A light entity produces a visible soft light contribution on surrounding sprites.
+- [x] Particle emitter on lantern entity streams particles upward.
+- [x] No WebGPU validation errors in the browser console (`GPUValidationError`).
+- [x] No JS errors in the console.
 
 ---
 
 ## Success Criteria
 
-- [ ] `frontend/js/sprites/materialLoader.js` — `MaterialLoader` class with `load()` and `get()`
-- [ ] `frontend/js/sprites/shaderCache.js` — four pipeline variants (`base`, `overlay`, `ramp`, `hue`); existing `getSpritePipeline()` intact
-- [ ] `frontend/js/sprites/gpuSpriteSheet.js` — `createMaterialBindGroup()` added; `createBindGroup()` intact
-- [ ] `frontend/js/entityRenderer.js` — material path wired in; `setEntityRuntime()` exposed
-- [ ] `frontend/js/sprites/lightingPass.js` — `LightingPass` class; GPU-side additive light accumulation
-- [ ] `frontend/js/sprites/particleSystem.js` — `ParticleSystem` class; compute + render shaders
-- [ ] `tools/pack_param_map.py` — works correctly (already implemented; verify with a test invocation)
-- [ ] All entities without a `material_id` continue to render without changes
-- [ ] No new Python backend files modified
+- [x] `frontend/js/sprites/materialLoader.js` — `MaterialLoader` class with `load()` and `get()`
+- [x] `frontend/js/sprites/shaderCache.js` — four pipeline variants (`base`, `overlay`, `ramp`, `hue`); existing `getSpritePipeline()` intact
+- [x] `frontend/js/sprites/gpuSpriteSheet.js` — `createMaterialBindGroup()` added; `createBindGroup()` intact
+- [x] `frontend/js/entityRenderer.js` — material path wired in; `setEntityRuntime()` exposed
+- [x] `frontend/js/sprites/lightingPass.js` — `LightingPass` class; GPU-side additive light accumulation
+- [x] `frontend/js/sprites/particleSystem.js` — `ParticleSystem` class; compute + render shaders
+- [x] `tools/pack_param_map.py` — works correctly (already implemented; verify with a test invocation)
+- [x] All entities without a `material_id` continue to render without changes
+- [x] No new Python backend files modified
