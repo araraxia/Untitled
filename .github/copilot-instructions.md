@@ -20,6 +20,19 @@ Entry points for the project include:
 
 ---
 
+## Physics & Simulation Boundary
+There are two, and only two, categories of "physics" in this codebase, and they must never blur together:
+
+- **Backend / mechanics physics** — `backend/engine/physics.py`, the ECS `PhysicsSystem`/`MovementSystem`. Authoritative, server-side, Python, runs on the fixed-tick simulation loop. Anything that affects collision, movement resolution, or any other gameplay-relevant state belongs here, and only here. This is the single source of truth broadcast to clients via `state_update`.
+- **Frontend / cosmetic motion** — client-side, JavaScript, purely visual (e.g. a dangling ornament swaying, cloth-like sway, particle motion). Exists only to look good and has zero effect on gameplay state. Runs in the render loop, is never sent to the server, and never feeds back into any networked or ECS-tracked value.
+
+Rules that follow from this:
+- Never name a frontend cosmetic system "physics" — no `PhysicsSystem`, no `physics.js`, no `*Physics*` identifiers on the client. Use a name that describes the visual effect instead (e.g. `dangle.js`, "secondary motion", "spring sway"). The word "physics" in this codebase refers to the backend mechanics system; reserve it for that.
+- A frontend cosmetic simulation must never write back into an entity's authoritative position/velocity/state — it only offsets what's *drawn*, never what's *simulated*. If a visual effect seems like it needs to affect gameplay (e.g. a swinging object that should be able to hit something), that requirement belongs in the backend physics system, not an extension of the cosmetic one.
+- When adding a new cosmetic motion system, add a one-line comment at the top of its file pointing back to this section, so a future reader isn't left guessing whether it's authoritative.
+
+---
+
 ## Code Style Guidelines
 1. **Python Code**: Follow PEP 8 style guidelines for Python code. Use 4 spaces for indentation, and limit lines to 79 characters.
 2. **JavaScript Code**: Follow the Airbnb JavaScript style guide for JavaScript code. Use 2 spaces for indentation, and use single quotes for strings.

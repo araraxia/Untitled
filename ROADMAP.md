@@ -35,6 +35,9 @@ The engine is not a separate product — it is the lower half of this same repos
 | 7 | UI Framework | 🔲 Not started |
 | 8 | Audio | 🔲 Not started |
 | 9 | Distribution & Tooling | 🔲 Not started |
+| 10 | 3D Coordinate Mapping (Future) | 🔲 Not started |
+| 11 | Area / Scene System (Future) | 🔲 Not started |
+| 12 | Level Editor & Asset Viewer (Future) | 🔲 Not started |
 
 ---
 
@@ -348,6 +351,144 @@ Define the stable API that game code calls into:
 
 ---
 
+## Phase 10 — 3D Coordinate Mapping (Future)
+
+**Goal:** Implement the "2.5D / 3D (Future)" section of `docs/graphics/COORDINATE_MAPPING.md` — a real perspective camera, billboarded sprites in a 3D world, and a minimal textured-mesh draw path — without disturbing the existing 2D orthographic rendering. This phase is a **foundation**, not a commitment to a single art direction: stylization is layered on as opt-in flags so later rendering techniques can build on the same camera/mesh plumbing without inheriting assumptions from whatever look ships first.
+
+### 10.1 — Matrix Helpers & 3D Camera
+
+- `frontend/js/engine/mat4.js` — explicit, dependency-free `identity`/`perspective`/`lookAt`/`multiply`/`translationScale` helpers, matching the project's existing hand-built flat-`Float32Array` MVP convention
+- `camera` object gains optional `mode` (`'2d'` default / `'3d'`), `position`, `target`, `up`, `fov`, `near`, `far`, `fogColor`, `fogNear`, `fogFar`
+
+### 10.2 — Billboarded Sprites
+
+- Sprite quads built from the camera's right/up vectors so 2.5D sprites face the camera in a 3D world without per-entity meshes
+- Reuses existing sprite/material pipelines and bind groups — only the model matrix construction differs
+
+### 10.3 — Minimal Textured Mesh Path
+
+- Small project-defined mesh JSON format (`position`/`normal`/`uv`/optional `color` per vertex + index list) under `frontend/assets/data/mesh/` — a project-specific runtime format, not a glTF subset
+- `Mesh` class uploads interleaved vertex + index buffers; new `'mesh'` `ShaderCache` pipeline variant issues indexed draws
+- Entities opt in via optional `mesh` + `transform3d` fields (documented in `DATA_STRUCTURES.md`); entities without them are unaffected
+
+### 10.4 — Mesh Authoring Pipeline
+
+- `tools/convert_mesh.py` — build-time-only converter (stdlib `json`/`struct`, no new pip dependency) from Blender-exported glTF 2.0 (`.gltf`/`.glb`) into the 10.3 mesh JSON format; reads geometry only (position/normal/uv/color, single mesh/primitive) and refuses skins, morph targets, or multiple primitives rather than mishandling them
+- Not a runtime import path — glTF is never loaded by the engine itself, only consumed offline by this tool
+- `tools/build_manifest.py` gains a `"meshes"` manifest category (mirroring `animations`/`materials`); `assetLoader.js`'s `loadManifest()` category list is extended to match, so mesh assets resolve by id like every other asset type
+
+### 10.5 — Optional Stylization Hooks
+
+- Independent, opt-in flags — `vertex_color` (Gouraud tint), `affine_uv` (N64-style texture warp), `color_levels` (colour banding), scene fog (`fogColor`/`fogNear`/`fogFar`) — each defaulting to off/neutral
+- Happen to compose into a low-poly N64 look, but are named and gated generically so any future rendering technique can adopt some, all, or none of them independently
+- A mesh/material that sets none of these renders identically to the plain Step 10.3 path
+
+### 10.6 — Multi-Part Meshes & Attachment Sockets
+
+- Mesh JSON gains optional named `sockets` (local anchor points); `convert_mesh.py` extracts them from unmeshed, named glTF nodes (Blender Empties) without widening the converter into a general importer
+- Entities gain an optional `parts` array — each part a mesh + an optional `attachTo: { part, socket }` — composed through the attachment chain at render time; entities using a plain `mesh` field are unaffected
+- The foundation both 10.7 and 10.8 build on: a staff and its separately-modeled hanging charm are two parts, not one rigid mesh
+
+### 10.7 — Secondary-Motion "Dangle" Spring
+
+- `frontend/js/engine/dangle.js` — a hand-rolled, client-side-only spring-damper per dangling part (inertial kick from parent motion, gravity, spring-to-rest, damping), **not** a physics engine and **not** connected to the backend ECS/collision system in any way
+- Opt-in per part via a `dangle: { stiffness, damping, gravity, maxOffset }` block; the cosmetic-motion answer for something like a charm hanging off a staff swaying slightly as the player moves
+- Governed by `.github/copilot-instructions.md`'s "Physics & Simulation Boundary": lives strictly on the frontend/cosmetic side, is never named "physics," and never writes back into authoritative entity state — see `backend/engine/physics.py`'s module docstring for the same boundary stated from the backend side
+
+### 10.8 — Transform Animation Clips
+
+- New `"type": "transform"` animation clip (keyframed `position`/`rotation`/`scale`, reusing the existing clip-JSON pattern) for authored, repeating part motion — a spinning coin, a bobbing lid
+- `sampleTransformClip()` — hand-rolled linear interpolation, matching `RENDER_WORKFLOWS.md` Workflow E's `lerpPreset` style
+- Composes with 10.7's dangle offset — a part can spin *and* wobble from movement simultaneously
+
+### 10.9 — Action-Triggered Animation Playback
+
+- One-shot animations for discrete actions (attack, jump) — the *only* backend-touching sub-phase, since action start/duration must be server-authoritative to avoid client desync
+- Backend: `ACTION_DURATIONS` table + `state_started_at` timestamp + per-tick auto-revert (`player.py`, `actions.py`, `tick.py`); reuses the existing `state_update` broadcast, no new message type; adds a `"jump"` action alongside the existing `move`/`attack`/`use_item`/`interact`
+- Frontend: extends the existing `entity.state` → animation mapping with one-shot (`loop: false`) sprite clips, and an `action_animations` map on mesh parts for one-shot transform-clip playback; composes with 10.7 (dangle) and 10.8 (looping clips)
+
+**Scope note:** No skeletal animation, skinning, rigid-body/collision physics, or shadow mapping — perspective projection, camera, billboards, static/multi-part meshes, a build-time mesh authoring tool, opt-in stylization toggles, attachment sockets, a cosmetic dangle spring, transform animation clips, and server-timed one-shot action playback only.
+
+**Prompt file:** `.github/prompts/3d-coordinate-mapping.prompt.md`
+
+---
+
+## Phase 11 — Area / Scene System (Future)
+
+**Goal:** A single runtime container (`Scene`) for entities, camera, and lighting, populated either from a pre-authored Area file or the live SocketIO gameplay stream, and writable at any time via a small imperative API — so the same rendering pipeline serves a map builder, a dev/test harness, a plain asset/scene viewer, and scripted gameplay dressing without four separate implementations. Depends on Phase 10 for the `camera`/`fog`/mesh-`parts` fields this phase's schema reuses, and extends Phase 6's `Area` file format rather than forking it.
+
+### 11.1 — Area File Schema Extension
+
+- `backend/game/area.py` gains optional `camera`/`lighting` blocks (passive metadata, no gameplay effect) in `to_dict()`/`from_dict()`/`get_full_state()`; absent by default, so every existing save file is unaffected
+- Field names reuse Phase 10's `camera` object and `fogColor`/`fogNear`/`fogFar` exactly, rather than inventing parallel ones
+
+### 11.2 — `Scene`: Single Runtime Container
+
+- `frontend/js/engine/scene.js` — the one object both the network path and a file load populate; `entities`/`camera`/`lighting` plus `addEntity`/`updateEntity`/`removeEntity`/`setCamera`/`setLighting`
+- Every entity tagged `'authoritative'` (network or file) or `'local'` (runtime-injected); a same-id collision across tags is refused with a warning, never silently arbitrated
+- `gameState` (the existing global in `main.js`) becomes a thin proxy onto `Scene`, so `renderer.js`/`ui.js`/`input.js` need zero changes — this phase wraps the working gameplay path, it doesn't rewrite it
+
+### 11.3 — Four Run Modes, One Boot Path
+
+- Gameplay: unchanged, network-driven, existing `index.html`
+- Viewer / Builder / Test: one new page (`frontend/area-viewer.html`), file-loaded, zero network connection, free-fly camera — differentiated only by what runs after load (nothing / a crude on-page panel / a script), not by separate implementations
+- Builder stays intentionally crude (plain form controls, a save-to-file button) — a working round-trip through the Phase 11.1 schema matters more than editor polish
+
+### 11.4 — Scripted Gameplay Dressing
+
+- A server-sent cue can trigger `scene.addEntity(..., 'local')` for purely cosmetic, non-networked moments (a cutscene camera pan, a decorative prop)
+- Governed by the same rule as `.github/copilot-instructions.md`'s "Physics & Simulation Boundary": anything added this way is non-authoritative; if it needs to be simulated or interactive, it must be a real backend entity delivered through `state_update` instead
+
+### 11.5 — Movement/Collision Foundation Fix (prerequisite for 11.6)
+
+- Tracing the actual per-tick execution order (`tick.py` registration × `scheduler.py`'s topological sort) surfaced two real bugs: collider-bearing entities are double-integrated (`MovementSystem` and `PhysicsSystem` both move them, the second pass uncollided), and path-driven AI movement (`Seek`/`Flee` → `PathfindingSystem`) teleports position and skips collision entirely because it currently runs after `PhysicsSystem` resolves for the tick
+- Fix: `MovementSystem` skips collider-bearing entities; `PathfindingSystem` sets velocity instead of teleporting position; dependency graph reordered so `PhysicsSystem` is always the last movement system to run each tick, integrating and colliding everyone exactly once
+- Also switches `PhysicsSystem`'s collision candidate lookup from an O(n²) full scan to the already-present `SpatialGrid`
+- Not scope creep — building script-driven movement on top of these bugs would make "interact with other entities" unreliable and "multiple entities" scale badly, which is exactly what 11.6 needs to avoid
+
+### 11.6 — Script-Driven Entity Movement
+
+- `ScriptComponent` (`waypoint_loop`/`orbit`/`follow`, params + runtime state) processed by a new `ScriptMovementSystem` that only ever writes `VelocityComponent` — never position directly — so every script-driven entity rides 11.5's single corrected `PhysicsSystem` pass for integration and collision, the same as player and AI-driven entities
+- Real backend ECS entities, not client-side `Scene` additions — per the Physics & Simulation Boundary, only authoritative, server-simulated entities can genuinely interact (collide, trigger, be detected); a script-driven entity is only ever purely cosmetic if added via `Scene.addEntity(..., 'local')` instead, in which case it explicitly cannot interact with anything
+- `ColliderComponent` gains an optional `trigger` flag (overlap-only, no push-out) publishing an `"entity_overlap"` `EventBus` event — the generic hook for pickups/doors/area markers, following the same event pattern `CombatEvent` already established
+- Authored the same way as any other entity — a `ScriptComponent` entry in an entity's `components` list round-trips through the existing serialization/Area-file machinery with no new code; needs a `ColliderComponent` too if it should actually collide, which is optional (a script entity with no collider moves but passes through everything)
+- Known limitation, documented not solved here: standalone viewer/builder/test modes (11.3) have no backend running, so a placed `ScriptComponent` entity is inert data there — it only actually moves/interacts inside a real gameplay session
+
+**Prompt file:** `.github/prompts/area-system.prompt.md`
+
+---
+
+## Phase 12 — Level Editor & Asset Viewer (Future)
+
+**Goal:** Turn Phase 11's deliberately crude builder mode into a fairly polished level editor and asset viewer — a real launcher for opening/starting areas and previewing assets, a full translate/rotate/scale gizmo, undo/redo, a property panel, an asset browser, grid/snapping, and a proper save flow. Depends on Phase 11 (`Scene`, the standalone boot path) and Phase 10 (`mat4.compose`/`rotationXYZ`, `render_template`, stylization hooks, `parts`/`dangle`/`animation_id`).
+
+### 12.1 — Entry Point / Launcher
+
+- One landing screen (Open Area / New Area / View Asset) shown when `area-viewer.html` loads with no query params — manifest-driven (`"areas"` category, new alongside the existing `"meshes"`/`"entities"`), zero backend connection required
+- Asset preview mode (`?asset=<key>&type=...`) generalises and supersedes `ROADMAP.md`'s own Phase 9.2 "Animation Preview" page concept — one orbit-camera viewer with live stylization toggles and animation playback, not a second redundant page
+
+### 12.2 — Full Transform Gizmo
+
+- Mode-switchable (`T`/`R`/`S`) translate/rotate/scale gizmo — axis handles for translate and scale, rotation rings per axis, plus a uniform-scale handle — working in both 2D and 3D, synced live with numeric property-panel fields
+- No free-form bounding-box/corner-drag resize (axis and uniform handles only) and no multi-select — explicit scope boundaries
+
+### 12.3 — Undo/Redo, Property Panel, Asset Browser
+
+- `EditorCommands` command-stack layer wraps `Scene`'s existing API (`addEntity`/`updateEntity`/`removeEntity`/`setCamera`/`setLighting`) — `Scene` itself stays unaware undo exists
+- Property panel replaces raw-JSON editing for transform, `render_template`, `ScriptComponent` params, and part-level (`dangle`/`animation_id`/`action_animations`) fields
+- Manifest-driven, searchable asset browser replaces the crude "type a raw asset id" flow from Phase 11.3
+
+### 12.4 — Grid/Snapping and Save Flow
+
+- Ground grid, position snapping, optional rotation snapping, live entity-count/FPS readout
+- `POST /dev/save_area` finished for real (dev-mode-gated), with a download fallback when unavailable; "Load" is the 12.1 launcher, not a second dialog
+
+**Scope note:** No multi-select, no history-panel UI, no custom asset import UI, no terrain tools, no real-time collaborative editing, no visual behaviour-tree/script editor.
+
+**Prompt file:** `.github/prompts/level-editor.prompt.md`
+
+---
+
 ## Prompt Files
 
 Each phase has a companion agent prompt in `.github/prompts/`:
@@ -364,6 +505,9 @@ Each phase has a companion agent prompt in `.github/prompts/`:
 | 7 | `ui-framework.prompt.md` |
 | 8 | `audio.prompt.md` |
 | 9 | `distribution.prompt.md` |
+| 10 | `3d-coordinate-mapping.prompt.md` |
+| 11 | `area-system.prompt.md` |
+| 12 | `level-editor.prompt.md` |
 
 ---
 

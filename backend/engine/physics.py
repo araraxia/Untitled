@@ -1,4 +1,11 @@
-"""AABB collision utilities and simple physics helpers."""
+"""AABB collision utilities and simple physics helpers.
+
+This is the authoritative, server-side mechanics physics referenced by
+``.github/copilot-instructions.md``'s "Physics & Simulation Boundary"
+section. Purely cosmetic client-side motion (e.g. secondary-motion
+"dangle" effects) is a separate, non-authoritative concern and must
+never be folded into this module or the systems that use it.
+"""
 
 from __future__ import annotations
 
