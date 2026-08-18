@@ -1,6 +1,0 @@
-{
-  "id": "entity-example-crate",
-  "name": "example_crate",
-  "mesh": "mesh-example-crate",
-  "material_id": "material/material-example-crate.json"
-}

@@ -1,9 +1,0 @@
-{
-  "id": "mat-crate-vertexcolor-001",
-  "name": "crate_vertex_color",
-  "atlas": "assets/images/sprites/objects/crate_atlas.png",
-  "param_map": null,
-  "color_ramp": null,
-  "overlays": [],
-  "vertex_color": true
-}

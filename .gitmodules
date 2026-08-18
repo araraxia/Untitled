@@ -1,0 +1,3 @@
+[submodule "frontend/assets"]
+	path = frontend/assets
+	url = git@github.com:araraxia/untitled-assets.git
