@@ -50,6 +50,22 @@ const MATERIAL_UNIFORM_ALIGNED = Math.ceil(MATERIAL_UNIFORM_BYTES / 256) * 256;
  * @property {{a:number[],b:number[],c:number[],d:number[]}|null} cosineParams
  *   Cosine palette parameters a/b/c/d as 3-element arrays [r,g,b].  Only
  *   set when colorRampType === 'cosine', otherwise null.
+ * @property {boolean} vertexColor
+ *   Step 8 mesh stylization hook: tint by the mesh's per-vertex `color`
+ *   attribute when true.  Only consumed by the mesh draw path
+ *   (EntityRenderer.drawEntityMesh); has no effect on 2D sprite entities.
+ *   Default false (no-op — mesh renders as if no vertex colour existed).
+ * @property {boolean} affineUv
+ *   Step 8 mesh stylization hook: interpolate mesh UVs without
+ *   perspective correction (the N64 texture-warp look) when true.
+ *   Selects a distinct pipeline variant (ShaderCache.getMeshPipeline's
+ *   `affineUv` parameter) — WGSL interpolation mode is fixed at shader
+ *   compile time, not a runtime uniform branch. Default false (standard
+ *   perspective-correct interpolation).
+ * @property {number} colorLevels
+ *   Step 8 mesh stylization hook: quantise final mesh colour into this
+ *   many bands per channel when > 0. Default 0 (continuous colour, no
+ *   quantisation).
  */
 
 class MaterialLoader {
@@ -178,6 +194,14 @@ class MaterialLoader {
       intensity: typeof o.intensity === "number" ? o.intensity : 1.0,
     }));
 
+    // Step 8 mesh stylization hooks — material-level, opt-in, each
+    // independently defaulting to a no-op. Parsed here regardless of
+    // whether this material is ever used by a mesh entity; 2D sprite
+    // draws simply never read these handle fields.
+    const vertexColor = json.vertex_color === true;
+    const affineUv = json.affine_uv === true;
+    const colorLevels = typeof json.color_levels === "number" ? json.color_levels : 0;
+
     /** @type {MaterialHandle} */
     const handle = {
       id: json.id,
@@ -187,6 +211,9 @@ class MaterialLoader {
       overlays,
       colorRampType,
       cosineParams,
+      vertexColor,
+      affineUv,
+      colorLevels,
     };
 
     this._handles.set(json.id, handle);

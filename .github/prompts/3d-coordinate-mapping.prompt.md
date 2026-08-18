@@ -40,10 +40,12 @@ Read these files before writing any code:
 
 ## Constraints
 
-- All shaders in **WGSL**. No GLSL.
-- No third-party matrix/vector math library (no gl-matrix, no npm dependency). Write explicit `mat4` helper functions matching the project's existing "flat `Float32Array`, column-major, hand-built" style — see `entityRenderer.js` lines ~447-457 for the convention to follow.
-- The existing 2D orthographic path (`Workflow A`, and the material path in `entityRenderer.js`) must keep working byte-for-byte unchanged when `camera.mode === '2d'` (or the field is absent — default to 2D). Gate all new behaviour behind an explicit 3D camera mode; never make it the implicit default.
-- Follow the JavaScript Airbnb style guide: 2-space indent, single quotes (per `.github/copilot-instructions.md`).
+**Read this before assuming every constraint below still applies to the step you're on**: partway through this task (between Steps 8 and 9) the client implementation target switches from the JS/WebGPU browser frontend to the native Python `client/` (wgpu-py), per this repository's migration decision — see the full banner between Steps 8 and 9 for the details (file-path mapping, naming-convention change, style-guide change, the `wgpu-py-migration.prompt.md` prerequisite). The JS-specific bullets below (WGSL-in-JS-template-literals wording aside — WGSL itself is unaffected — and the Airbnb style-guide bullet specifically) describe Steps 1–8, which are already done in JS and stay that way; they do not retroactively apply to Steps 9–14.
+
+- All shaders in **WGSL**. No GLSL. (Unaffected by the JS→Python client switch — WGSL is the shader language regardless of host language.)
+- No third-party matrix/vector math library (no `gl-matrix`/npm dependency for Steps 1–8's JS; no `numpy`/`pyglm` for Steps 9–14's Python, per `wgpu-py-migration.prompt.md`'s own constraint). Write explicit `mat4` helper functions matching the project's existing "flat array, column-major, hand-built" style — see `mat4.js` (Steps 1–8) / `client/engine/mat4.py` (Steps 9–14) for the convention to follow.
+- The existing 2D orthographic path (`Workflow A`, and the material path in `entityRenderer.js`) must keep working byte-for-byte unchanged when `camera.mode === '2d'` (or the field is absent — default to 2D). Gate all new behaviour behind an explicit 3D camera mode; never make it the implicit default. This constraint is JS-specific by construction (it's protecting the existing browser client's 2D path) — the Python client has no equivalent legacy 2D path to protect.
+- Steps 1–8: follow the JavaScript Airbnb style guide, 2-space indent, single quotes. Steps 9–14: follow PEP 8, 4-space indent, 79-column lines (per `.github/copilot-instructions.md` and `wgpu-py-migration.prompt.md`).
 - Do not touch Python backend files in this task, **except** two narrowly-scoped additions: Step 5's `render_template` field on `Entity` (three lines following the existing `race`/`model_version` pattern — `entity.py` only, nothing else) and Step 12's action-duration auto-revert (`player.py`, `actions.py`, `tick.py`). Those are the only backend changes in scope. `render_template` is in scope because without it there is no field connecting a networked entity to any 3D render definition at all — every other step in this task would be unreachable from real gameplay. Keep both additions small: `render_template` is a plain optional attribute, nothing more; the action-duration fix is an `ACTION_DURATIONS` constant plus a per-tick revert check, not a rewrite of the action/state system.
 - Step 10's dangle spring must comply with `.github/copilot-instructions.md`'s "Physics & Simulation Boundary" section: it is client-side-only cosmetic motion, not the backend's authoritative physics, and must never be named or structured in a way that blurs that line. Concretely: no file/class/function name containing "physics"; no collider; no interaction with the backend ECS or `state_update`; it only offsets what's drawn, never anything simulated or networked; it must not require backend changes or a physics-engine dependency.
 - The mesh format itself is a small project-defined JSON format, not a glTF subset. Step 6 adds a narrow build-time glTF-to-project-JSON converter for authoring purposes only — it must stay narrow (single mesh, single primitive, geometry attributes only) and must not grow into a general asset importer that also parses materials, skinning, animations, or multiple meshes/scenes.
@@ -52,7 +54,7 @@ Read these files before writing any code:
 
 ---
 
-## Step 1 — Audit Current State
+## Step 1 — Audit Current State ✅
 
 Before writing code, read `entityRenderer.js`, `renderer.js`, and `shaderCache.js` fully and summarize:
 
@@ -67,7 +69,7 @@ Do not create or edit files in this step.
 
 ---
 
-## Step 2 — `mat4` Helper Module
+## Step 2 — `mat4` Helper Module ✅
 
 **New file:** `frontend/js/engine/mat4.js`
 
@@ -88,7 +90,7 @@ Verify: no visual change yet — this module has no callers.
 
 ---
 
-## Step 3 — 3D Camera on the `camera` Object
+## Step 3 — 3D Camera on the `camera` Object ✅
 
 **File:** `frontend/js/engine/renderer.js`
 
@@ -108,7 +110,7 @@ Verify: log `getViewProjectionMatrix` output in the browser console for a manual
 
 ---
 
-## Step 4 — Billboarded Sprites in 3D Space
+## Step 4 — Billboarded Sprites in 3D Space ✅
 
 **File:** `frontend/js/engine/entityRenderer.js`
 
@@ -126,7 +128,7 @@ Verify: place a sprite entity with a 3D `position` in a scene using a 3D camera.
 
 ---
 
-## Step 5 — Minimal Textured Mesh Path
+## Step 5 — Minimal Textured Mesh Path ✅
 
 **New file:** `frontend/js/engine/mesh.js`
 
@@ -169,32 +171,35 @@ Keep this format minimal and project-specific — it is not a glTF subset and do
 
 **File:** `frontend/js/engine/entityRenderer.js`
 
-4. Entities whose resolved render definition has a `mesh` field (mesh JSON path, resolved via `assetLoader`; the definition itself is reached via `render_template`, task 8 below) route to a `drawEntityMesh(entity, camera, passEncoder)` path: build `mvp` via `mat4.compose(transform3d.position, transform3d.rotation, transform3d.scale)` (Step 2) combined with the camera's view-projection, bind the mesh's vertex/index buffers, bind the entity's existing material bind group (albedo/param map/sampler are still 2D textures — a mesh just needs UVs that land somewhere sensible on them), and issue `drawIndexed`. Task 8 resolves `render_template` before this routing decision is made, even though it's described later in this step for narrative flow — implement the resolution first.
+4. Entities whose resolved render definition has a `mesh` field (mesh JSON path, resolved via `assetLoader`; the definition itself is reached via `render_template`, task 8 below) route to a `drawEntityMesh(entity, camera, passEncoder)` path: build `mvp` via `mat4.compose([entity.x, entity.y, entity.z], entity.transform3d.rotation, entity.transform3d.scale)` (Step 2) combined with the camera's view-projection — **position comes from the entity's own existing `x`/`y`/`z` (already per-instance, already networked via `PositionComponent`), never from the definition file; only rotation/scale come from `transform3d` (task 7 below)** — bind the mesh's vertex/index buffers, bind the entity's existing material bind group (albedo/param map/sampler are still 2D textures — a mesh just needs UVs that land somewhere sensible on them), and issue `drawIndexed`. Task 8 resolves `render_template` before this routing decision is made, even though it's described later in this step for narrative flow — implement the resolution first.
 5. Entities with no `render_template`, or whose resolved definition has no `mesh`, continue through the existing 2D path or the Step 4 billboard path, unchanged.
 
 **File:** `docs/graphics/DATA_STRUCTURES.md`
 
-6. Document the new optional entity-**definition** fields (on the `frontend/assets/data/entity/entity-<uuid>.json` schema — this is a template, not what's sent over the network):
+6. Document the new optional entity-**definition** field (on the `frontend/assets/data/entity/entity-<uuid>.json` schema — this is a template, not what's sent over the network, and it carries **no placement data** — a template describes what something looks like, never where it is):
    - `mesh`: `string | null` — asset key for a mesh JSON file
-   - `transform3d`: `{ position: [x,y,z], rotation: [x,y,z], scale: [x,y,z] } | null` — 3D placement, only meaningful when `camera.mode === '3d'`
 
-### Resolving which definition a networked entity uses (`render_template`)
+### Resolving which definition a networked entity uses, and where it's placed (`render_template` + `transform3d`)
 
-Per Step 1 task 4, a networked ECS entity carries no reference to its `entity-<uuid>.json` definition at all today. This step adds the missing link — additive, and scoped narrowly (three fields following an existing pattern), which is why it's the one Constraints exception besides Step 12.
+Per Step 1 task 4, a networked ECS entity carries no reference to its `entity-<uuid>.json` definition at all today — nor any rotation/scale (only `x`/`y`/`z` position exists, via `PositionComponent`). This step adds both missing links as per-**instance** fields — additive, and scoped narrowly (following an existing pattern), which is why it's the one Constraints exception besides Step 12.
+
+**Get this distinction right, it matters:** `render_template` says *what a placed entity looks like* (shared across every instance using the same template). `transform3d` says *how this one instance is rotated/scaled* (never shared — two placed copies of the same crate template must be independently rotatable). Neither belongs on the other's file. A definition file with a baked-in `transform3d` would mean every copy of that template renders identically rotated, which defeats the purpose of placing more than one.
 
 **File:** `backend/engine/ecs/entity.py`
 
-7. Add `render_template: Optional[str] = None` as a plain attribute on `Entity`, following the exact same pattern as the existing `race`/`model_version` attributes: included in the constructor, `serialize()`, `to_dict()`, and `from_dict()`. `None` means "no 3D render definition" (2D/legacy resolution, whatever that currently is, is untouched). This is deliberately a new, generic field rather than overloading `race`/`model_version` — those are character-appearance-specific; `render_template` needs to work for non-character props (a placed crate, a staff) too.
+7. Add two plain attributes to `Entity`, following the exact same pattern as the existing `race`/`model_version` attributes — included in the constructor, `serialize()`, `to_dict()`, and `from_dict()`:
+   - `render_template: Optional[str] = None` — `None` means "no 3D render definition" (2D/legacy resolution, whatever that currently is, is untouched). Deliberately a new, generic field rather than overloading `race`/`model_version` — those are character-appearance-specific; `render_template` needs to work for non-character props (a placed crate, a staff) too.
+   - `transform3d: Optional[dict] = None` — `{ "rotation": [x,y,z], "scale": [x,y,z] }`, `None` meaning identity rotation and `[1,1,1]` scale. **No `position` key** — position is already `x`/`y`/`z`, don't duplicate it here.
 
 **File:** `frontend/js/engine/entityRenderer.js`
 
-8. Before routing to `drawEntityMesh`/`drawEntity3D`/2D drawing, resolve `entity.render_template` (if set) via `assetLoader.resolve()` — this key resolves against the `"entities"` manifest category added in Step 7 — fetch the referenced `entity-<uuid>.json` once and cache it, and use *its* `mesh`/`parts`/`material_id`/`transform3d` fields to decide the render path — the networked entity supplies position/state/`render_template`; the definition file supplies everything about how it looks. An entity with no `render_template` falls back to whatever resolution already exists today (out of scope to change here).
+8. Before routing to `drawEntityMesh`/`drawEntity3D`/2D drawing, resolve `entity.render_template` (if set) via `assetLoader.resolve()` — this key resolves against the `"entities"` manifest category added in Step 7 — fetch the referenced `entity-<uuid>.json` once and cache it, and use *its* `mesh`/`parts`/`material_id` fields to decide the render path — the networked entity supplies position (`x`/`y`/`z`), rotation/scale (`transform3d`), state, and `render_template`; the definition file supplies everything about how it looks, nothing about where. An entity with no `render_template` falls back to whatever resolution already exists today (out of scope to change here).
 
-Verify: author one example mesh (a textured cube or plane is enough — see whether `frontend/assets/data/mesh/mesh-example-crate.json` makes sense as the example, mirroring the existing `entity-example-lantern.json` convention), one entity-definition JSON referencing it via `mesh` + `transform3d`, and confirm a networked entity with `render_template` set to that definition's asset key resolves and renders as a textured 3D object, correctly perspective-projected, from a 3D camera. (The `"entities"` manifest category this depends on lands in Step 7 — this step's manual verify can register the one test file by hand if run before Step 7 is implemented.)
+Verify: author one example mesh (a textured cube or plane is enough — see whether `frontend/assets/data/mesh/mesh-example-crate.json` makes sense as the example, mirroring the existing `entity-example-lantern.json` convention) and one entity-definition JSON referencing it via `mesh` only. Place **two** networked entities with the same `render_template` at different `x`/`y`/`z` and different `transform3d.rotation` — confirm both render as independently positioned and rotated copies of the same mesh, proving placement genuinely is per-instance. (The `"entities"` manifest category this depends on lands in Step 7 — this step's manual verify can register the one test file by hand if run before Step 7 is implemented.)
 
 ---
 
-## Step 6 — Mesh Authoring Pipeline: Blender/glTF → Project JSON
+## Step 6 — Mesh Authoring Pipeline: Blender/glTF → Project JSON ✅
 
 **New file:** `tools/convert_mesh.py`
 
@@ -222,7 +227,7 @@ Verify: export a vertex-painted textured cube from Blender as glTF, run the conv
 
 ---
 
-## Step 7 — Manifest Registration for Meshes and Entity Definitions
+## Step 7 — Manifest Registration for Meshes and Entity Definitions ✅
 
 **File:** `tools/build_manifest.py`
 
@@ -246,7 +251,7 @@ Verify: after adding a mesh JSON under `frontend/assets/data/mesh/` (e.g. the ou
 
 ---
 
-## Step 8 — Optional Stylization Hooks (opt-in, not the default)
+## Step 8 — Optional Stylization Hooks (opt-in, not the default) ✅
 
 These are additive knobs layered on top of the Step 5 mesh path, each gated by an explicit flag so a mesh/material/scene that sets none of them renders exactly as Step 5 left it. They happen to be the ingredients of a low-poly N64 look (affine texture warp, vertex-lit Gouraud shading, distance fog, banded colour), but are named generically — `vertex_color`, `affine_uv`, `color_levels`, scene `fog*` — rather than bundled as an `"n64_mode"` switch, so any future style can pick individual ones à la carte or ignore all of them.
 
@@ -276,6 +281,21 @@ Verify: with all flags left at their defaults, a Step 5 mesh entity must render 
 
 ---
 
+# ⚠️ SYSTEM CHANGE — Steps 9–14 target a different runtime than Steps 1–8
+
+**Steps 1–8 above were built in the JS/WebGPU browser frontend** (`frontend/js/engine/*.js`, WGSL as JS template-literal strings, tested via `run_browser.py`/`run_desktop_test.py`+PyWebView) and that work is real, committed, and done — nothing above this banner should be reinterpreted or re-implemented in Python. It stands as-is, permanently, as the historical record of what was actually built.
+
+**Steps 9–14 below target the native Python client instead** (`client/engine/*.py`, WGSL as Python triple-quoted strings, built on `wgpu-py` + GLFW), per this repository's decision to migrate off the PyWebView/browser client — see `.github/prompts/wgpu-py-migration.prompt.md` for the full rationale (WebKitGTK's incomplete Linux WebGPU support) and porting plan. This is a genuine runtime/language switch mid-task, not a renaming exercise:
+
+- **File paths change**: `frontend/js/engine/entityRenderer.js` → `client/engine/entity_renderer.py`, `frontend/js/engine/dangle.js` → `client/engine/dangle.py`, `frontend/js/engine/transformClip.js` → `client/engine/transform_clip.py`, `frontend/js/engine/mesh.js`/`mat4.js`/`shaderCache.js` → `client/engine/mesh.py`/`mat4.py`/`shader_cache.py`.
+- **Naming convention changes**: JS `camelCase` → Python `snake_case` for functions/methods (`drawEntityMesh` → `draw_entity_mesh`, `sampleTransformClip` → `sample_transform_clip`, `updateDangle` → `update_dangle`); class names stay `PascalCase` in both (`DangleState` is `DangleState` either way).
+- **Style guide changes**: Steps 1–8's "JavaScript Airbnb style guide, 2-space indent, single quotes" constraint no longer applies to Steps 9–14 — they follow PEP 8 (4-space indent, 79-column lines), per `.github/prompts/wgpu-py-migration.prompt.md`'s own constraints.
+- **A real prerequisite, not just a path change**: Steps 9–14 assume `client/engine/entity_renderer.py`, `mesh.py`, `shader_cache.py`, and `mat4.py` already exist and already cover the Step 1–8 JS feature set (billboards, the mesh path, stylization hooks) — i.e., that `wgpu-py-migration.prompt.md`'s Steps 4, 6, 8, and 9 have landed. If they haven't yet, that porting is a blocking dependency for Steps 9–14 here, not something to improvise inline. Check `wgpu-py-migration.prompt.md`'s own step checkmarks before starting Step 9 below.
+- **WGSL shader text itself is unaffected** — WGSL doesn't change between a JS host and a Python host; only the string type wrapping it does (JS template literal → Python triple-quoted string). Do not re-derive or "improve" shader logic while crossing this boundary.
+- **The backend (`backend/`) is unaffected by this switch** — it was already Python and stays exactly as Steps 1–8 left it. Step 12 below still edits `backend/game/entities/player.py`/`actions.py`/`tick.py` exactly as originally scoped; this banner only concerns the *client*.
+
+---
+
 ## Step 9 — Multi-Part Meshes & Attachment Sockets
 
 Lets one entity be built from more than one mesh, each positioned relative to a named anchor point on another part rather than the world. This is the foundation Step 10 (dangle) and Step 11 (transform clips) build on, and what a "staff with a separately-modeled hanging charm" actually needs — not a single rigid mesh, but a small parent/child chain.
@@ -288,49 +308,51 @@ Lets one entity be built from more than one mesh, each positioned relative to a 
 
 2. Extend the converter, still within Step 6's "geometry attributes only, no general importer" constraint: alongside `meshes[0].primitives[0]`, scan the glTF `nodes` array for nodes that have a `name` but **no** `mesh` reference (a Blender "Empty" placed at an attachment point) and emit each as a socket using that node's local `translation`/`rotation`. This is metadata (names + transforms), not geometry/material/skin data, so it doesn't broaden the converter's scope — still refuse skins/morph targets/extra primitives exactly as Step 6 already does.
 
-**File:** `docs/graphics/DATA_STRUCTURES.md` (entity schema)
+**File:** `docs/graphics/DATA_STRUCTURES.md` (entity-**definition** schema — same `entity-<uuid>.json` file Step 5's `mesh` field lives on, not the networked/Area-file entity; `render_template` is what a placed instance uses to reach this file)
 
-3. Entity JSON gains an optional `parts` array usable instead of the single `mesh` field:
+3. Entity-definition JSON gains an optional `parts` array usable instead of the single `mesh` field:
    ```json
    "parts": [
      { "id": "shaft", "mesh": "mesh-staff-shaft" },
-     { "id": "charm", "mesh": "mesh-staff-charm", "attachTo": { "part": "shaft", "socket": "charm_socket" } }
+     { "id": "charm", "mesh": "mesh-staff-charm", "attachTo": { "part": "shaft", "socket": "charm_socket" }, "localOffset": { "position": [x,y,z], "rotation": [x,y,z], "scale": [x,y,z] } }
    ]
    ```
-   Each part's world transform = the part named in `attachTo.part`'s world transform × that socket's local transform × the part's own `transform3d` offset (default identity). A part with no `attachTo` uses the entity's own `transform3d` directly — identical to a Step 5 single-mesh entity.
+   Each part's world transform = the part named in `attachTo.part`'s world transform × that socket's local transform × the part's own `localOffset` (default identity, if present at all). A part with no `attachTo` composes directly off the **entity's** per-instance placement (`x`/`y`/`z` + `transform3d.rotation`/`transform3d.scale`, Step 5) — identical to a Step 5 single-mesh entity.
 
-**File:** `frontend/js/engine/entityRenderer.js`
+   **Naming note, deliberately not `transform3d`:** a part's `localOffset` is definition-level (the fixed relationship between two meshes of the same asset — "the charm hangs 0.3 units below this socket," true for every placed instance) and is a different concept from the per-instance `transform3d` Step 5 added to `Entity` (how *this one placement* is rotated/scaled). Reusing the same field name for both would make it easy to confuse "adjust this asset's internal composition" with "adjust where this copy is placed" — keep them visibly distinct.
 
-4. Generalise `drawEntityMesh` into `drawEntityMeshParts`: resolve `parts` in array order (a part may only reference an *earlier* part's `id` in `attachTo.part` — reject cycles and forward references at load time with a clear error, don't silently mis-render), compose each part's world matrix through its attachment chain via `mat4.multiply`, and issue one `drawIndexed` per part using its own mesh/material.
+**File:** `client/engine/entity_renderer.py` (the wgpu-py port of `entityRenderer.js` — see the system-change banner above; this must already exist, covering at least the Step 1–8 JS feature set, before this task proceeds)
+
+4. Generalise `draw_entity_mesh` into `draw_entity_mesh_parts`: resolve `parts` in array order (a part may only reference an *earlier* part's `id` in `attachTo.part` — reject cycles and forward references at load time with a clear error, don't silently mis-render), compose each part's world matrix through its attachment chain via `mat4.multiply` (`client/engine/mat4.py`) — starting from the entity's own per-instance placement as the chain's root, per task 3 — and issue one indexed draw per part using its own mesh/material.
 5. Entities with a plain `mesh` field (no `parts`) continue to render exactly as Step 5 left them — `parts` is additive, not a replacement.
 
-Verify: a two-mesh staff (shaft + separately-modeled charm, charm's part attached to a socket exported from a Blender Empty on the shaft) renders with the charm correctly offset and oriented, and stays rigidly attached as the entity's `transform3d` changes.
+Verify: a two-mesh staff (shaft + separately-modeled charm, charm's part attached to a socket exported from a Blender Empty on the shaft) renders with the charm correctly offset and oriented, and stays rigidly attached as the entity's position or `transform3d` (rotation/scale) changes. Place two staff instances at different positions with different rotations and confirm both render correctly and independently — not the same bug Step 5's fix just corrected, one level up the composition chain.
 
 ---
 
 ## Step 10 — Secondary-Motion "Dangle" Spring (cosmetic-only, not physics)
 
-This is the client-side-only cosmetic simulation behind "a part that hangs and moves slightly as you move" — a hand-rolled spring-damper per dangling part. It is **not** rigid-body physics and does **not** touch the backend ECS/AABB collision system, which stays exactly as it is today, unaware this exists. This step exists specifically on the "frontend / cosmetic motion" side of `.github/copilot-instructions.md`'s "Physics & Simulation Boundary" — read that section before writing this file, and follow its naming rule: nothing here may be named or framed as "physics."
+This is the client-side-only cosmetic simulation behind "a part that hangs and moves slightly as you move" — a hand-rolled spring-damper per dangling part. It is **not** rigid-body physics and does **not** touch the backend ECS/AABB collision system, which stays exactly as it is today, unaware this exists. This step exists specifically on the "frontend / cosmetic motion" side of `.github/copilot-instructions.md`'s "Physics & Simulation Boundary" — read that section before writing this file, and follow its naming rule: nothing here may be named or framed as "physics." That rule is language-agnostic — it applies just as much to `client/` Python as it did to `frontend/js/`.
 
-**New file:** `frontend/js/engine/dangle.js`
+**New file:** `client/engine/dangle.py`
 
-0. At the top of the file, add a one-line comment pointing back to the "Physics & Simulation Boundary" section in `.github/copilot-instructions.md`, per that section's own rule for new cosmetic-motion systems.
+0. At the top of the file, add a one-line comment (`#`, not `//` — this file is Python) pointing back to the "Physics & Simulation Boundary" section in `.github/copilot-instructions.md`, per that section's own rule for new cosmetic-motion systems.
 1. `class DangleState`: per dangling part, holds `offset: [x,y,z]` and `velocity: [x,y,z]`, both starting at `[0,0,0]`.
-2. `updateDangle(state, parentDeltaPosition, params, deltaTime)` — explicit, hand-rolled, no physics library (matches `mat4.js`'s convention):
-   - inertial kick: `velocity -= parentDeltaPosition * params.inertia` — the child resists the parent's sudden movement, which is what reads as "weight" swinging on the end of the staff.
-   - optional gravity: `velocity += params.gravity * deltaTime` if `params.gravity` is set.
-   - spring back to rest: `velocity += -offset * params.stiffness * deltaTime`.
+2. `update_dangle(state, parent_delta_position, params, delta_time)` — explicit, hand-rolled, no physics library (matches `mat4.py`'s convention):
+   - inertial kick: `velocity -= parent_delta_position * params.inertia` — the child resists the parent's sudden movement, which is what reads as "weight" swinging on the end of the staff.
+   - optional gravity: `velocity += params.gravity * delta_time` if `params.gravity` is set.
+   - spring back to rest: `velocity += -offset * params.stiffness * delta_time`.
    - damping: `velocity *= (1 - params.damping)`.
-   - integrate: `offset += velocity * deltaTime`.
-   - clamp `offset`'s magnitude to `params.maxOffset` (small default, e.g. `0.2` world units) so a teleport or network hiccup can't fling the part off-screen.
+   - integrate: `offset += velocity * delta_time`.
+   - clamp `offset`'s magnitude to `params.max_offset` (small default, e.g. `0.2` world units) so a teleport or network hiccup can't fling the part off-screen.
 
 **File:** `docs/graphics/DATA_STRUCTURES.md` (extends Step 9's `parts[]` entry)
 
-3. A `parts[]` entry gains an optional `dangle: { stiffness, damping, gravity: [x,y,z] | null, maxOffset }` block. Absent = perfectly rigid attachment, exactly Step 9's behaviour.
+3. A `parts[]` entry gains an optional `dangle: { stiffness, damping, gravity: [x,y,z] | null, maxOffset }` block. Absent = perfectly rigid attachment, exactly Step 9's behaviour. This is a JSON schema field, unaffected by which client reads it — keep the JSON key names as documented (`camelCase`, matching every other field in this schema), even though the Python code that reads them uses `snake_case` locals.
 
-**File:** `frontend/js/engine/entityRenderer.js`
+**File:** `client/engine/entity_renderer.py`
 
-4. In `drawEntityMeshParts`, a part with `dangle` set gets a cached `DangleState` (keyed by entity id + part id, alongside where material handles are already cached), updated once per render frame from that part's attachment point's frame-to-frame world position delta, with its `offset` added to the part's local translation before composing into the attachment chain.
+4. In `draw_entity_mesh_parts`, a part with `dangle` set gets a cached `DangleState` (keyed by entity id + part id, alongside where material handles are already cached), updated once per render frame from that part's attachment point's frame-to-frame world position delta, with its `offset` added to the part's local translation before composing into the attachment chain.
 
 Verify: attach a dangle-enabled charm to a moving/turning entity's staff — it should visibly lag and swing rather than snapping rigidly, and settle back toward rest within a couple of seconds of the entity going idle. A dangle part on a stationary entity should sit at zero steady-state offset, not drift.
 
@@ -356,13 +378,13 @@ Generalises "model animation" to authored, repeating motion — a spinning coin,
 
 1. Extend the animation clip schema with `"type": "transform"` alongside the existing frame-based clips; `keyframes` interpolate any subset of `position`/`rotation`/`scale` linearly between entries (omitted fields hold the part's rest value), looping per `loop`.
 
-**New file:** `frontend/js/engine/transformClip.js`
+**New file:** `client/engine/transform_clip.py`
 
-2. `sampleTransformClip(clip, timeMs)` → `{ position, rotation, scale }`, linearly interpolating between the two bracketing keyframes — matching the hand-rolled `lerpPreset` style already used in `RENDER_WORKFLOWS.md` Workflow E, not a new interpolation library.
+2. `sample_transform_clip(clip, time_ms)` → `{ position, rotation, scale }`, linearly interpolating between the two bracketing keyframes — matching the same hand-rolled, no-library interpolation style `RENDER_WORKFLOWS.md` Workflow E's `lerpPreset` established for the JS side (that function itself is JS and stays JS — this is about matching its *style*, explicit and dependency-free, in the Python port, not porting `lerpPreset` literally).
 
-**File:** `frontend/js/engine/entityRenderer.js`
+**File:** `client/engine/entity_renderer.py`
 
-3. A `parts[]` entry gains an optional `animation_id` (a transform clip id). `drawEntityMeshParts` advances a per-part clock, samples the clip, and applies the result as an additional local transform layered **before** the Step 10 dangle offset — a part can play an authored spin and wobble from motion at the same time; they compose rather than conflict.
+3. A `parts[]` entry gains an optional `animation_id` (a transform clip id). `draw_entity_mesh_parts` advances a per-part clock, samples the clip, and applies the result as an additional local transform layered **before** the Step 10 dangle offset — a part can play an authored spin and wobble from motion at the same time; they compose rather than conflict.
 4. A part with neither `dangle` nor `animation_id` renders exactly as Step 9 left it.
 
 Verify: a coin-shaped part with the spin clip rotates continuously regardless of entity movement; adding a `dangle` config to the same part makes it both spin and sway.
@@ -371,7 +393,7 @@ Verify: a coin-shaped part with the spin clip rotates continuously regardless of
 
 ## Step 12 — Action-Triggered Animation Playback (attack, jump, etc.)
 
-One-shot animations fired by a discrete player/AI action — "swing the weapon," "jump" — rather than the continuous state-driven walk/idle animation or Step 11's looping transform clips. This is the one step in this task that legitimately touches backend Python (see Constraints): *who* is attacking and *when* is a server-authoritative fact, so how long the swing "lasts" has to be too, or clients desync.
+One-shot animations fired by a discrete player/AI action — "swing the weapon," "jump" — rather than the continuous state-driven walk/idle animation or Step 11's looping transform clips. This is the one step in this task that legitimately touches backend Python (see Constraints): *who* is attacking and *when* is a server-authoritative fact, so how long the swing "lasts" has to be too, or clients desync. The backend was already Python before the system-change banner above and stays exactly as originally scoped — this step's backend tasks (1–4) are unaffected by the client's JS→Python switch; only tasks 5–6 (client-side) target `client/engine/` now instead of `frontend/js/engine/`.
 
 **File:** `backend/game/entities/player.py` and `backend/game/systems/actions.py`
 
@@ -385,11 +407,11 @@ Read both fully first — they are two parallel, not-fully-consistent action-han
 
 4. Each tick, for any entity whose `state` is a key in `ACTION_DURATIONS` and whose elapsed time since `state_started_at` exceeds that duration, revert `state` to `"idle"` or `"moving"` (based on current velocity, matching the logic the `move` action already uses) and mark the entity dirty. This reuses the existing `state_update` delta broadcast — no new SocketIO message type — the reversion just looks like any other state change to the client.
 
-**File:** `frontend/js/engine/entityRenderer.js` (sprite/billboard path)
+**File:** `client/engine/entity_renderer.py` (sprite/billboard path)
 
-5. Extend the existing `entity.state` → animation-name mapping (today: `stand`/`walk`) with one-shot entries for `attacking`/`jumping`/`using_item`, each backed by a `loop: false` clip (already supported by the clip schema's existing `loop` field — no schema change needed). `AnimationController.play()` already resets to frame 0 on a genuine animation switch and no-ops if already playing the same clip, so wiring the mapping is the only change needed — when the backend reverts `state` (task 4), the next `state_update` naturally switches the client back to `stand`/`walk`.
+5. Extend the existing `entity.state` → animation-name mapping (today: `stand`/`walk`) with one-shot entries for `attacking`/`jumping`/`using_item`, each backed by a `loop: false` clip (already supported by the clip schema's existing `loop` field — no schema change needed). `AnimationController.play()` (the `client/engine/animation.py` port of `animation.js`, per `wgpu-py-migration.prompt.md` Step 7 — class name stays `AnimationController` in the port, only its own method bodies became `snake_case`) already resets to frame 0 on a genuine animation switch and no-ops if already playing the same clip, so wiring the mapping is the only change needed — when the backend reverts `state` (task 4), the next `state_update` naturally switches the client back to `stand`/`walk`.
 
-**File:** `frontend/js/engine/entityRenderer.js` (mesh path, using Step 11's `sampleTransformClip`)
+**File:** `client/engine/entity_renderer.py` (mesh path, using Step 11's `sample_transform_clip`)
 
 6. A `parts[]` entry gains an optional `action_animations: { attacking: "anim-sword-swing", jumping: "anim-jump-arc" }` map (transform clip ids). When `entity.state` transitions into one of these keys, start a one-shot playback (ignore the clip's own `loop` field — action playback is always one-shot) layered on top of the Step 9 attachment chain; when `state` reverts, fall back to the part's regular `animation_id` (Step 11) if set, or its rest transform.
 7. Action clips, Step 11's looping clips, and Step 10's dangle offset all compose additively — a sword swing plays while a tassel on the hilt keeps dangling.
@@ -404,34 +426,42 @@ Verify: triggering an attack (`player_action: {type: 'attack'}`) plays the one-s
 
 Once Steps 2–12 are implemented and verified, update the "2.5D / 3D (Future)" heading to reflect what's now implemented vs. still planned (mirror the ✅ checklist style used in `OVERVIEW.md`'s migration path). Note explicitly that: Step 8's hooks are optional, independently-toggleable stylization flags, not the mesh path's default rendering behaviour; Step 6's glTF support is a build-time authoring convenience, not a runtime import feature; Step 10's dangle system is a cosmetic client-side spring, not a physics engine; and Step 12 is the only step that touches backend Python, scoped narrowly to action-duration timing. Do not claim completeness beyond what was actually built and verified — e.g., if rotation transforms weren't exercised, say so.
 
+Also note explicitly, per the system-change banner above Step 9: Steps 1–8 live in the JS/WebGPU browser client (`frontend/js/engine/`), Steps 9–12 live in the native Python client (`client/engine/`) — this feature is split across two different client codebases, not implemented twice or migrated wholesale. State which client each documented capability actually lives in rather than describing "the renderer" as a single undifferentiated thing.
+
 ---
 
 ## Step 14 — Smoke Test
 
-Run the application and confirm, using `run_browser.py` for DevTools access:
+Per the system-change banner above, this task's smoke test is now genuinely two separate passes against two different clients — do not conflate them, and do not consider Steps 9–12 "verified" just because the JS pass below already passed (it covers Steps 1–8 only).
+
+### Pass A — Steps 1–8 (JS/WebGPU browser client)
+
+Run using `run_browser.py`/`run_desktop_test.py` for DevTools access:
 
 ```text
 python run_browser.py
 ```
 
-- [ ] Existing 2D scenes (no `camera.mode` set) render pixel-identical to before this task.
-- [ ] A 3D-mode camera renders a billboarded sprite entity that faces the camera correctly as the camera moves.
-- [ ] A mesh entity renders as a textured 3D shape with correct perspective (closer geometry looks larger; parallel edges converge).
-- [ ] `mat4.rotationXYZ`/`compose` produce correct results: a mesh with a non-zero `transform3d.rotation` renders visibly rotated, in the documented Z-then-Y-then-X order, and a socket with a `rotation` orients its attached part correctly (not just its position).
-- [ ] A networked entity with `render_template` set resolves its `entity-<uuid>.json` definition and renders with that definition's `mesh`/`transform3d`; an entity with `render_template` unset is unaffected by this task.
-- [ ] Enabling `ambientColor` (via a hand-set camera field, independent of Area/Scene work) visibly tints a mesh; leaving it at `[1,1,1]` produces no visible change.
-- [ ] Depth ordering between a billboard and a mesh (or two meshes) is correct — nothing draws through geometry that should occlude it.
-- [ ] A mesh authored in Blender, exported to glTF, and converted with `tools/convert_mesh.py` renders correctly — not just the hand-written Step 5 example.
-- [ ] `manifest.json` contains a `"meshes"` section and `assetLoader.resolve()` correctly resolves a mesh id to its path.
-- [ ] A mesh entity with `vertex_color`/`affine_uv`/`color_levels` unset and scene `fogFar: 0` renders identically to one where those fields are absent entirely.
-- [ ] Enabling `vertex_color`, `affine_uv`, `color_levels`, and fog individually each produces only its own visual effect; enabling two together doesn't misbehave.
+Status honestly reflects what's actually been confirmed in-browser as of this edit, not what's merely been implemented and self-reviewed — several Step 8 items are implemented and passed self-review (matrix-balance checks, hand-traced WGSL) but not yet re-confirmed visually after the most recent fog fix, so they stay unchecked:
+
+- [x] Steps 1–7 (2D-path regression, billboard facing/occlusion, mesh perspective/rotation, `render_template`/two-independent-instances, glTF-converted mesh via `tools/convert_mesh.py`, `manifest.json` `"meshes"` resolution) — visually confirmed in the desktop client.
+- [ ] Step 8: `ambientColor` visibly tints a mesh; `[1,1,1]` is a no-op — implemented, not yet visually re-confirmed.
+- [ ] Step 8: a mesh entity with `vertex_color`/`affine_uv`/`color_levels` unset and scene `fogFar: 0` renders identically to one where those fields are absent entirely — implemented, not yet visually re-confirmed.
+- [ ] Step 8: enabling `vertex_color`, `affine_uv`, `color_levels`, and fog individually each produces only its own visual effect; enabling two together doesn't misbehave — `affine_uv` and fog specifically each went through a real bug-then-fix cycle (a mismatched `@interpolate` type between the vertex output and fragment input that invalidated the whole pipeline and blanked the frame, then a fog-distance calculation that produced no visible fog at all) and need a fresh look, not just a re-read of the fix.
+- [x] Depth ordering between a billboard and a mesh is correct (confirmed during Step 4).
+- [ ] No `GPUValidationError`/WGSL pipeline-creation error in the console — true as of the last fix, needs reconfirming against the current code after the fog rewrite.
+
+### Pass B — Steps 9–12 (native Python `client/` — not yet run)
+
+Once `client/main.py` exists (`wgpu-py-migration.prompt.md` Step 15), run it and confirm — socket/part/dangle/clip mechanics carried over unchanged from the design above, just in the Python client instead of the browser:
+
 - [ ] A multi-part staff entity (shaft + socket-attached charm) renders correctly, with the charm following the shaft rigidly when no `dangle` is set.
 - [ ] Giving the charm part a `dangle` config makes it lag/swing during movement and settle at rest when idle, without affecting any other entity.
 - [ ] A part with a looping `animation_id` (Step 11) animates continuously and independently of entity movement.
 - [ ] Triggering `attack` plays a one-shot swing animation once on both a sprite entity and a mesh part entity, then automatically returns to idle/walk with no explicit "stop" message from the client.
 - [ ] Triggering `jump` behaves the same way with its own duration and does not interfere with a concurrent `dangle` or looping `animation_id` on the same entity's parts.
-- [ ] No `GPUValidationError` in the console.
-- [ ] `get_errors` reports zero errors on all modified/new files.
+- [ ] No `wgpu` validation error in the console/log during any of the above.
+- [ ] No lint/type errors on any modified/new file under `client/engine/`.
 
 ---
 
@@ -439,20 +469,22 @@ python run_browser.py
 
 - [ ] `frontend/js/engine/mat4.js` — `identity`, `perspective`, `lookAt`, `multiply`, `translationScale`, `rotationXYZ`, `compose`; documented Z-then-Y-then-X Euler order; no external math library
 - [ ] `frontend/js/engine/renderer.js` — `camera.mode`/`position`/`target`/`up`/`fov`/`near`/`far`/`fogColor`/`fogNear`/`fogFar`/`ambientColor` fields; `getViewProjectionMatrix()`; 2D path untouched when `mode` is `'2d'` or unset
-- [ ] `frontend/js/engine/entityRenderer.js` — `drawEntity3D` (billboards) and `drawEntityMeshParts` (static/multi-part meshes) added; `render_template` resolution added ahead of mesh/2D routing; existing 2D/material paths unchanged for entities without `render_template`
+- [ ] `frontend/js/engine/entityRenderer.js` (JS, Step 4, done) — `drawEntity3D` (billboards) added; `render_template` resolution added ahead of mesh/2D routing; existing 2D/material paths unchanged for entities without `render_template`
+- [ ] `client/engine/entity_renderer.py` (Python, Step 9, not started) — `draw_entity_mesh_parts` (static/multi-part meshes) added on top of the ported `draw_entity_mesh`, once `wgpu-py-migration.prompt.md`'s port of `entityRenderer.js` exists
 - [ ] `frontend/js/engine/mesh.js` — `Mesh` class; interleaved vertex + index buffer upload including optional per-vertex `color`
 - [ ] `frontend/js/engine/sprites/shaderCache.js` — `'mesh'` pipeline variant added, with `color` correctly threaded from vertex attribute through to a fragment varying, and independent `vertex_color`/`affine_uv`/`color_levels`/fog/ambient branches; existing variants (`base`, `overlay`, `ramp`, `hue`) untouched
 - [ ] `frontend/assets/data/mesh/` — new directory with at least one example mesh JSON
 - [ ] `tools/convert_mesh.py` — parses `.gltf`/`.glb` (stdlib only, no new pip dependency) and emits the Step 5 mesh JSON format plus Step 9 sockets; refuses (doesn't silently mishandle) skins/morph targets/multiple primitives
 - [ ] `tools/build_manifest.py` — `"meshes"` **and `"entities"`** categories scanned and included in the manifest and build summary
 - [ ] `frontend/js/engine/assetLoader.js` — `"meshes"` **and `"entities"`** added to `loadManifest()`'s `categories`
-- [ ] `backend/engine/ecs/entity.py` — `render_template` field added to `serialize()`/`to_dict()`/`from_dict()`, following the `race`/`model_version` pattern exactly; `None` by default, no other `Entity` behaviour changed
-- [ ] Entity `parts[]` array (Step 9) with `attachTo`, `dangle` (Step 10), `animation_id` (Step 11), and `action_animations` (Step 12) all implemented as independently opt-in fields
-- [ ] `frontend/js/engine/dangle.js` — `DangleState`/`updateDangle`; no physics-engine dependency; no backend involvement; no "physics"-named identifiers anywhere in the file; opening comment points to the "Physics & Simulation Boundary" section in `.github/copilot-instructions.md`
-- [ ] `frontend/js/engine/transformClip.js` — `sampleTransformClip`; hand-rolled linear interpolation
+- [ ] `backend/engine/ecs/entity.py` — `render_template` **and** `transform3d` (`{rotation, scale}`, no `position` key) fields added to `serialize()`/`to_dict()`/`from_dict()`, following the `race`/`model_version` pattern exactly; both `None` by default, no other `Entity` behaviour changed; `transform3d` never appears on the entity-definition file
+- [ ] Two entities sharing one `render_template` render as independently positioned and rotated copies — the concrete proof `transform3d`/position are per-instance, not baked into the shared definition
+- [ ] Entity-definition `parts[]` array (Step 9) with `attachTo`/`localOffset`, `dangle` (Step 10), `animation_id` (Step 11), and `action_animations` (Step 12) all implemented as independently opt-in fields
+- [ ] `client/engine/dangle.py` (Python, Step 10) — `DangleState`/`update_dangle`; no physics-engine dependency; no backend involvement; no "physics"-named identifiers anywhere in the file; opening comment points to the "Physics & Simulation Boundary" section in `.github/copilot-instructions.md`
+- [ ] `client/engine/transform_clip.py` (Python, Step 11) — `sample_transform_clip`; hand-rolled linear interpolation, no new dependency
 - [ ] `backend/game/entities/player.py`, `backend/game/systems/actions.py`, `backend/game/tick.py` — `ACTION_DURATIONS`, `state_started_at`, per-tick auto-revert, and a new `"jump"` action type; no other backend behaviour changed
 - [ ] `docs/graphics/DATA_STRUCTURES.md` — `mesh` sockets, entity `parts`, `render_template`, the Step 8 stylization fields (including `ambientColor`), and the Step 10/11/12 part-level fields all documented
-- [ ] `docs/graphics/COORDINATE_MAPPING.md` — 2.5D/3D section updated to reflect actual implementation status, noting stylization hooks are opt-in, glTF support is build-time-only, dangle is cosmetic-only, and Steps 5/12 are the only backend touch-points
+- [ ] `docs/graphics/COORDINATE_MAPPING.md` — 2.5D/3D section updated to reflect actual implementation status, noting stylization hooks are opt-in, glTF support is build-time-only, dangle is cosmetic-only, Steps 5/12 are the only backend touch-points, and — per the system-change banner above Step 9 — that Steps 1–8 live in `frontend/js/engine/` (JS/WebGPU browser client) while Steps 9–12 live in `client/engine/` (native Python client)
 - [ ] No entity lacking `render_template`, `mesh`, `transform3d`, or 3D `camera.mode` renders any differently than before this task
 - [ ] No mesh/material lacking the Step 8 flags renders any differently than it did at the end of Step 5 — stylization is strictly additive and opt-in
 - [ ] No part lacking `attachTo`/`dangle`/`animation_id`/`action_animations` renders or behaves any differently than a plain Step 5 single-mesh entity

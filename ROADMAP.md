@@ -35,9 +35,9 @@ The engine is not a separate product — it is the lower half of this same repos
 | 7 | UI Framework | 🔲 Not started |
 | 8 | Audio | 🔲 Not started |
 | 9 | Distribution & Tooling | 🔲 Not started |
-| 10 | 3D Coordinate Mapping (Future) | 🔲 Not started |
-| 11 | Area / Scene System (Future) | 🔲 Not started |
-| 12 | Level Editor & Asset Viewer (Future) | 🔲 Not started |
+| 10 | 3D Coordinate Mapping | 🔲 In Progress (Steps 1–8 of 14 done) |
+| 11 | Area / Scene System | 🔲 Not started |
+| 12 | Level Editor & Asset Viewer | 🔲 Not started |
 
 ---
 
@@ -355,21 +355,24 @@ Define the stable API that game code calls into:
 
 **Goal:** Implement the "2.5D / 3D (Future)" section of `docs/graphics/COORDINATE_MAPPING.md` — a real perspective camera, billboarded sprites in a 3D world, and a minimal textured-mesh draw path — without disturbing the existing 2D orthographic rendering. This phase is a **foundation**, not a commitment to a single art direction: stylization is layered on as opt-in flags so later rendering techniques can build on the same camera/mesh plumbing without inheriting assumptions from whatever look ships first.
 
-### 10.1 — Matrix Helpers & 3D Camera
+### 10.1 — Matrix Helpers & 3D Camera ✅
 
-- `frontend/js/engine/mat4.js` — explicit, dependency-free `identity`/`perspective`/`lookAt`/`multiply`/`translationScale` helpers, matching the project's existing hand-built flat-`Float32Array` MVP convention
-- `camera` object gains optional `mode` (`'2d'` default / `'3d'`), `position`, `target`, `up`, `fov`, `near`, `far`, `fogColor`, `fogNear`, `fogFar`
+- `frontend/js/engine/mat4.js` — explicit, dependency-free `identity`/`perspective`/`lookAt`/`multiply`/`translationScale`/`rotationXYZ`/`compose` helpers, matching the project's existing hand-built flat-`Float32Array` MVP convention
+- `camera` object gains optional `mode` (`'2d'` default / `'3d'`), `position`, `target`, `up`, `fov`, `near`, `far`; `getViewProjectionMatrix()` added to `renderer.js`, returns `null` in 2D mode
+- Fog/ambient fields (`fogColor`/`fogNear`/`fogFar`/`ambientColor`) land with Step 8 (stylization hooks), not here
 
-### 10.2 — Billboarded Sprites
+### 10.2 — Billboarded Sprites ✅
 
 - Sprite quads built from the camera's right/up vectors so 2.5D sprites face the camera in a 3D world without per-entity meshes
 - Reuses existing sprite/material pipelines and bind groups — only the model matrix construction differs
+- Depth testing added via a separate, depth-tested pipeline variant (`ShaderCache.getSpritePipeline3D`) and a depth texture/attachment, kept fully independent of the existing 2D pipeline so 2D rendering is provably unaffected
+- Verified rendering and depth-sorting correctly via a throwaway dev harness (`frontend/test-3d.html` + `run_desktop_test.py`, opened through the real PyWebView/WebView2 client rather than a browser, to sidestep browser-default WebGPU availability issues)
 
 ### 10.3 — Minimal Textured Mesh Path
 
 - Small project-defined mesh JSON format (`position`/`normal`/`uv`/optional `color` per vertex + index list) under `frontend/assets/data/mesh/` — a project-specific runtime format, not a glTF subset
 - `Mesh` class uploads interleaved vertex + index buffers; new `'mesh'` `ShaderCache` pipeline variant issues indexed draws
-- Entities opt in via optional `mesh` + `transform3d` fields (documented in `DATA_STRUCTURES.md`); entities without them are unaffected
+- An entity-**definition** file (`frontend/assets/data/entity/entity-<uuid>.json`) references a `mesh` — shared appearance data, no placement. A networked entity opts in via `render_template` (which definition to use) plus `transform3d` (this instance's rotation/scale — position is its existing `x`/`y`/`z`); entities without either are unaffected. Position/rotation/scale are deliberately never on the shared definition — two placed copies of one template must be independently positioned
 
 ### 10.4 — Mesh Authoring Pipeline
 
@@ -424,7 +427,8 @@ Define the stable API that game code calls into:
 
 ### 11.2 — `Scene`: Single Runtime Container
 
-- `frontend/js/engine/scene.js` — the one object both the network path and a file load populate; `entities`/`camera`/`lighting` plus `addEntity`/`updateEntity`/`removeEntity`/`setCamera`/`setLighting`
+- `frontend/js/engine/scene.js` — the one object both the network path and a file load populate; `entities`/`camera`/`lighting`/`startCamera` plus `addEntity`/`updateEntity`/`removeEntity`/`setCamera`/`setLighting`/`setStartCamera`
+- `camera` is the live, constantly-moving view; `lighting` and `startCamera` are the authored values actually written to a save file — separated specifically so flying around to inspect a scene never silently changes what gets saved as the spawn point/ambience (Phase 12's editor is the only thing that calls `setStartCamera`)
 - Every entity tagged `'authoritative'` (network or file) or `'local'` (runtime-injected); a same-id collision across tags is refused with a warning, never silently arbitrated
 - `gameState` (the existing global in `main.js`) becomes a thin proxy onto `Scene`, so `renderer.js`/`ui.js`/`input.js` need zero changes — this phase wraps the working gameplay path, it doesn't rewrite it
 
@@ -475,13 +479,14 @@ Define the stable API that game code calls into:
 ### 12.3 — Undo/Redo, Property Panel, Asset Browser
 
 - `EditorCommands` command-stack layer wraps `Scene`'s existing API (`addEntity`/`updateEntity`/`removeEntity`/`setCamera`/`setLighting`) — `Scene` itself stays unaware undo exists
-- Property panel replaces raw-JSON editing for transform, `render_template`, `ScriptComponent` params, and part-level (`dangle`/`animation_id`/`action_animations`) fields
+- Property panel splits instance-level fields (transform, `render_template`, `ScriptComponent`) — plain edit, no confirmation — from template-level fields (`parts[]`'s `localOffset`/`dangle`/`animation_id`/`action_animations`) — explicit confirm + warning, since a write there changes every placement of that template, everywhere, not just the selected one
 - Manifest-driven, searchable asset browser replaces the crude "type a raw asset id" flow from Phase 11.3
 
 ### 12.4 — Grid/Snapping and Save Flow
 
 - Ground grid, position snapping, optional rotation snapping, live entity-count/FPS readout
-- `POST /dev/save_area` finished for real (dev-mode-gated), with a download fallback when unavailable; "Load" is the 12.1 launcher, not a second dialog
+- A Scene Settings panel with explicit "Set Start Camera"/"Set Start Lighting" actions — the only calls to `Scene.setStartCamera()` in the whole system
+- `POST /dev/save_area` **and** `POST /dev/save_entity_definition` finished for real (both dev-mode-gated, both refreshing `manifest.json` after writing so new/edited files are immediately discoverable via the 12.1 launcher); download fallback when the area route is unavailable; "Load" is the 12.1 launcher, not a second dialog
 
 **Scope note:** No multi-select, no history-panel UI, no custom asset import UI, no terrain tools, no real-time collaborative editing, no visual behaviour-tree/script editor.
 

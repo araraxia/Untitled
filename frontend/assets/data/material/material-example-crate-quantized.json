@@ -1,0 +1,9 @@
+{
+  "id": "mat-crate-quantized-001",
+  "name": "crate_color_levels",
+  "atlas": "assets/images/sprites/objects/crate_atlas.png",
+  "param_map": null,
+  "color_ramp": null,
+  "overlays": [],
+  "color_levels": 4
+}

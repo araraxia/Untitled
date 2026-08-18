@@ -112,7 +112,14 @@ class AssetLoader {
       return;
     }
 
-    const categories = ["images", "animations", "materials", "audio"];
+    const categories = [
+      "images",
+      "animations",
+      "materials",
+      "meshes",
+      "entities",
+      "audio",
+    ];
     let registered = 0;
     for (const category of categories) {
       const entries = manifest[category];

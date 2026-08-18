@@ -1,0 +1,6 @@
+{
+  "id": "entity-example-crate-affine",
+  "name": "example_crate_affine",
+  "mesh": "mesh-example-crate",
+  "material_id": "material/material-example-crate-affine.json"
+}

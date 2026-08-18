@@ -1,0 +1,9 @@
+{
+  "id": "mat-crate-affine-001",
+  "name": "crate_affine_uv",
+  "atlas": "assets/images/sprites/objects/crate_atlas.png",
+  "param_map": null,
+  "color_ramp": null,
+  "overlays": [],
+  "affine_uv": true
+}

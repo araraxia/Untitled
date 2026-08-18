@@ -72,6 +72,9 @@ A material is the single source of truth for **how something is drawn**. It name
 | `overlays[].animation_id` | `string` | UUID of the overlay animation clip |
 | `overlays[].blend_mode` | `string` | `"additive"` or `"alpha"` |
 | `overlays[].intensity` | `float` | Default blend strength (can be overridden at runtime via entity state) |
+| `vertex_color` | `bool` | 3D mesh only (Step 8 stylization hook) — tint by the mesh's per-vertex `color` attribute. Default `false`: renders as if no vertex colour existed, byte-identical to omitting the field. Has no effect on 2D sprite entities. |
+| `affine_uv` | `bool` | 3D mesh only (Step 8) — interpolate UVs without perspective correction (the N64 texture-warp look). Default `false`: standard perspective-correct interpolation. |
+| `color_levels` | `int` | 3D mesh only (Step 8) — quantise final colour into this many bands per channel. Default `0`: continuous colour, no quantisation. |
 
 **`color_ramp` sub-fields:**
 
@@ -112,6 +115,8 @@ See example file: [`frontend/assets/data/material/material-example-lantern.json`
 
 An entity references a material and an animation clip. It carries only the data that is **unique to this instance** — identity, size, spatial properties, and runtime state.
 
+**3D usage is different, and it matters:** for a 3D mesh entity, this same file type is reached via a networked entity's `render_template` field (`backend/engine/ecs/entity.py`) and is treated as a **reusable template**, not an instance — the `mesh`/`material_id` fields describe what something looks like, and are deliberately shared across every networked entity that references this file. Placement (position, rotation, scale) is **never** stored here for 3D content — it lives on the networked entity itself (`x`/`y`/`z`, `transform3d`), specifically so multiple entities can reference the same template and still be independently positioned. This doesn't change anything about the existing 2D usage above (still one definition file per placed 2D object, as always) — it's an additional way this file format gets used, not a replacement.
+
 **Field reference:**
 
 | Field | Type | Description |
@@ -123,6 +128,7 @@ An entity references a material and an animation clip. It carries only the data 
 | `size` | `[w, h]` | Logical size in world units |
 | `pivot` | `[x, y]` | Anchor point as a fraction of size (e.g. `[0.5, 1.0]` = bottom-centre) |
 | `runtime` | `object` | Initial runtime state values (any material uniforms to override at startup) |
+| `mesh` | `string \| null` | 3D only — asset key for a mesh JSON file (`frontend/assets/data/mesh/`, see `Mesh` in `frontend/js/engine/mesh.js`). Presence of this field is what routes a `render_template`-resolved entity to the 3D mesh draw path instead of the 2D/billboard path. No placement data — see the note above. |
 
 **`runtime` object:** A flat key-value store whose keys correspond to named uniforms in the material's shader. Common keys:
 
@@ -152,6 +158,23 @@ An entity references a material and an animation clip. It carries only the data 
 ```
 
 See example file: [`frontend/assets/data/entity/entity-example-lantern.json`](../../frontend/assets/data/entity/entity-example-lantern.json)
+
+---
+
+## Camera / Scene
+
+Not a JSON asset file — the `camera` object is a runtime object (`gameState.camera`), hand-authored today (`frontend/test-3d.html`) and eventually written by the Area/Scene system (Phase 11). Documented here because `frontend/js/engine/renderer.js`'s `getViewProjectionMatrix()` and `frontend/js/engine/entityRenderer.js`'s `drawEntityMesh()` are the readers, and because the Step 8 fields below are consumed the same way materials are — as opt-in stylization inputs.
+
+**3D camera fields** (see Step 3 of `3d-coordinate-mapping.prompt.md`): `mode` (`'2d'` default | `'3d'`), `position`, `target`, `up`, `fov`, `near`, `far`.
+
+**Step 8 stylization fields**, all optional and independently defaulting to a no-op — consumed only by the 3D mesh draw path, no effect on 2D or billboard entities:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `fogColor` | `[r, g, b]` | Colour the mesh path fades toward with distance. Meaningless while fog is disabled. |
+| `fogNear` | `float` | Distance at which fog starts blending in. |
+| `fogFar` | `float` | Distance at which fog is fully opaque. **Default `0`: fog is completely disabled** — the shader skips the blend entirely rather than computing a zero-strength one. |
+| `ambientColor` | `[r, g, b]` | Multiplies final mesh colour. **Default `[1, 1, 1]`: no-op tint.** |
 
 ---
 

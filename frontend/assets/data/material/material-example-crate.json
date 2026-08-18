@@ -1,0 +1,8 @@
+{
+  "id": "mat-crate-001",
+  "name": "crate_base",
+  "atlas": "assets/images/sprites/objects/crate_atlas.png",
+  "param_map": null,
+  "color_ramp": null,
+  "overlays": []
+}

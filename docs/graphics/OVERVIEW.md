@@ -1,18 +1,18 @@
 # Graphics System — Overview
 
+> **Note:** This doc was written during the Phase 0/2 WebGPU migration and much of it (the "Migration Path" checklist, "New Systems Required" table, and "target state" framing below) is a snapshot from that period — Phases 1–6 have since completed and Phase 10 (3D rendering) is in progress, ahead of what's described here. [ROADMAP.md](../../ROADMAP.md) is authoritative for current status; treat the historical sections below as background on how the WebGPU pipeline came to exist, not as a live status board.
+
 ## Goals
 
 Prefer explicit control and mathematical clarity over convenience abstractions. Prioritise efficiency in the rendering path — minimise draw calls, GPU state changes, and CPU-GPU data transfers.
 
 ---
 
-## Current System: Sprite Atlas + Animation Clips
+## Current System: WebGPU, with Canvas 2D as a Compatibility Fallback
 
-The renderer uses a **sprite atlas** (sprite sheet): a single image containing all animation frames packed into a grid. Each rendered frame is a **sub-region blit** — the source rectangle (frame column × width, frame row × height) is drawn to a destination rectangle on the canvas via `drawImage`.
+WebGPU is the primary, live rendering path (see `initWebGPU()`/`useGPU` in `frontend/js/engine/renderer.js`) — this is no longer aspirational. `entityRenderer.js` dispatches each entity, per-frame, to whichever draw path its data calls for: a 2D sprite atlas blit, a depth-tested 2.5D camera-facing billboard, or a fully 3D textured mesh (`render_template` → mesh + material, Phase 10 Step 5). Canvas 2D (`getContext('2d')`) only remains as the fallback path when `navigator.gpu.requestAdapter()` fails — it has no programmable shader stage and cannot express materials, lighting, or 3D at all, so entities render flat there regardless of their configured dimensionality.
 
-Animation sequences are defined as **animation clips** in JSON: ordered lists of frame indices with per-frame durations. This data-driven approach is good — it separates art data from engine code. The JSON can be compiled to a tighter binary format (e.g. a flat `Uint16Array` of `[frameIndex, durationMs]` pairs) before deployment if parse time or payload size becomes a concern.
-
-**Limitation of the current approach:** The Canvas 2D API (`getContext('2d')`) provides no programmable shader stage. All per-pixel operations are fixed. Moving to WebGPU is required to implement the planned rendering features.
+Both the sprite path and the mesh path are backed by the same underlying data-driven idea: a **sprite atlas** (or mesh vertex/index buffer) holds the geometry/pixels, and **animation clips** (JSON: ordered frame indices with per-frame durations) or **material JSON** drive how it's drawn, keeping art data separate from engine code.
 
 ---
 
@@ -31,23 +31,27 @@ Animation sequences are defined as **animation clips** in JSON: ordered lists of
 
 > **TRACK:** Monitor WebKitGTK WebGPU progress. Check the [WebKit Feature Status](https://webkit.org/status/) page for `WebGPU` and follow WebKitGTK release notes. Once WebGPU ships in a stable WebKitGTK release that is widely available in major Linux distributions, the Linux PyWebView build is unblocked.
 
+**Browser-mode (`run_browser.py`) caveat:** this launches the OS's *default* browser via `webbrowser.open()`, not a specific one. `run_browser.py` is not itself a PyWebView engine, so it isn't a row in the table above, but the same "does this browser support WebGPU" question applies to it directly. **Firefox now supports WebGPU as of Firefox 141** (Windows first; other platforms following on Mozilla's rollout schedule), so it's no longer a Chrome-only requirement for browser-mode dev — but any browser older than that, or a non-Chromium/non-Firefox default browser, will silently fail `navigator.gpu.requestAdapter()` and fall back to the Canvas 2D-only entity path (see `initWebGPU()` in `renderer.js`). If a browser-mode session looks like it never leaves the 2D fallback, check the actual browser and version before assuming a code bug.
+
 ---
 
 ## Frontend Engine Directory Structure
 
-Following the engine–game separation (Phase 1 of [ROADMAP.md](../../ROADMAP.md)), frontend JavaScript is split into two namespaces. The layout below shows the **target state** after Phase 1 completes; Phase 0 systems currently live under `frontend/js/` and `frontend/js/sprites/` pending the restructure.
+Following the engine–game separation (Phase 1 of [ROADMAP.md](../../ROADMAP.md), complete), frontend JavaScript is split into two namespaces. This is the actual current layout, not a target — Phase 1 has already landed.
 
 ```text
 frontend/js/
   engine/               ← reusable engine infrastructure
     renderer.js         ← WebGPU render coordinator
-    entityRenderer.js   ← per-entity animation and GPU draw
-    interpolation.js    ← position interpolation (10 TPS → 60 FPS)
+    entityRenderer.js   ← per-entity draw path: 2D sprite / 2.5D billboard / 3D mesh
+    mat4.js             ← 4x4 matrix helpers for 3D camera/model transforms
+    mesh.js             ← loads and uploads 3D mesh JSON (vertex/index buffers)
+    interpolation.js    ← position interpolation (20 TPS → 60 FPS)
     input.js            ← raw input event stream
     network.js          ← SocketIO abstraction
     assetLoader.js      ← asset registry; resolves keys to file paths
     sprites/
-      shaderCache.js    ← WGSL pipeline compilation and caching
+      shaderCache.js    ← WGSL pipeline compilation and caching (sprite + mesh variants)
       gpuBuffers.js     ← GPU buffer helpers (uniform, vertex)
       gpuSpriteSheet.js ← WebGPU counterpart to Canvas 2D SpriteSheet
       materialLoader.js ← builds GPUBindGroup objects from material JSON
@@ -105,4 +109,5 @@ Paths show the target layout after Phase 1 restructure. Phase 0 systems are ✅ 
 - [COORDINATE_MAPPING.md](COORDINATE_MAPPING.md) — UV coordinates, 2D and 3D projection
 - [RENDER_WORKFLOWS.md](RENDER_WORKFLOWS.md) — Practical per-feature shader workflows
 - [DATA_STRUCTURES.md](DATA_STRUCTURES.md) — JSON schemas for animation clips, materials, entities
-- [ROADMAP.md](../../ROADMAP.md) — Full engine packaging roadmap; graphics work is Phase 0 (complete) and Phase 2
+- [3D_ASSET_AUTHORING.md](3D_ASSET_AUTHORING.md) — Blender → mesh pipeline for 3D content; the basic textured-mesh render path is implemented (Phase 10, in progress), the Blender/glTF authoring side is upcoming
+- [ROADMAP.md](../../ROADMAP.md) — Full engine packaging roadmap; authoritative for current phase status

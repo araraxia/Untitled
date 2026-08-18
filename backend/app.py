@@ -52,6 +52,15 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/test-3d.html")
+def test_3d():
+    """[DEV ONLY] Serve the throwaway 3D billboard test page (Step 4 of
+    3d-coordinate-mapping.prompt.md). No backend state, no SocketIO —
+    delete this route along with frontend/test-3d.html once the real
+    Area/Scene viewer (Phase 11/12) exists."""
+    return render_template("test-3d.html")
+
+
 @app.route("/css/<path:filename>")
 def serve_css(filename):
     """Serve CSS files."""

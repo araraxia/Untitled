@@ -91,7 +91,8 @@ def build_manifest() -> dict[str, Any]:
     """Scan asset directories and return a manifest dict.
 
     Walks ``frontend/assets/images/``, ``frontend/assets/data/animation/``,
-    ``frontend/assets/data/material/``, and ``frontend/assets/audio/``
+    ``frontend/assets/data/material/``, ``frontend/assets/data/mesh/``,
+    ``frontend/assets/data/entity/``, and ``frontend/assets/audio/``
     recursively.  Files whose names start with ``example_`` or whose
     extensions are not in the recognised set are skipped.
 
@@ -101,6 +102,8 @@ def build_manifest() -> dict[str, Any]:
     images: dict[str, Any] = {}
     animations: dict[str, Any] = {}
     materials: dict[str, Any] = {}
+    meshes: dict[str, Any] = {}
+    entities: dict[str, Any] = {}
     audio_entries: dict[str, Any] = {}
 
     images_dir = ASSETS_DIR / "images"
@@ -154,6 +157,38 @@ def build_manifest() -> dict[str, Any]:
                 "hash": file_hash(fpath),
             }
 
+    mesh_dir = ASSETS_DIR / "data" / "mesh"
+    if mesh_dir.exists():
+        for fpath in sorted(mesh_dir.rglob("*")):
+            if not fpath.is_file():
+                continue
+            if fpath.name.startswith("example_"):
+                continue
+            if fpath.suffix.lower() not in JSON_EXTENSIONS:
+                continue
+            rel = fpath.relative_to(FRONTEND_DIR)
+            asset_id = json_asset_id(fpath)
+            meshes[asset_id] = {
+                "path": rel.as_posix(),
+                "hash": file_hash(fpath),
+            }
+
+    entity_dir = ASSETS_DIR / "data" / "entity"
+    if entity_dir.exists():
+        for fpath in sorted(entity_dir.rglob("*")):
+            if not fpath.is_file():
+                continue
+            if fpath.name.startswith("example_"):
+                continue
+            if fpath.suffix.lower() not in JSON_EXTENSIONS:
+                continue
+            rel = fpath.relative_to(FRONTEND_DIR)
+            asset_id = json_asset_id(fpath)
+            entities[asset_id] = {
+                "path": rel.as_posix(),
+                "hash": file_hash(fpath),
+            }
+
     audio_dir = ASSETS_DIR / "audio"
     if audio_dir.exists():
         for fpath in sorted(audio_dir.rglob("*")):
@@ -176,6 +211,8 @@ def build_manifest() -> dict[str, Any]:
         "images": images,
         "animations": animations,
         "materials": materials,
+        "meshes": meshes,
+        "entities": entities,
         "audio": audio_entries,
     }
 
@@ -191,10 +228,13 @@ def main() -> None:
     n_img = len(manifest["images"])
     n_anim = len(manifest["animations"])
     n_mat = len(manifest["materials"])
+    n_mesh = len(manifest["meshes"])
+    n_ent = len(manifest["entities"])
     n_aud = len(manifest["audio"])
     print(
         f"Generated manifest: {n_img} images, {n_anim} animations, "
-        f"{n_mat} materials, {n_aud} audio"
+        f"{n_mat} materials, {n_mesh} meshes, {n_ent} entities, "
+        f"{n_aud} audio"
     )
 
 

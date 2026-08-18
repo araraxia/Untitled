@@ -1,0 +1,6 @@
+{
+  "id": "entity-example-crate-vertexcolor",
+  "name": "example_crate_vertexcolor",
+  "mesh": "mesh-example-crate-colored",
+  "material_id": "material/material-example-crate-vertexcolor.json"
+}

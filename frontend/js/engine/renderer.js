@@ -33,6 +33,17 @@ let sceneTexture = null;
  */
 let lightingPass = null;
 
+/**
+ * Depth texture for the sprite pass (Pass 1). Created once WebGPU is
+ * ready, independent of whether the lighting pass is active. Only
+ * depth-tested pipelines (e.g. ShaderCache.getSpritePipeline3D — 3D
+ * billboards) actually read/write it; the existing 2D sprite pipeline
+ * has no depthStencil state and is unaffected by this attachment's mere
+ * presence on the pass.
+ * @type {GPUTexture|null}
+ */
+let depthTexture = null;
+
 async function initWebGPU() {
   if (!navigator.gpu) {
     console.warn(
@@ -85,6 +96,23 @@ function createSceneTexture(width, height) {
 }
 
 /**
+ * Allocate (or reallocate) the depth texture used by the sprite pass.
+ * Matches the "depth24plus" format depth-tested pipelines are compiled
+ * against (see shaderCache.js's DEPTH_FORMAT).
+ *
+ * @param {number} width
+ * @param {number} height
+ * @returns {GPUTexture}
+ */
+function createDepthTexture(width, height) {
+  return gpuDevice.createTexture({
+    size: [width, height],
+    format: "depth24plus",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT,
+  });
+}
+
+/**
  * Initialise the LightingPass and allocate the first scene texture.
  * Safe to call multiple times — re-creates resources if already active.
  */
@@ -106,7 +134,14 @@ async function initRenderer() {
 
   // Set canvas size before acquiring any context
   resizeCanvas();
-  window.addEventListener("resize", resizeCanvas);
+  // Not `window.addEventListener("resize", resizeCanvas)` directly: the
+  // browser invokes resize listeners with a UIEvent as the first
+  // argument, which would silently override resizeCanvas's `width =
+  // window.innerWidth` default parameter with the Event object itself —
+  // exactly what produced "Failed to read the 'size' property ... Value
+  // is not of type 'unsigned long'" from createTexture on an actual
+  // window resize. Call with no arguments so the defaults are used.
+  window.addEventListener("resize", () => resizeCanvas());
 
   // Try WebGPU first — getContext('webgpu') must precede getContext('2d')
   // on the same element; a canvas is locked to the first context type acquired.
@@ -117,6 +152,8 @@ async function initRenderer() {
     ctx = overlayCanvas.getContext("2d");
     // Initialise the lighting pass (Phase 2.4).
     initLightingPass();
+    // Depth texture for the sprite pass (3D billboards/meshes).
+    depthTexture = createDepthTexture(canvas.width, canvas.height);
   } else {
     // No WebGPU — fall back to Canvas 2D on the main canvas.
     ctx = canvas.getContext("2d");
@@ -132,8 +169,6 @@ async function initRenderer() {
  * @returns {Promise<EntityRenderer>}
  */
 async function getEntityRenderer(entityId, animationDataPaths) {
-  console.log("[Renderer] getEntityRenderer called - entityId:", entityId);
-
   if (!entityRenderers.has(entityId)) {
     const renderer = new EntityRenderer(
       ctx,
@@ -141,8 +176,17 @@ async function getEntityRenderer(entityId, animationDataPaths) {
       animationDataPaths,
       useGPU,
     );
-    await renderer.loadAllAnimationData();
+    // Register immediately, before awaiting the load — renderEntities()
+    // calls getEntityRenderer() every frame, and loadAllAnimationData()
+    // can easily take several frames (fetch + image decode + texture
+    // upload). Without registering first, every one of those in-between
+    // frames would see entityRenderers.has(entityId) === false and kick
+    // off another full construct-and-load for the same entity, endlessly
+    // duplicating the fetch/GPU work. drawEntity()'s own loadingComplete
+    // guard already handles "not ready yet" safely, so it's fine for
+    // other code to see this entry before its data has finished loading.
     entityRenderers.set(entityId, renderer);
+    await renderer.loadAllAnimationData();
   }
 
   return entityRenderers.get(entityId);
@@ -157,13 +201,6 @@ async function getEntityRenderer(entityId, animationDataPaths) {
  *   is true.
  */
 async function renderEntities(gameState, deltaTime, passEncoder = null) {
-  console.log(
-    "[Renderer] renderEntities called - entityCount:",
-    Object.keys(gameState.entities).length,
-    "deltaTime:",
-    deltaTime,
-  );
-
   // Destroy renderers for entities no longer in game state
   for (const [entityId, renderer] of entityRenderers) {
     if (!gameState.entities[entityId]) {
@@ -204,16 +241,53 @@ function resizeCanvas(width = window.innerWidth, height = window.innerHeight) {
     sceneTexture = createSceneTexture(width, height);
     lightingPass.setSceneTexture(sceneTexture);
   }
+  // Reallocate the depth texture at the new dimensions.
+  if (useGPU && depthTexture) {
+    depthTexture.destroy();
+    depthTexture = createDepthTexture(width, height);
+  }
+}
+
+/**
+ * Compute the view-projection matrix for a 3D camera.
+ *
+ * `camera` is the same object passed through gameState.camera — it may
+ * carry either 2D fields ({x, y, zoom}) or 3D fields ({mode: '3d',
+ * position, target, up, fov, near, far}). This function only ever
+ * returns non-null for `camera.mode === '3d'`; the existing 2D path in
+ * EntityRenderer.drawEntity builds its own inline orthographic MVP and
+ * must not be rerouted through here.
+ *
+ * `camera` may also carry optional Step 8 stylization fields, read
+ * directly by EntityRenderer.drawEntityMesh (not by this function) since
+ * they feed the mesh material uniform buffer, not the view-projection
+ * matrix. Listed here because `camera` is the one runtime scene object
+ * the renderer already reads every frame, and these fields all default
+ * to a true no-op when absent:
+ *   - fogColor: [r, g, b] — colour the mesh path fades toward with distance
+ *   - fogNear, fogFar: number — fog is fully disabled when fogFar <= 0
+ *     (the default when omitted); no visual change vs. pre-Step-8 output
+ *   - ambientColor: [r, g, b] — multiplies final mesh colour; default/
+ *     omitted is [1, 1, 1], a no-op tint
+ *
+ * @param {Object} camera
+ * @param {number} aspect - Viewport width / height.
+ * @returns {Float32Array|null} View-projection matrix, or null in 2D mode.
+ */
+function getViewProjectionMatrix(camera, aspect) {
+  if (!camera || camera.mode !== "3d") return null;
+
+  const fov = camera.fov ?? Math.PI / 4;
+  const near = camera.near ?? 0.1;
+  const far = camera.far ?? 1000;
+  const up = camera.up ?? [0, 1, 0];
+
+  const projection = perspective(fov, aspect, near, far);
+  const view = lookAt(camera.position, camera.target, up);
+  return multiply(projection, view);
 }
 
 async function render(gameState, deltaTime) {
-  console.log(
-    "[Renderer] render called - deltaTime:",
-    deltaTime,
-    "entities:",
-    Object.keys(gameState.entities || {}).length,
-  );
-
   if (useGPU) {
     // --- WebGPU path ---
     const commandEncoder = gpuDevice.createCommandEncoder();
@@ -238,6 +312,18 @@ async function render(gameState, deltaTime) {
           storeOp: "store",
         },
       ],
+      // Present even though the existing 2D sprite pipeline doesn't declare
+      // depthStencil state (so it neither reads nor writes it, unaffected).
+      // Only depth-tested pipelines — e.g. getSpritePipeline3D() for 3D
+      // billboards — actually use this attachment.
+      depthStencilAttachment: depthTexture
+        ? {
+            view: depthTexture.createView(),
+            depthClearValue: 1.0,
+            depthLoadOp: "clear",
+            depthStoreOp: "store",
+          }
+        : undefined,
     });
 
     await renderEntities(gameState, deltaTime, passEncoder);
@@ -316,7 +402,6 @@ function _gatherLights(gameState) {
 }
 
 function drawGrid(camera) {
-  console.log("[Renderer] drawGrid called - camera:", camera);
   const gridSize = 32;
   ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
   ctx.lineWidth = 1;
@@ -351,14 +436,19 @@ function drawEntity(entity, camera) {
 }
 
 function drawDebugInfo(gameState) {
-  console.log("[Renderer] drawDebugInfo called");
   ctx.fillStyle = "#fff";
   ctx.font = "12px monospace";
   ctx.textAlign = "left";
 
+  const cam = gameState.camera;
+  const cameraLine =
+    cam && cam.mode === "3d"
+      ? `Camera (3D): ${cam.position.map((v) => v.toFixed(1)).join(", ")}`
+      : `Camera: ${Math.round(cam.x)}, ${Math.round(cam.y)}`;
+
   const info = [
     `Entities: ${Object.keys(gameState.entities).length}`,
-    `Camera: ${Math.round(gameState.camera.x)}, ${Math.round(gameState.camera.y)}`,
+    cameraLine,
     `Player: ${gameState.player ? `${Math.round(gameState.player.x)}, ${Math.round(gameState.player.y)}` : "None"}`,
   ];
 

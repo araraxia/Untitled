@@ -144,6 +144,8 @@ def _build_manifest() -> int:
         len(manifest["images"])
         + len(manifest["animations"])
         + len(manifest["materials"])
+        + len(manifest["meshes"])
+        + len(manifest["entities"])
         + len(manifest["audio"])
     )
     return total

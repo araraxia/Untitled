@@ -11,7 +11,6 @@ class Animation {
      * @param {boolean} [loop=true] - Whether the animation should loop
      */
     constructor(name, startFrame, frameCount, frameTime, loop = true) {
-        console.log('[Animation] Constructor called - name:', name, 'startFrame:', startFrame, 'frameCount:', frameCount, 'frameTime:', frameTime, 'loop:', loop);
         this.name = name;
         this.startFrame = startFrame;
         this.frameCount = frameCount;
@@ -31,63 +30,56 @@ class AnimationController {
      * @param {Object.<string, Animation>} animations - Object mapping animation names to Animation instances
      */
     constructor(spriteSheet, animations) {
-        console.log('[AnimationController] Constructor called - animationCount:', Object.keys(animations).length);
         this.spriteSheet = spriteSheet;
         this.animations = animations; // Object with animation names as keys
         this.currentAnimation = null;
         this.currentFrame = 0;
         this.timeAccumulator = 0;
     }
-    
+
     /**
      * Play a specific animation by name
      * @param {string} animationName - Name of the animation to play
      */
     play(animationName) {
-        console.log('[AnimationController] play called - animationName:', animationName);
         // Only reset if switching to a different animation
         if (this.currentAnimation?.name === animationName) return; // Already playing this animation
-        
+
         this.currentAnimation = this.animations[animationName];
         if (this.currentAnimation) {
             this.currentFrame = this.currentAnimation.startFrame;
             this.timeAccumulator = 0;
         }
     }
-    
+
     /**
      * Update the animation state based on elapsed time
      * @param {number} deltaTime - Time elapsed since last update in milliseconds
      */
     update(deltaTime) {
         if (!this.currentAnimation) {
-            console.log('[AnimationController] update called - NO CURRENT ANIMATION');
             return;
         }
-        
+
         this.timeAccumulator += deltaTime;
-        console.log('[AnimationController] update - deltaTime:', deltaTime, 'timeAccumulator:', this.timeAccumulator, 'frameTime:', this.currentAnimation.frameTime, 'currentFrame:', this.currentFrame);
-        
+
         if (this.timeAccumulator >= this.currentAnimation.frameTime) {
             this.timeAccumulator -= this.currentAnimation.frameTime;
             this.currentFrame++;
-            
-            const maxFrame = this.currentAnimation.startFrame + 
+
+            const maxFrame = this.currentAnimation.startFrame +
                            this.currentAnimation.frameCount;
-            
-            console.log('[AnimationController] Frame advanced! New frame:', this.currentFrame, 'maxFrame:', maxFrame);
-            
+
             if (this.currentFrame >= maxFrame) {
                 if (this.currentAnimation.loop) {
                     this.currentFrame = this.currentAnimation.startFrame;
-                    console.log('[AnimationController] Loop back to frame:', this.currentFrame);
                 } else {
                     this.currentFrame = maxFrame - 1;
                 }
             }
         }
     }
-    
+
     /**
      * Draw the current animation frame
      * @param {CanvasRenderingContext2D} ctx - The canvas 2D rendering context
@@ -96,7 +88,6 @@ class AnimationController {
      * @param {boolean} [flipX=false] - Whether to flip horizontally
      */
     draw(ctx, x, y, flipX = false) {
-        console.log('[AnimationController] draw called - pos:', x + ',' + y, 'frame:', this.currentFrame, 'flipX:', flipX);
         this.spriteSheet.drawFrame(ctx, this.currentFrame, x, y, flipX);
     }
 }

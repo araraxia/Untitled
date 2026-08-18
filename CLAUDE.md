@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Real-time simulation game (Rimworld/Dwarf Fortress-style) using PyWebView desktop app → Flask/SocketIO backend (Python) → WebGPU frontend (JavaScript). See [ARCHITECTURE.md](ARCHITECTURE.md) for structure and [ROADMAP.md](ROADMAP.md) for phased development plan (Phases 0–9).
+A general-purpose, genre-agnostic real-time game engine: PyWebView desktop app → Flask/SocketIO backend (Python) → WebGPU frontend (JavaScript). The engine renders 2D sprites, 2.5D billboards, and fully 3D textured meshes side by side in the same scene (see `frontend/js/engine/entityRenderer.js`) — it is not built around any one genre or dimensionality. The backend simulation loop is architected to scale toward parallelized, multi-threaded entity processing so large numbers of on- and off-screen entities can be simulated without blocking the tick loop (see `backend/engine/ecs/scheduler.py`). See [ARCHITECTURE.md](ARCHITECTURE.md) for structure and [ROADMAP.md](ROADMAP.md) for phased development plan (Phases 0–12).
 
 Each phase has an agent prompt in `.github/prompts/`. When working through a prompt, add completion indicators to headers and update any progress trackers as phases complete. When implementation deviates from the prompt, update the prompt file to reflect the actual changes.
 

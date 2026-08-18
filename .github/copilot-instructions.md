@@ -6,11 +6,11 @@ These rules apply to all code in this repository. Follow them exactly unless the
 ## Project Context
 This repository contains a Python project that uses PyWebView to create a desktop application. The project structure includes a backend built with Flask and SocketIO, and a frontend consisting of HTML, CSS, and JavaScript files. The instructions provided here are meant to guide developers in maintaining the code style and structure of the project.
 
-The purpose of this repository branch is to build a modular, flexible and maintainable game engine that can be easily extended with new features and game mechanics. 
+The purpose of this repository branch is to build a modular, flexible and maintainable game engine that can be easily extended with new features and game mechanics — a generalized engine, not a single genre-locked game.
 The engine is designed with the following ideas in mind:
-- Primarily focuses on 2D or 2.5D graphics, but is built with the potential for 3D support in the future.
-- Graphics rendering should be handled 
-- Code efficient and optimized for performance, especially in the logic and rendering processes. Utilizing hardware acceleration where possible and minimizing unnecessary computations to allow for tracking a large number of entities and complex interactions without significant performance degradation.
+- Genre-agnostic and not locked to one dimensionality: 2D sprites, 2.5D billboards, and full 3D meshes are all first-class rendering paths that can coexist in the same scene (see `frontend/js/engine/entityRenderer.js`), chosen per-entity rather than assumed engine-wide.
+- Graphics rendering is handled via a WebGPU pipeline (with a Canvas 2D fallback), driven by data-driven JSON materials/meshes rather than hardcoded per-entity draw logic.
+- Code efficient and optimized for performance, especially in the logic and rendering processes. Utilizing hardware acceleration where possible and minimizing unnecessary computations. The backend simulation is architected around a dependency-ordered ECS system scheduler so it can scale toward parallelized, multi-threaded entity processing — tracking a large number of on- and off-screen entities and their interactions without significant performance degradation.
 - Emphasizes modularity and flexibility, allowing for easy integration of new features and mechanics.
 
 Entry points for the project include:

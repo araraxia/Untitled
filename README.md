@@ -1,8 +1,8 @@
-# Real-Time Simulation Game Engine
+# Real-Time Game Engine
 
-A modular 2D/2.5D game engine and simulation game inspired by Rimworld and Dwarf Fortress. The engine runs as a standalone desktop application (PyWebView) with a Python simulation backend and a WebGPU-accelerated JavaScript frontend.
+A modular, genre-agnostic real-time game engine supporting 2D, 2.5D, and full 3D graphics in the same scene. The engine runs as a standalone desktop application (PyWebView) with a Python simulation backend and a WebGPU-accelerated JavaScript frontend.
 
-The primary goal of this repository is to develop a reusable, extensible engine with a clean boundary between engine infrastructure and game-specific content — not just a single game prototype.
+The primary goal of this repository is to develop a reusable, extensible engine with a clean boundary between engine infrastructure and game-specific content — not just a single game prototype. The backend simulation loop and ECS scheduler are designed to scale toward parallelized, multi-threaded entity processing, so a large number of on- and off-screen entities can be simulated without blocking the tick loop.
 
 For a detailed breakdown of the architecture see [ARCHITECTURE.md](ARCHITECTURE.md).
 For the phased development plan see [ROADMAP.md](ROADMAP.md).
@@ -31,9 +31,9 @@ For the phased development plan see [ROADMAP.md](ROADMAP.md).
 
 ### Frontend (JavaScript + WebGPU)
 
-- **`frontend/js/`** — Renderer, input, network, interpolation; sprite rendering via WebGPU pipeline
+- **`frontend/js/`** — Renderer, input, network, interpolation; 2D, 2.5D (billboard), and 3D (textured mesh) draw paths all live side by side in `entityRenderer.js`, chosen per-entity — the engine is not locked to one dimensionality
 - 60 FPS render loop with position interpolation between simulation ticks
-- Sprite atlas + animation clip system; material/parameter map pipeline in progress
+- Sprite atlas + animation clip system; JSON-driven material/parameter map pipeline; glTF-authored mesh pipeline for 3D content
 - Overlay canvas pattern: WebGPU surface for world + Canvas 2D for HUD
 
 ---
@@ -128,16 +128,19 @@ python run_browser.py
 | ----- | ---- | ------ |
 | 0 | WebGPU Foundation | ✅ Complete |
 | 1 | Engine–Game Separation | ✅ Complete |
-| 2 | Graphics Pipeline Completion | 🔲 Not started |
-| 3 | ECS Overhaul | 🔲 Not started |
-| 4 | Simulation Systems | 🔲 Not started |
-| 5 | Asset Pipeline | 🔲 Not started |
-| 6 | Save / Load / Persistence | 🔲 In Progress |
+| 2 | Graphics Pipeline Completion | ✅ Complete |
+| 3 | ECS Overhaul | ✅ Complete |
+| 4 | Simulation Systems | ✅ Complete |
+| 5 | Asset Pipeline | ✅ Complete |
+| 6 | Save / Load / Persistence | ✅ Complete |
 | 7 | UI Framework | 🔲 Not started |
 | 8 | Audio | 🔲 Not started |
 | 9 | Distribution & Tooling | 🔲 Not started |
+| 10 | 3D Coordinate Mapping | 🔲 In Progress |
+| 11 | Area / Scene System | 🔲 Not started |
+| 12 | Level Editor & Asset Viewer | 🔲 Not started |
 
-See [ROADMAP.md](ROADMAP.md) for full phase specs and sequencing notes.
+See [ROADMAP.md](ROADMAP.md) for full phase specs and sequencing notes — this table mirrors it and may lag slightly; ROADMAP.md is authoritative.
 
 ---
 
@@ -147,7 +150,7 @@ See [ROADMAP.md](ROADMAP.md) for full phase specs and sequencing notes.
 | ------ | ------ |
 | Simulation rate | 20 TPS |
 | Render rate | 60 FPS |
-| Active entities | 100–1 000 |
+| Active entities | 100–1 000 (current); scaling toward parallelized backend processing |
 | Network latency (localhost) | < 50 ms |
 
-Key strategies: spatial partitioning (grid-based), dirty-flag delta broadcasts, entity sleeping, viewport culling.
+Key strategies: spatial partitioning (grid-based), dirty-flag delta broadcasts, entity sleeping, viewport culling. The ECS system scheduler (`backend/engine/ecs/scheduler.py`) resolves systems into a dependency-ordered graph each tick — the same structure that independent, non-conflicting systems will run across worker threads/processes as the engine scales toward simulating large numbers of on- and off-screen entities.

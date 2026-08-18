@@ -52,6 +52,16 @@ class Entity:
         self.race = "human"
         self.model_version = "00"
 
+        # 3D rendering (frontend/js/game/3d-coordinate-mapping): which
+        # entity-definition (frontend/assets/data/entity/entity-<uuid>.json)
+        # renders this entity, and how this one placement is rotated/scaled.
+        # Deliberately no position fields here — x/y/z above already are
+        # this instance's position; render_template/transform3d must never
+        # carry placement data, only "what it looks like" (render_template)
+        # and "how this copy is oriented" (transform3d).
+        self.render_template: Optional[str] = None
+        self.transform3d: Optional[Dict[str, Any]] = None
+
         # Physical attributes
         self.height = 0
         self.weight = 0
@@ -462,6 +472,8 @@ class Entity:
             "name": self.name,
             "race": self.race,
             "model_version": self.model_version,
+            "render_template": self.render_template,
+            "transform3d": self.transform3d,
             "height": self.height,
             "weight": self.weight,
             "age": self.age,
@@ -510,6 +522,8 @@ class Entity:
         entity.name = data.get("name", "default")
         entity.race = data.get("race", "human")
         entity.model_version = data.get("model_version", "00")
+        entity.render_template = data.get("render_template")
+        entity.transform3d = data.get("transform3d")
         entity.height = data.get("height", 0)
         entity.weight = data.get("weight", 0)
         entity.age = data.get("age", 0)
@@ -571,6 +585,13 @@ class Entity:
             "id": self.entity_id,
             "x": self.x,
             "y": self.y,
+            # z was missing here despite being a real, tracked field
+            # (self.z, set in __init__, present in to_dict()/from_dict())
+            # — meaning the network wire format silently never sent
+            # height at all. Fixed as part of Step 5, since a 3D mesh's
+            # networked position needs it; render_template/transform3d
+            # below are useless without it.
+            "z": self.z,
             "vx": self.vx,
             "vy": self.vy,
             "state": self.state,
@@ -579,6 +600,8 @@ class Entity:
             "name": self.name,
             "race": self.race,
             "model_version": self.model_version,
+            "render_template": self.render_template,
+            "transform3d": self.transform3d,
             "height": self.height,
             "weight": self.weight,
             "age": self.age,
@@ -618,6 +641,7 @@ class Entity:
             "entity_id": self.entity_id,
             "x": self.x,
             "y": self.y,
+            "z": self.z,
             "vx": self.vx,
             "vy": self.vy,
             "state": self.state,
@@ -626,6 +650,8 @@ class Entity:
             "name": self.name,
             "race": self.race,
             "model_version": self.model_version,
+            "render_template": self.render_template,
+            "transform3d": self.transform3d,
             "height": self.height,
             "weight": self.weight,
             "age": self.age,
@@ -685,6 +711,8 @@ class Entity:
         entity.name = data.get("name", "default")
         entity.race = data.get("race", "human")
         entity.model_version = data.get("model_version", "00")
+        entity.render_template = data.get("render_template")
+        entity.transform3d = data.get("transform3d")
 
         # Set physical attributes
         entity.height = data.get("height", 0)
