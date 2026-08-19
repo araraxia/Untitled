@@ -4,6 +4,8 @@ A modular, genre-agnostic real-time game engine supporting 2D, 2.5D, and full 3D
 
 The primary goal of this repository is to develop a reusable, extensible engine with a clean boundary between engine infrastructure and game-specific content — not just a single game prototype. The backend simulation loop and ECS scheduler are designed to scale toward parallelized, multi-threaded entity processing, so a large number of on- and off-screen entities can be simulated without blocking the tick loop.
 
+**This `engine` branch carries engine code only — no game.** Each game built on the engine lives on its own branch forked from `engine` (ordinary `git merge`/rebase to pull in engine updates, not a submodule/pinned-version relationship). `legacy` is the first one: the example game previously built in this repo. See [ARCHITECTURE.md](ARCHITECTURE.md) for what that means for `backend/game/`/`client/game/`/`backend/app.py` (all game-branch-only, not present here).
+
 For a detailed breakdown of the architecture see [ARCHITECTURE.md](ARCHITECTURE.md).
 For the phased development plan see [ROADMAP.md](ROADMAP.md).
 
@@ -24,16 +26,15 @@ For the phased development plan see [ROADMAP.md](ROADMAP.md).
 
 ### Backend (Python + Flask + SocketIO)
 
-- **`backend/engine/`** — Engine infrastructure: ECS framework, spatial grid, game loop, config
-- **`backend/game/`** — Game content: entities, systems, world, area management
+- **`backend/engine/`** — Engine infrastructure: ECS framework, spatial grid, game loop, config. Present on `engine`.
+- **`backend/game/`**, **`backend/app.py`** — Game content and the Flask/SocketIO server entry point: entities, systems, world, area management. Game-branch only (see `legacy`) — not present on `engine`.
 - Fixed-timestep simulation loop (20 TPS); only changed entity state is broadcast as deltas
 - WebSocket server (SocketIO) is the sole boundary between simulation and clients
-- Unmodified by the native client migration — either client is just a Socket.IO client connecting to the same server
 
 ### Client (Python + wgpu-py + imgui-bundle)
 
-- **`client/engine/`** — Renderer, input, network, interpolation; 2D, 2.5D (billboard), and 3D (textured mesh) draw paths all live side by side in `entity_renderer.py`, chosen per-entity — the engine is not locked to one dimensionality
-- **`client/game/`** — Player select, character creation, and HUD, built as `imgui-bundle` immediate-mode UI
+- **`client/engine/`** — Renderer, input, network, interpolation; 2D, 2.5D (billboard), and 3D (textured mesh) draw paths all live side by side in `entity_renderer.py`, chosen per-entity — the engine is not locked to one dimensionality. Present on `engine`.
+- **`client/game/`** — Player select, character creation, and HUD, built as `imgui-bundle` immediate-mode UI. Game-branch only — not present on `engine`.
 - 60 FPS render loop with position interpolation between simulation ticks
 - Sprite atlas + animation clip system; JSON-driven material/parameter map pipeline; glTF-authored mesh pipeline for 3D content — reads `frontend/assets/` (a git submodule) directly off disk
 
@@ -46,16 +47,18 @@ For the phased development plan see [ROADMAP.md](ROADMAP.md).
 ├── client/                        # Native desktop client (current) -- GLFW + wgpu-py + imgui-bundle
 │   ├── main.py                    # Server bootstrap + native window/render loop
 │   ├── engine/                    # Renderer, input, network, interpolation, asset loader
-│   └── game/                      # Player select, character creation, HUD (imgui-bundle)
+│   └── game/                      # (game-branch only, see legacy) Player select, character creation, HUD
 ├── backend/
-│   ├── app.py                     # Flask + SocketIO server
+│   ├── app.py                     # (game-branch only, see legacy) Flask + SocketIO server
 │   ├── engine/                    # Engine infrastructure
 │   │   ├── game_loop.py           # GameLoop (loop.py re-exports it)
 │   │   ├── config.py              # EngineConfig (tick rate, world size, etc.)
 │   │   ├── spatial.py             # SpatialGrid — spatial partitioning
+│   │   ├── group.py               # Group/GroupRegistry — named entity groups, layered attribute lookup
 │   │   └── ecs/
-│   │       └── entity.py          # Entity base class
-│   └── game/                      # Game-specific content
+│   │       ├── entity.py          # Entity base class (position/render fields + tag data bag only)
+│   │       └── component.py       # Component base class + built-ins, incl. DataComponent (the tag data bag)
+│   └── game/                      # (game-branch only, see legacy) Game-specific content
 │       ├── tick.py                # GameTick(GameLoop) — simulation tick loop
 │       ├── world.py               # World state manager
 │       ├── area.py                # Area (chunk) management
@@ -100,6 +103,8 @@ python main.py
 ```
 
 `run.bat`/`python main.py` launch `client/main.py`'s native window — no browser, no PyWebView, no WebKitGTK dependency. Works the same way on Linux; see [docs/DEBIAN_SETUP.md](docs/DEBIAN_SETUP.md) for system packages.
+
+**On the `engine` branch itself, this doesn't run** — `backend/app.py` and `client/game/` are game-branch-only (see Architecture above). Check out a game branch (e.g. `legacy`) to run something end to end.
 
 ---
 

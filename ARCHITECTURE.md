@@ -4,7 +4,7 @@
 
 This repository is a general-purpose, genre-agnostic real-time game engine, not a single game. It ships as a standalone desktop application with a Python simulation backend and a native, GPU-accelerated Python client (GLFW + `wgpu-py` WebGPU + `imgui-bundle`). The rendering path supports 2D sprites, 2.5D camera-facing billboards, and fully modeled 3D meshes side by side in the same scene — an entity's dimensionality is a per-entity data choice, not an engine-wide assumption. The backend simulation is a fixed-timestep tick loop built on an ECS (entity-component-system) with a dependency-ordered system scheduler, structured so independent systems can scale toward parallel/multi-threaded execution as entity counts grow, rather than assuming a small, hand-authored cast of on-screen actors.
 
-A game built on top of the engine (currently the in-repo example content under `backend/game/` and `client/game/`) is one consumer of that API surface, not the definition of what the engine is for.
+**This branch (`engine`) carries no game content.** Each game built on top of the engine lives on its own branch forked from `engine`, adding its own `backend/game/`/`client/game/` — a plain-branch relationship (ordinary `git merge`/rebase to pull in engine updates), not a submodule or pinned-version dependency. `legacy` is the first such branch: the fantasy-RPG-flavored example game previously built in this repo, moved there so `engine` itself stays engine-only. Everything below describing `backend/game/`/`client/game/`/`backend/app.py` documents the *pattern* a game branch follows, using `legacy` as the worked example — none of those files exist on `engine`.
 
 An earlier PyWebView + browser/JavaScript client existed during this project's WebGPU-migration phase but has been deleted entirely (`.github/prompts/wgpu-py-migration.prompt.md`) — WebKitGTK's incomplete Linux WebGPU support was the reason it existed, and the native client above has no such dependency. It isn't referenced further in this document; check git history from before that migration if you need it for reference.
 
@@ -12,8 +12,8 @@ An earlier PyWebView + browser/JavaScript client existed during this project's W
 
 ## Two-Layer Architecture
 
-1. **Desktop Application Layer** (`client/main.py`, invoked via root `main.py`) — launches the Flask/SocketIO server in a background thread, waits for a health check, then opens a native GLFW window with a `wgpu-py` WebGPU device and an `imgui-bundle` UI (`client/engine/`, `client/game/`). One Python process handles both server bootstrap and rendering.
-2. **Backend Simulation Layer** (`backend/`) — Python, Flask + SocketIO, fixed-timestep ECS tick loop. Authoritative for all gameplay state.
+1. **Desktop Application Layer** (`client/main.py`, invoked via root `main.py`) — on a game branch, launches the Flask/SocketIO server in a background thread, waits for a health check, then opens a native GLFW window with a `wgpu-py` WebGPU device and an `imgui-bundle` UI (`client/engine/`, plus that branch's `client/game/`). One Python process handles both server bootstrap and rendering. On `engine` itself, `client/main.py` is present but non-functional — it imports `backend.app` and `client.game`, both of which only exist on a game branch.
+2. **Backend Simulation Layer** (`backend/`) — Python, Flask + SocketIO, fixed-timestep ECS tick loop. Authoritative for all gameplay state, on a game branch.
 
 ```text
 ┌─────────────────────────────────────────┐
@@ -32,12 +32,13 @@ An earlier PyWebView + browser/JavaScript client existed during this project's W
 
 ```text
 backend/engine/   ← stable APIs: ECS, spatial grid, game loop, events, save format, physics, pathfinding, procgen
-backend/game/     ← game content: entities, systems, world, area, character flow
 client/engine/    ← renderer, input, network, interpolation, asset loader, 2D/3D draw paths
-client/game/      ← character creation, player select, game-specific UI (imgui-bundle)
+--------------------------------------------------------------------------------------------
+backend/game/     ← (game-branch only) game content: entities, systems, world, area, character flow
+client/game/      ← (game-branch only) character creation, player select, game-specific UI (imgui-bundle)
 ```
 
-Engine code never imports game content. Game code only calls engine APIs. New reusable capability goes in the engine layer; new game-specific behavior goes in the game layer — see `backend/game/systems/` for the pattern on the backend side.
+Engine code never imports game content. Game code only calls engine APIs. New reusable capability goes in the engine layer; new game-specific behavior goes in a game branch's game layer — see `legacy`'s `backend/game/systems/` for the pattern on the backend side.
 
 ---
 
@@ -63,7 +64,9 @@ Engine code never imports game content. Game code only calls engine APIs. New re
 | `save_format.py` | Versioned save/load helpers shared by every `Component` |
 | `hot_reload.py` | Dev-time hot reload support |
 
-### Game content (`backend/game/`)
+### Game content (`backend/game/`) — game-branch only, not present on `engine`
+
+`legacy`'s version, as the worked example:
 
 | File | Purpose |
 | --- | --- |
@@ -76,10 +79,10 @@ Engine code never imports game content. Game code only calls engine APIs. New re
 | `systems/actions.py` | Command-pattern player/party actions |
 | `character_flow_service.py`, `new_game.py`, `backgrounds.py` | Character creation flow |
 
-### Networking
+### Networking — game-branch only
 
-- `backend/app.py` — Flask app + `SocketIO(..., async_mode="threading")`; the SocketIO endpoint only, no HTTP page/static routes (the client reads `frontend/assets/` directly off disk)
-- On player load: server emits `player_loaded` (full world snapshot) — not a literal `initial_state` event; `handle_load_game()` is what actually emits it, after player selection
+- A game branch's `backend/app.py` (Flask app + `SocketIO(..., async_mode="threading")`) is the SocketIO endpoint — no HTTP page/static routes (the client reads `frontend/assets/` directly off disk)
+- On player load: server emits `player_loaded` (full world snapshot) — not a literal `initial_state` event; `legacy`'s `handle_load_game()` is what actually emits it, after player selection
 - Each tick: server emits `state_update` (delta — only dirty entities, only changed fields)
 - Client → server: `player_action`, `party_command` (queued, drained on the next tick)
 - Dirty flag set on entity change, cleared after broadcast
@@ -87,8 +90,8 @@ Engine code never imports game content. Game code only calls engine APIs. New re
 ### Save/Load
 
 - Format: `saves/<slot>/world.json`, `area-<id>.json`, `player-<id>.json`
-- Each `Component` subclass implements `to_dict()`/`from_dict()`; save files carry a version field for migration
-- Autosave every `autosave_interval_ticks` (default 300, `backend/engine/config.py`), run off the tick thread via a background executor so it never stalls simulation
+- Each `Component` subclass implements `to_dict()`/`from_dict()`; save files carry a version field for migration (`backend/engine/save_format.py`, present on `engine`)
+- A game branch's save orchestrator (`legacy`'s `backend/save_manager.py`) autosaves every `autosave_interval_ticks` (default 300, `backend/engine/config.py`), run off the tick thread via a background executor so it never stalls simulation
 
 ---
 
@@ -112,9 +115,9 @@ The native desktop client: GLFW window, `wgpu-py` WebGPU device, `imgui-bundle` 
 | `input.py` | Keyboard/mouse input via `rendercanvas`'s own cross-backend event system (`canvas.add_event_handler(...)`, *not* raw GLFW callbacks — `renderer.py`'s `RenderCanvas` already owns those; see the module's docstring for the real bug this avoids), driven by the same `input_config.json` |
 | `imgui_wgpu_compat.py` | One-line compatibility shim for a confirmed upstream `wgpu`/`imgui-bundle` version-incompatibility bug ([pygfx/wgpu-py#829](https://github.com/pygfx/wgpu-py/issues/829)); delete once a released `wgpu` version ships the fix ([#830](https://github.com/pygfx/wgpu-py/pull/830)) |
 
-### Game (`client/game/`)
+### Game (`client/game/`) — game-branch only, not present on `engine`
 
-`ui.py`, `character_creation.py`, `player_select.py`, `character_flow/` — the example game's UI and flow, rebuilt as `imgui-bundle` immediate-mode widgets on the engine API above (functional, not pixel-for-pixel, parity with the legacy DOM screens — DOM/CSS has no 1:1 imgui equivalent). New games built on this engine would replace this directory without touching `client/engine/`.
+`legacy`'s version: `ui.py`, `character_creation.py`, `player_select.py`, `character_flow/` — that example game's UI and flow, built as `imgui-bundle` immediate-mode widgets on the engine API above. A new game built on this engine adds its own `client/game/` on its own branch without touching `client/engine/`.
 
 ### Dependencies
 
@@ -161,6 +164,8 @@ python main.py
 ```
 
 `run.bat`/`python main.py` launch `client/main.py`'s native window (GLFW + `wgpu-py` + `imgui-bundle`) — no browser, no PyWebView, no WebKitGTK dependency. Works the same way on Linux; see [docs/DEBIAN_SETUP.md](docs/DEBIAN_SETUP.md) for system packages.
+
+**On the `engine` branch itself, this doesn't run** — `client/main.py` imports `backend.app` and `client.game`, both of which only exist on a game branch (see Overview). Check out a game branch (e.g. `legacy`) to actually run something.
 
 ---
 

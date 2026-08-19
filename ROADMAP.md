@@ -21,6 +21,12 @@ The engine is not a separate product — it is the lower half of this same repos
 
 ---
 
+## Branch model (current)
+
+As of the split after Phase 13, this `engine` branch carries engine/tooling code only (`backend/engine/`, `client/engine/`) — no game content. The game-specific work this document's Phase 1 ("Engine–Game Separation") originally pulled into `backend/game/`/`client/game/` moved to its own branch, `legacy`, forked from `engine`. Future games branch from `engine` the same way; branches don't auto-sync, an engine improvement reaches a game branch only via an explicit `git merge engine`/rebase. Phases below that reference `backend/game/`/`client/game/` paths describe that layer as it exists on a game branch (`legacy` today), not code present on `engine` itself — see [ARCHITECTURE.md](ARCHITECTURE.md).
+
+---
+
 ## Phase Progress
 
 | Phase | Name | Status |

@@ -44,6 +44,8 @@ python main.py
 
 This launches `client/main.py`'s native GLFW window — the same entry point as Windows, no browser-mode fallback needed.
 
+**On the `engine` branch itself, this doesn't run.** `client/main.py` imports `backend.app` and `client.game`, both of which only exist on a game branch (e.g. `legacy`) — see [ARCHITECTURE.md](../ARCHITECTURE.md)'s Branch model note. Check out a game branch to run something end to end; these system dependencies still apply there unchanged.
+
 ## Troubleshooting
 
 ### `wgpu` reports no adapter found / blank or crashing window
