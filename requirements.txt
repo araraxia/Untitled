@@ -1,11 +1,51 @@
 Flask
 Flask-SocketIO
 python-socketio
-pywebview
 python-engineio
 simple-websocket
 Pillow
 watchdog==6.0.0
 
-# Linux dependencies (install system packages first - see DEBIAN_SETUP.md)
-PyGObject>=3.42.0; sys_platform == 'linux'
+# Native wgpu-py desktop client (.github/prompts/wgpu-py-migration.prompt.md).
+# `pywebview` and Linux's `PyGObject` (previously listed here) are removed --
+# the legacy PyWebView/browser client (frontend/js/, frontend/index.html,
+# frontend/test-3d.html, run_browser.py, run_desktop_test.py) that needed
+# them has been deleted entirely, not just deprecated. This completes what
+# Step 2 originally asked for; it was deferred first to Step 15 (root main.py
+# still imported `webview`), then to Step 16 (run_desktop_test.py still did),
+# and finally done once that script was actually deleted.
+wgpu==0.32.0
+glfw==2.10.2
+imgui-bundle==1.92.900
+# Confirmed compatibility gap, worked around rather than avoided by pinning
+# an older imgui-bundle: `wgpu==0.32.0`'s bundled `wgpu.utils.imgui
+# .ImguiRenderer` backend reads `ImDrawData.cmd_lists_count`, which
+# imgui-bundle's 1.92.0 release renamed to `cmd_lists` -- both packages
+# above are already at their latest release, so there's no newer-version fix
+# to upgrade into yet. See client/engine/imgui_wgpu_compat.py (Step 15) for
+# the one-line local shim (matching pygfx/wgpu-py#830's own pending fix
+# exactly) and pygfx/wgpu-py#829 for the confirmed upstream issue. Delete
+# that shim (and this note) once a released `wgpu` version ships the fix and
+# this pin is bumped past it.
+# `numpy` is pulled in transitively (wgpu -> rendercanvas -> numpy), not a
+# direct dependency of this project. It does NOT relax the "no numpy for
+# matrix math" rule (docs/graphics/OVERVIEW.md, .github/prompts/
+# wgpu-py-migration.prompt.md Constraints) -- client/engine/mat4.py stays
+# hand-rolled like mat4.js. Nothing in this codebase should import numpy
+# directly; its presence here is an implementation detail of wgpu-py's own
+# canvas layer.
+requests==2.34.2
+# Required by python-socketio's synchronous socketio.Client() (used in
+# client/engine/network.py, Step 11) for its default HTTP-polling
+# Engine.IO handshake before upgrading to WebSocket -- confirmed by an
+# actual ConnectionError against the real running backend, not assumed.
+# `python-socketio` itself only lists this as an optional extra, so pip
+# doesn't pull it in automatically. Server-side Flask-SocketIO usage
+# doesn't need it; this is purely a client-side addition.
+websocket-client==1.9.0
+# Also required by socketio.Client() to actually upgrade to a persistent
+# WebSocket connection -- without it, a real connection was confirmed
+# working but silently stuck on HTTP long-polling only ("websocket-client
+# package not installed, only polling transport is available"), which
+# defeats the low-latency point of a real-time client (CLAUDE.md targets
+# <50ms localhost latency). Same client-only scope as `requests` above.

@@ -29,6 +29,11 @@ Thumbs.db
 # Logs
 *.log*
 
+# Dear ImGui window-layout state, auto-written to the working directory by
+# client/main.py's ImguiRenderer (.github/prompts/wgpu-py-migration.prompt.md
+# Step 15) on every real run -- per-machine UI state, not project content.
+imgui.ini
+
 # Database
 *.db
 *.sqlite

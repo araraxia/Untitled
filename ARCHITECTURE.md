@@ -2,17 +2,18 @@
 
 ## Overview
 
-This repository is a general-purpose, genre-agnostic real-time game engine, not a single game. It ships as a standalone desktop application (PyWebView) with a Python simulation backend and a WebGPU-accelerated JavaScript frontend. The rendering path supports 2D sprites, 2.5D camera-facing billboards, and fully modeled 3D meshes side by side in the same scene — an entity's dimensionality is a per-entity data choice, not an engine-wide assumption. The backend simulation is a fixed-timestep tick loop built on an ECS (entity-component-system) with a dependency-ordered system scheduler, structured so independent systems can scale toward parallel/multi-threaded execution as entity counts grow, rather than assuming a small, hand-authored cast of on-screen actors.
+This repository is a general-purpose, genre-agnostic real-time game engine, not a single game. It ships as a standalone desktop application with a Python simulation backend and a native, GPU-accelerated Python client (GLFW + `wgpu-py` WebGPU + `imgui-bundle`). The rendering path supports 2D sprites, 2.5D camera-facing billboards, and fully modeled 3D meshes side by side in the same scene — an entity's dimensionality is a per-entity data choice, not an engine-wide assumption. The backend simulation is a fixed-timestep tick loop built on an ECS (entity-component-system) with a dependency-ordered system scheduler, structured so independent systems can scale toward parallel/multi-threaded execution as entity counts grow, rather than assuming a small, hand-authored cast of on-screen actors.
 
-A game built on top of the engine (currently the in-repo example content under `backend/game/` and `frontend/js/game/`) is one consumer of that API surface, not the definition of what the engine is for.
+A game built on top of the engine (currently the in-repo example content under `backend/game/` and `client/game/`) is one consumer of that API surface, not the definition of what the engine is for.
+
+An earlier PyWebView + browser/JavaScript client existed during this project's WebGPU-migration phase but has been deleted entirely (`.github/prompts/wgpu-py-migration.prompt.md`) — WebKitGTK's incomplete Linux WebGPU support was the reason it existed, and the native client above has no such dependency. It isn't referenced further in this document; check git history from before that migration if you need it for reference.
 
 ---
 
-## Three-Layer Architecture
+## Two-Layer Architecture
 
-1. **Desktop Application Layer** (`main.py`) — launches the Flask/SocketIO server in a background thread, waits for a health check, then opens a PyWebView window pointing at it. `run_browser.py` is the Linux/dev alternative: it starts the same server and opens a normal browser tab instead of a native window (PyWebView's WebKitGTK backend doesn't yet have stable WebGPU).
+1. **Desktop Application Layer** (`client/main.py`, invoked via root `main.py`) — launches the Flask/SocketIO server in a background thread, waits for a health check, then opens a native GLFW window with a `wgpu-py` WebGPU device and an `imgui-bundle` UI (`client/engine/`, `client/game/`). One Python process handles both server bootstrap and rendering.
 2. **Backend Simulation Layer** (`backend/`) — Python, Flask + SocketIO, fixed-timestep ECS tick loop. Authoritative for all gameplay state.
-3. **Frontend Rendering Layer** (`frontend/`) — JavaScript, WebGPU (with a Canvas 2D fallback path). Renders interpolated state received from the backend; never authoritative for gameplay.
 
 ```text
 ┌─────────────────────────────────────────┐
@@ -21,7 +22,7 @@ A game built on top of the engine (currently the in-repo example content under `
 │  ENGINE API  (stable, versioned)        │
 ├──────────────┬──────────────────────────┤
 │  Simulation  │  Rendering               │
-│  (Python)    │  (JavaScript / WebGPU)   │
+│  (Python)    │  (Python / wgpu-py)      │
 └──────────────┴──────────────────────────┘
 ```
 
@@ -30,10 +31,10 @@ A game built on top of the engine (currently the in-repo example content under `
 ## Engine vs. Game Separation (critical)
 
 ```text
-backend/engine/      ← stable APIs: ECS, spatial grid, game loop, events, save format, physics, pathfinding, procgen
-backend/game/         ← game content: entities, systems, world, area, character flow
-frontend/js/engine/   ← renderer, input, network, interpolation, asset loader, 2D/3D draw paths
-frontend/js/game/     ← character creation, player select, game-specific UI
+backend/engine/   ← stable APIs: ECS, spatial grid, game loop, events, save format, physics, pathfinding, procgen
+backend/game/     ← game content: entities, systems, world, area, character flow
+client/engine/    ← renderer, input, network, interpolation, asset loader, 2D/3D draw paths
+client/game/      ← character creation, player select, game-specific UI (imgui-bundle)
 ```
 
 Engine code never imports game content. Game code only calls engine APIs. New reusable capability goes in the engine layer; new game-specific behavior goes in the game layer — see `backend/game/systems/` for the pattern on the backend side.
@@ -77,8 +78,8 @@ Engine code never imports game content. Game code only calls engine APIs. New re
 
 ### Networking
 
-- `backend/app.py` — Flask app + `SocketIO(..., async_mode="threading")`; serves `frontend/` as static content and the SocketIO endpoint
-- On connect: server emits `initial_state` (full world snapshot)
+- `backend/app.py` — Flask app + `SocketIO(..., async_mode="threading")`; the SocketIO endpoint only, no HTTP page/static routes (the client reads `frontend/assets/` directly off disk)
+- On player load: server emits `player_loaded` (full world snapshot) — not a literal `initial_state` event; `handle_load_game()` is what actually emits it, after player selection
 - Each tick: server emits `state_update` (delta — only dirty entities, only changed fields)
 - Client → server: `player_action`, `party_command` (queued, drained on the next tick)
 - Dirty flag set on entity change, cleared after broadcast
@@ -91,29 +92,39 @@ Engine code never imports game content. Game code only calls engine APIs. New re
 
 ---
 
-## Frontend (`frontend/`)
+## Client (`client/`) — current
 
-### Engine (`frontend/js/engine/`)
+The native desktop client: GLFW window, `wgpu-py` WebGPU device, `imgui-bundle` UI. `client/main.py` is the entry point (launched via root `main.py` / `run.bat`) — see "Two-Layer Architecture" above for its server-bootstrap/render-loop responsibilities; it also owns the per-frame entity-render orchestration (`get_entity_renderer`/`render_entities`/`draw_game_scene`) rather than `client/engine/renderer.py`, because `entity_renderer.py` already imports `renderer.py` for device/canvas access — `renderer.py` importing back would be a circular import.
+
+### Engine (`client/engine/`)
 
 | File | Purpose |
 | --- | --- |
-| `renderer.js` | Render loop coordinator — camera/view-projection matrix, depth texture, dispatches per-entity draws |
-| `entityRenderer.js` | Per-entity draw path. Routes each entity, per-frame, to one of: 2D sprite atlas (Canvas 2D or base WebGPU pipeline), 3D camera-facing billboard (depth-tested sprite), or 3D textured mesh (`render_template` → mesh + material). All three coexist in the same scene |
-| `mat4.js` | Dependency-free column-major 4×4 matrix helpers (`perspective`, `lookAt`, `compose`, `rotationXYZ`, …) |
-| `mesh.js` | `Mesh` — loads this project's interleaved-vertex-buffer mesh JSON format and uploads GPU vertex/index buffers |
-| `assetLoader.js` | Maps short asset keys to server-relative paths; manifest-driven registration |
-| `sprites/` | `shaderCache.js` (WGSL pipeline compilation/caching for both sprite and mesh variants), `materialLoader.js` (JSON-driven material → `GPUBindGroup`), `gpuSpriteSheet.js`, `gpuBuffers.js`, `animation.js`, `particleSystem.js`, `lightingPass.js` |
-| `network.js` | SocketIO client abstraction |
-| `interpolation.js` | 20 TPS simulation → 60 FPS render interpolation |
-| `input.js` | Input event stream + game-context routing |
+| `renderer.py` | GLFW window + wgpu device/canvas bootstrap; camera/view-projection matrix (`get_view_projection_matrix`); depth/scene texture allocation; `init_lighting_pass()`/`resize()`; a bare `run()` render-loop skeleton the entry point overrides with its own real draw function |
+| `entity_renderer.py` | Per-entity draw path — the same routing as the legacy `entityRenderer.js`: 2D sprite atlas, 3D camera-facing billboard (depth-tested), or 3D textured mesh (`render_template` → mesh + material), all coexisting in one scene. No Canvas-2D-style fallback exists here — this client is always on the GPU path |
+| `mat4.py` | Dependency-free column-major 4×4 matrix helpers (`perspective`, `look_at`, `compose`, `rotation_xyz`, …) — no `numpy`/`pyglm`, matching the legacy client's own no-third-party-math-library constraint |
+| `mesh.py` | `Mesh` — loads this project's interleaved-vertex-buffer mesh JSON format and uploads GPU vertex/index buffers |
+| `asset_loader.py` | Maps short asset keys to `FRONTEND_DIR`-relative on-disk paths; manifest-driven registration — direct filesystem reads (this client runs on the same machine as the server), not an HTTP `fetch` |
+| `shader_cache.py` | WGSL pipeline compilation/caching for both sprite and mesh variants — WGSL source ported verbatim from the legacy client's shaders |
+| `gpu_buffers.py`, `gpu_sprite_sheet.py`, `material_loader.py`, `particle_system.py`, `lighting_pass.py`, `animation.py` | GPU buffer helpers; sprite atlas GPU upload (`Pillow` for texture decode, replacing the browser's `Image`/`createImageBitmap`); JSON-driven material → `GPUBindGroup`; compute-shader particle system; two-pass lighting composite; animation clip playback |
+| `network.py` | `socketio.Client()` (synchronous) — same emitted event names/payloads as the legacy client, zero backend changes required |
+| `interpolation.py` | 20 TPS simulation → 60 FPS render interpolation (exponential-decay easing toward each entity's authoritative position) |
+| `input.py` | Keyboard/mouse input via `rendercanvas`'s own cross-backend event system (`canvas.add_event_handler(...)`, *not* raw GLFW callbacks — `renderer.py`'s `RenderCanvas` already owns those; see the module's docstring for the real bug this avoids), driven by the same `input_config.json` |
+| `imgui_wgpu_compat.py` | One-line compatibility shim for a confirmed upstream `wgpu`/`imgui-bundle` version-incompatibility bug ([pygfx/wgpu-py#829](https://github.com/pygfx/wgpu-py/issues/829)); delete once a released `wgpu` version ships the fix ([#830](https://github.com/pygfx/wgpu-py/pull/830)) |
 
-### Game (`frontend/js/game/`)
+### Game (`client/game/`)
 
-`main.js`, `ui.js`, `characterCreation.js`, `playerSelect.js`, `characterFlow/` — the example game's UI and flow, built entirely on the engine API above. New games built on this engine would replace this directory without touching `frontend/js/engine/`.
+`ui.py`, `character_creation.py`, `player_select.py`, `character_flow/` — the example game's UI and flow, rebuilt as `imgui-bundle` immediate-mode widgets on the engine API above (functional, not pixel-for-pixel, parity with the legacy DOM screens — DOM/CSS has no 1:1 imgui equivalent). New games built on this engine would replace this directory without touching `client/engine/`.
 
-### Data-driven content (`frontend/assets/data/`)
+### Dependencies
 
-Animation clips, materials, entity definitions, and (for 3D) mesh JSON all live here as plain JSON, resolved through `AssetLoader` at runtime rather than hardcoded paths. See `docs/graphics/DATA_STRUCTURES.md` for the schemas.
+Added: `wgpu`, `glfw`, `imgui-bundle`, plus `requests`/`websocket-client` (both required by `socketio.Client()`'s synchronous connection path, not auto-installed by `python-socketio` alone). Removed: `pywebview` and Linux's `PyGObject` — nothing imports `webview` anymore now that the legacy PyWebView client and its dev-test launcher are gone.
+
+---
+
+## Frontend Assets (`frontend/assets/`)
+
+The only thing left under `frontend/` — the legacy browser/JavaScript client that used to live alongside it (`frontend/js/`, `frontend/index.html`, `frontend/test-3d.html`) has been deleted (see the Overview section above). This directory is a git submodule ([untitled-assets](https://github.com/araraxia/untitled-assets)) holding animation clips, materials, entity definitions, and (for 3D) mesh JSON as plain JSON, resolved through `client/engine/asset_loader.py`'s `AssetLoader` at runtime rather than hardcoded paths. See `docs/graphics/DATA_STRUCTURES.md` for the schemas.
 
 ---
 
@@ -133,11 +144,11 @@ The current tick loop executes registered ECS systems sequentially, in the depen
 
 ## Setup
 
-### Desktop Application (Windows)
+### Desktop Application (Windows or Linux)
 
 ```bat
 setup.bat    :: Create venv and install dependencies
-run.bat      :: Launch the PyWebView desktop window
+run.bat      :: Launch the native wgpu-py/GLFW/imgui desktop window
 ```
 
 Or manually:
@@ -149,17 +160,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-### Browser Mode (Development / Linux)
-
-```bash
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-python run_browser.py
-# Open http://localhost:5000 in a WebGPU-capable browser (Chrome 121+, Edge, Firefox 141+)
-```
-
-> **Linux note:** The packaged PyWebView build is deferred until WebKitGTK ships stable WebGPU support. Use browser mode for development. See [docs/DEBIAN_SETUP.md](docs/DEBIAN_SETUP.md).
+`run.bat`/`python main.py` launch `client/main.py`'s native window (GLFW + `wgpu-py` + `imgui-bundle`) — no browser, no PyWebView, no WebKitGTK dependency. Works the same way on Linux; see [docs/DEBIAN_SETUP.md](docs/DEBIAN_SETUP.md) for system packages.
 
 ---
 

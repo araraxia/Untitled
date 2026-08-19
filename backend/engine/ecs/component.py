@@ -72,6 +72,22 @@ _COMPONENT_REGISTRY: Dict[str, Type[Component]] = {}
 
 
 @dataclass
+class DataComponent(Component):
+    """Arbitrary namespaced data bag for entity-specific information
+    that doesn't warrant its own typed component (e.g. game-specific
+    stats, appearance, or any other modular payload)."""
+
+    data: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"type": "DataComponent", "data": self.data}
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "DataComponent":
+        return cls(data=dict(data.get("data", {})))
+
+
+@dataclass
 class PositionComponent(Component):
     """Stores the world-space position of an entity."""
 

@@ -18,26 +18,28 @@ Both the sprite path and the mesh path are backed by the same underlying data-dr
 
 ## Platform Targets & WebGPU Status
 
+> **This entire section describes a problem that no longer exists and referenced files that have since been deleted.** It was written when this project's only options were a PyWebView window (blocked on Linux by WebKitGTK's incomplete WebGPU) or a system browser tab via `run_browser.py`. As of `.github/prompts/wgpu-py-migration.prompt.md`, the desktop client is native (`client/`, GLFW + `wgpu-py` + `imgui-bundle`) and works identically on Windows and Linux without depending on *any* browser's WebGPU support — `python main.py` on every platform. The legacy PyWebView/browser client (`frontend/js/`, `run_browser.py`, `run_desktop_test.py`) has been deleted entirely; the table and notes below are kept only as historical background on why WebGPU was chosen, not as current guidance.
+
 | Platform | PyWebView engine | WebGPU | Notes |
 | --- | --- | --- | --- |
 | Windows | Edge WebView2 (Chromium) | **Yes** | Fully supported |
 | macOS | WKWebView (WebKit) | **Yes** | Safari 17+ / macOS Sonoma |
-| Linux (browser) | Chrome 121+ | **Yes** | Use via `run_browser.py` |
-| Linux (PyWebView) | WebKitGTK | **No** | Not yet in stable releases |
+| Linux (browser) | Chrome 121+ | **Yes** | Historical — the browser client this row describes no longer exists |
+| Linux (PyWebView) | WebKitGTK | **No** | Historical — no longer relevant, `client/` doesn't use PyWebView |
 
-**Current decision:** Commit to **WebGPU** as the primary rendering API. The Linux PyWebView packaged build is deferred until WebKitGTK ships stable WebGPU support.
+**Historical, no longer the current decision:** ~~Commit to **WebGPU** as the primary rendering API. The Linux PyWebView packaged build is deferred until WebKitGTK ships stable WebGPU support.~~ Superseded: `client/`'s native `wgpu-py` client ships on Linux today, no deferral.
 
-**Linux development workflow:** Use Chrome via `run_browser.py` for all development and testing on Linux. The packaged app on Linux will be unshippable during this period — this is accepted.
+**Historical Linux development workflow, no longer possible to follow:** ~~Use Chrome via `run_browser.py` for all development and testing on Linux.~~ `run_browser.py` has been deleted; use `python main.py` instead.
 
-> **TRACK:** Monitor WebKitGTK WebGPU progress. Check the [WebKit Feature Status](https://webkit.org/status/) page for `WebGPU` and follow WebKitGTK release notes. Once WebGPU ships in a stable WebKitGTK release that is widely available in major Linux distributions, the Linux PyWebView build is unblocked.
+> **TRACK (resolved, kept for context):** this used to track WebKitGTK's WebGPU progress as a blocker for the Linux PyWebView build. It's no longer a blocker for anything — the native `client/` app sidesteps WebKitGTK entirely.
 
-**Browser-mode (`run_browser.py`) caveat:** this launches the OS's *default* browser via `webbrowser.open()`, not a specific one. `run_browser.py` is not itself a PyWebView engine, so it isn't a row in the table above, but the same "does this browser support WebGPU" question applies to it directly. **Firefox now supports WebGPU as of Firefox 141** (Windows first; other platforms following on Mozilla's rollout schedule), so it's no longer a Chrome-only requirement for browser-mode dev — but any browser older than that, or a non-Chromium/non-Firefox default browser, will silently fail `navigator.gpu.requestAdapter()` and fall back to the Canvas 2D-only entity path (see `initWebGPU()` in `renderer.js`). If a browser-mode session looks like it never leaves the 2D fallback, check the actual browser and version before assuming a code bug.
+**Historical caveat, no longer relevant:** the browser-mode WebGPU-support caveat that used to live here no longer applies to anything current — `client/`'s native `wgpu-py` device doesn't depend on a browser at all, and the script it described (`run_browser.py`) has been deleted.
 
 ---
 
-## Frontend Engine Directory Structure
+## Frontend Engine Directory Structure (historical — this JavaScript tree has been deleted)
 
-Following the engine–game separation (Phase 1 of [ROADMAP.md](../../ROADMAP.md), complete), frontend JavaScript is split into two namespaces. This is the actual current layout, not a target — Phase 1 has already landed.
+Following the engine–game separation (Phase 1 of [ROADMAP.md](../../ROADMAP.md), complete), frontend JavaScript used to be split into two namespaces below. **This entire `frontend/js/` tree has since been deleted** (`.github/prompts/wgpu-py-migration.prompt.md`) — the equivalent current layout is `client/engine/`/`client/game/` (Python), described in [ARCHITECTURE.md](../../ARCHITECTURE.md). Kept here only as a record of the JS engine/game split this Python one was ported from.
 
 ```text
 frontend/js/

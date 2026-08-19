@@ -6,13 +6,18 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Type
 
-from backend.engine.ecs.component import Component, _COMPONENT_REGISTRY
+from backend.engine.ecs.component import Component, DataComponent
 
 ENTITY_DIR = Path("data/entities")
 
 
 class Entity:
     """Base class for all entities in the simulation.
+
+    Deliberately minimal — position, rendering, and networking-relevant
+    state only. Anything game-specific (stats, appearance, inventory, ...)
+    belongs in a game-defined component or on the generic tag data bag via
+    :meth:`get_data`/:meth:`set_data`, not as a hardcoded field here.
 
     Attributes:
         entity_id (str): Unique identifier for the entity.
@@ -47,11 +52,6 @@ class Entity:
         self.is_dirty = True
         self.animation_data_paths = animation_data_paths or []
 
-        # Basic info
-        self.name = "default"
-        self.race = "human"
-        self.model_version = "00"
-
         # 3D rendering (frontend/js/game/3d-coordinate-mapping): which
         # entity-definition (frontend/assets/data/entity/entity-<uuid>.json)
         # renders this entity, and how this one placement is rotated/scaled.
@@ -62,383 +62,10 @@ class Entity:
         self.render_template: Optional[str] = None
         self.transform3d: Optional[Dict[str, Any]] = None
 
-        # Physical attributes
-        self.height = 0
-        self.weight = 0
-        self.age = 0
-        self.dob = "01/01/0001"
-        self.gender = "unspecified"
-
-        # Appearance
-        self.hair_style = 0
-        self.hair_color = 0
-        self.left_eye_color = 0
-        self.left_eye_type = 0
-        self.right_eye_color = 0
-        self.right_eye_type = 0
-
-        # Progression
-        self.experience = 0
-        self.level = 1
-
-        # Modifiers
-        self.modifiers = {
-            "action_speed": 1.0,
-            "carrying_capacity": 1.0,
-            "walking_speed": 1.0,
-            "running_speed": 1.0,
-            "crawling_speed": 1.0,
-            "jumping_ability": 1.0,
-            "strength": {},
-            "dexterity": {},
-            "intelligence": {},
-            "perception": {},
-            "willpower": {},
-            "charisma": {},
-        }
-
-        # Stats
-        self.stats = {"fame": 0, "virtue": 0, "infamy": 0}
-
-        # Skills and abilities
-        self.skills = {}
-        self.abilities = {}
-
-        # Health system
-        self.health = [
-            {
-                "part": "head",
-                "health": 0.0,
-                "subparts": [
-                    {
-                        "part": "left_eye",
-                        "health": 0.0,
-                        "subparts": [],
-                        "is_vital": False,
-                        "on_loss": [
-                            {
-                                "type": "stat",
-                                "target": "perception",
-                                "value": 0.5,
-                                "value_type": "multiplier",
-                            }
-                        ],
-                    },
-                    {
-                        "part": "right_eye",
-                        "health": 0.0,
-                        "subparts": [],
-                        "is_vital": False,
-                        "on_loss": [
-                            {
-                                "type": "stat",
-                                "target": "perception",
-                                "value": 0.5,
-                                "value_type": "multiplier",
-                            }
-                        ],
-                    },
-                    {
-                        "part": "mouth",
-                        "health": 0.0,
-                        "subparts": [],
-                        "is_vital": False,
-                        "on_loss": [],
-                    },
-                    {
-                        "part": "tongue",
-                        "health": 0.0,
-                        "subparts": [],
-                        "is_vital": False,
-                        "on_loss": [],
-                    },
-                    {
-                        "part": "skull",
-                        "health": 0.0,
-                        "subparts": [],
-                        "is_vital": True,
-                        "on_loss": [],
-                    },
-                    {
-                        "part": "brain",
-                        "health": 0.0,
-                        "subparts": [],
-                        "is_vital": True,
-                        "on_loss": [
-                            {
-                                "type": "status_effect",
-                                "target": "death",
-                                "duration": 99999,
-                            }
-                        ],
-                    },
-                ],
-                "is_vital": True,
-                "on_loss": [
-                    {
-                        "type": "status_effect",
-                        "target": "unconscious",
-                        "duration": 99999,
-                    }
-                ],
-            },
-            {
-                "part": "torso",
-                "health": 0.0,
-                "subparts": [
-                    {
-                        "part": "chest",
-                        "health": 0.0,
-                        "subparts": [],
-                        "is_vital": False,
-                        "on_loss": [],
-                    },
-                    {
-                        "part": "stomach",
-                        "health": 0.0,
-                        "subparts": [],
-                        "is_vital": False,
-                        "on_loss": [],
-                    },
-                    {
-                        "part": "groin",
-                        "health": 0.0,
-                        "subparts": [],
-                        "is_vital": False,
-                        "on_loss": [],
-                    },
-                    {
-                        "part": "left_shoulder",
-                        "health": 0.0,
-                        "subparts": [],
-                        "is_vital": False,
-                        "on_loss": [],
-                    },
-                    {
-                        "part": "right_shoulder",
-                        "health": 0.0,
-                        "subparts": [],
-                        "is_vital": False,
-                        "on_loss": [],
-                    },
-                    {
-                        "part": "upper_back",
-                        "health": 0.0,
-                        "subparts": [],
-                        "is_vital": False,
-                        "on_loss": [],
-                    },
-                    {
-                        "part": "lower_back",
-                        "health": 0.0,
-                        "subparts": [],
-                        "is_vital": False,
-                        "on_loss": [],
-                    },
-                    {
-                        "part": "heart",
-                        "health": 0.0,
-                        "subparts": [],
-                        "is_vital": True,
-                        "on_loss": [
-                            {
-                                "type": "status_effect",
-                                "target": "death",
-                                "duration": 99999,
-                            }
-                        ],
-                    },
-                    {
-                        "part": "lung_left",
-                        "health": 0.0,
-                        "subparts": [],
-                        "is_vital": False,
-                        "on_loss": [],
-                    },
-                    {
-                        "part": "lung_right",
-                        "health": 0.0,
-                        "subparts": [],
-                        "is_vital": False,
-                        "on_loss": [],
-                    },
-                    {
-                        "part": "neck",
-                        "health": 0.0,
-                        "subparts": [],
-                        "is_vital": True,
-                        "on_loss": [],
-                    },
-                ],
-                "is_vital": True,
-                "on_loss": [],
-            },
-            {
-                "part": "left_arm",
-                "health": 0.0,
-                "subparts": [
-                    {
-                        "part": "left_upper_arm",
-                        "health": 0.0,
-                        "subparts": [],
-                        "is_vital": False,
-                        "on_loss": [],
-                    },
-                    {
-                        "part": "left_forearm",
-                        "health": 0.0,
-                        "subparts": [],
-                        "is_vital": False,
-                        "on_loss": [],
-                    },
-                    {
-                        "part": "left_hand",
-                        "health": 0.0,
-                        "subparts": [
-                            {
-                                "part": "left_fingers",
-                                "health": 0.0,
-                                "subparts": [],
-                                "is_vital": False,
-                                "on_loss": [],
-                            },
-                        ],
-                        "is_vital": False,
-                        "on_loss": [],
-                    },
-                ],
-                "is_vital": False,
-                "on_loss": [],
-            },
-            {
-                "part": "right_arm",
-                "health": 0.0,
-                "subparts": [
-                    {
-                        "part": "right_upper_arm",
-                        "health": 0.0,
-                        "subparts": [],
-                        "is_vital": False,
-                        "on_loss": [],
-                    },
-                    {
-                        "part": "right_forearm",
-                        "health": 0.0,
-                        "subparts": [],
-                        "is_vital": False,
-                        "on_loss": [],
-                    },
-                    {
-                        "part": "right_hand",
-                        "health": 0.0,
-                        "subparts": [
-                            {
-                                "part": "right_fingers",
-                                "health": 0.0,
-                                "subparts": [],
-                                "is_vital": False,
-                                "on_loss": [],
-                            },
-                        ],
-                        "is_vital": False,
-                        "on_loss": [],
-                    },
-                ],
-                "is_vital": False,
-                "on_loss": [],
-            },
-            {
-                "part": "left_hip",
-                "health": 0.0,
-                "subparts": [],
-                "is_vital": False,
-                "on_loss": [],
-            },
-            {
-                "part": "right_hip",
-                "health": 0.0,
-                "subparts": [],
-                "is_vital": False,
-                "on_loss": [],
-            },
-            {
-                "part": "left_leg",
-                "health": 0.0,
-                "subparts": [
-                    {
-                        "part": "left_thigh",
-                        "health": 0.0,
-                        "subparts": [],
-                        "is_vital": False,
-                        "on_loss": [],
-                    },
-                    {
-                        "part": "left_knee",
-                        "health": 0.0,
-                        "subparts": [],
-                        "is_vital": False,
-                        "on_loss": [],
-                    },
-                    {
-                        "part": "left_calf",
-                        "health": 0.0,
-                        "subparts": [],
-                        "is_vital": False,
-                        "on_loss": [],
-                    },
-                    {
-                        "part": "left_foot",
-                        "health": 0.0,
-                        "subparts": [],
-                        "is_vital": False,
-                        "on_loss": [],
-                    },
-                ],
-                "is_vital": False,
-                "on_loss": [],
-            },
-            {
-                "part": "right_leg",
-                "health": 0.0,
-                "subparts": [
-                    {
-                        "part": "right_thigh",
-                        "health": 0.0,
-                        "subparts": [],
-                        "is_vital": False,
-                        "on_loss": [],
-                    },
-                    {
-                        "part": "right_knee",
-                        "health": 0.0,
-                        "subparts": [],
-                        "is_vital": False,
-                        "on_loss": [],
-                    },
-                    {
-                        "part": "right_calf",
-                        "health": 0.0,
-                        "subparts": [],
-                        "is_vital": False,
-                        "on_loss": [],
-                    },
-                    {
-                        "part": "right_foot",
-                        "health": 0.0,
-                        "subparts": [],
-                        "is_vital": False,
-                        "on_loss": [],
-                    },
-                ],
-                "is_vital": False,
-                "on_loss": [],
-            },
-        ]
-
-        # Equipment
-        self.equipment = {}
-
-        # ECS component storage: type_id -> Component instance
+        # ECS component storage: type_id -> Component instance. Also the
+        # home of the generic tag/data bag (see get_data/set_data below) —
+        # not routed through the engine's World, since World is not yet
+        # wired into the live tick loop.
         self._components: Dict[int, Component] = {}
 
     def add_component(self, component: Component) -> None:
@@ -449,6 +76,20 @@ class Entity:
     def get_component(self, component_type: Type[Component]) -> Optional[Component]:
         """Return the attached component of *component_type*, or None."""
         return self._components.get(component_type.type_id)
+
+    def get_data(self, key: str, default: Any = None) -> Any:
+        """Read *key* from this entity's tag data bag, or *default*."""
+        comp = self.get_component(DataComponent)
+        return comp.data.get(key, default) if comp else default
+
+    def set_data(self, key: str, value: Any) -> None:
+        """Write *key* into this entity's tag data bag, creating the
+        backing component on first use."""
+        comp = self.get_component(DataComponent)
+        if comp is None:
+            comp = DataComponent()
+            self.add_component(comp)
+        comp.data[key] = value
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialise the entity and all attached ECS components.
@@ -469,30 +110,8 @@ class Entity:
             "state": self.state,
             "facing": self.facing,
             "animation_data_paths": self.animation_data_paths,
-            "name": self.name,
-            "race": self.race,
-            "model_version": self.model_version,
             "render_template": self.render_template,
             "transform3d": self.transform3d,
-            "height": self.height,
-            "weight": self.weight,
-            "age": self.age,
-            "dob": self.dob,
-            "gender": self.gender,
-            "hair_style": self.hair_style,
-            "hair_color": self.hair_color,
-            "left_eye_color": self.left_eye_color,
-            "left_eye_type": self.left_eye_type,
-            "right_eye_color": self.right_eye_color,
-            "right_eye_type": self.right_eye_type,
-            "experience": self.experience,
-            "level": self.level,
-            "modifiers": self.modifiers,
-            "stats": self.stats,
-            "skills": self.skills,
-            "abilities": self.abilities,
-            "health": self.health,
-            "equipment": self.equipment,
             "components": [comp.to_dict() for comp in self._components.values()],
         }
 
@@ -519,31 +138,8 @@ class Entity:
         entity.current_area_id = data.get("current_area_id")
         entity.vx = data.get("vx", 0.0)
         entity.vy = data.get("vy", 0.0)
-        entity.name = data.get("name", "default")
-        entity.race = data.get("race", "human")
-        entity.model_version = data.get("model_version", "00")
         entity.render_template = data.get("render_template")
         entity.transform3d = data.get("transform3d")
-        entity.height = data.get("height", 0)
-        entity.weight = data.get("weight", 0)
-        entity.age = data.get("age", 0)
-        entity.dob = data.get("dob", "01/01/0001")
-        entity.gender = data.get("gender", "unspecified")
-        entity.hair_style = data.get("hair_style", 0)
-        entity.hair_color = data.get("hair_color", 0)
-        entity.left_eye_color = data.get("left_eye_color", 0)
-        entity.left_eye_type = data.get("left_eye_type", 0)
-        entity.right_eye_color = data.get("right_eye_color", 0)
-        entity.right_eye_type = data.get("right_eye_type", 0)
-        entity.experience = data.get("experience", 0)
-        entity.level = data.get("level", 1)
-        entity.modifiers.update(data.get("modifiers", {}))
-        entity.stats.update(data.get("stats", {}))
-        entity.skills = data.get("skills", {})
-        entity.abilities = data.get("abilities", {})
-        if "health" in data:
-            entity.health = data["health"]
-        entity.equipment = data.get("equipment", {})
         for comp_data in data.get("components", []):
             try:
                 comp = Component.from_dict(comp_data)
@@ -585,42 +181,14 @@ class Entity:
             "id": self.entity_id,
             "x": self.x,
             "y": self.y,
-            # z was missing here despite being a real, tracked field
-            # (self.z, set in __init__, present in to_dict()/from_dict())
-            # — meaning the network wire format silently never sent
-            # height at all. Fixed as part of Step 5, since a 3D mesh's
-            # networked position needs it; render_template/transform3d
-            # below are useless without it.
             "z": self.z,
             "vx": self.vx,
             "vy": self.vy,
             "state": self.state,
             "facing": self.facing,
             "animation_data_paths": self.animation_data_paths,
-            "name": self.name,
-            "race": self.race,
-            "model_version": self.model_version,
             "render_template": self.render_template,
             "transform3d": self.transform3d,
-            "height": self.height,
-            "weight": self.weight,
-            "age": self.age,
-            "dob": self.dob,
-            "gender": self.gender,
-            "hair_style": self.hair_style,
-            "hair_color": self.hair_color,
-            "left_eye_color": self.left_eye_color,
-            "left_eye_type": self.left_eye_type,
-            "right_eye_color": self.right_eye_color,
-            "right_eye_type": self.right_eye_type,
-            "experience": self.experience,
-            "level": self.level,
-            "modifiers": self.modifiers,
-            "stats": self.stats,
-            "skills": self.skills,
-            "abilities": self.abilities,
-            "health": self.health,
-            "equipment": self.equipment,
         }
 
     def save_to_file(self, directory: Path = ENTITY_DIR) -> str:
@@ -632,48 +200,11 @@ class Entity:
         Returns:
             str: Path to the saved file
         """
-        # Create directory if it doesn't exist
         save_dir = Path(directory)
         save_dir.mkdir(parents=True, exist_ok=True)
 
-        # Prepare data to save
-        data = {
-            "entity_id": self.entity_id,
-            "x": self.x,
-            "y": self.y,
-            "z": self.z,
-            "vx": self.vx,
-            "vy": self.vy,
-            "state": self.state,
-            "facing": self.facing,
-            "animation_data_paths": self.animation_data_paths,
-            "name": self.name,
-            "race": self.race,
-            "model_version": self.model_version,
-            "render_template": self.render_template,
-            "transform3d": self.transform3d,
-            "height": self.height,
-            "weight": self.weight,
-            "age": self.age,
-            "dob": self.dob,
-            "gender": self.gender,
-            "hair_style": self.hair_style,
-            "hair_color": self.hair_color,
-            "left_eye_color": self.left_eye_color,
-            "left_eye_type": self.left_eye_type,
-            "right_eye_color": self.right_eye_color,
-            "right_eye_type": self.right_eye_type,
-            "experience": self.experience,
-            "level": self.level,
-            "modifiers": self.modifiers,
-            "stats": self.stats,
-            "skills": self.skills,
-            "abilities": self.abilities,
-            "health": self.health,
-            "equipment": self.equipment,
-        }
+        data = self.to_dict()
 
-        # Save to file
         file_path = save_dir / f"{self.entity_id}.json"
         with open(file_path, "w") as f:
             json.dump(data, f, indent=2)
@@ -692,62 +223,7 @@ class Entity:
         """
         with open(file_path, "r") as f:
             data = json.load(f)
-
-        # Create entity with basic parameters
-        entity = cls(
-            entity_id=data["entity_id"],
-            x=data["x"],
-            y=data["y"],
-            animation_data_paths=data.get("animation_data_paths", []),
-        )
-
-        # Set additional attributes
-        entity.vx = data.get("vx", 0.0)
-        entity.vy = data.get("vy", 0.0)
-        entity.state = data.get("state", "idle")
-        entity.facing = data.get("facing", "down")
-
-        # Set basic info
-        entity.name = data.get("name", "default")
-        entity.race = data.get("race", "human")
-        entity.model_version = data.get("model_version", "00")
-        entity.render_template = data.get("render_template")
-        entity.transform3d = data.get("transform3d")
-
-        # Set physical attributes
-        entity.height = data.get("height", 0)
-        entity.weight = data.get("weight", 0)
-        entity.age = data.get("age", 0)
-        entity.dob = data.get("dob", "01/01/0001")
-        entity.gender = data.get("gender", "unspecified")
-
-        # Set appearance
-        entity.appearance = data.get("appearance", {})
-
-        # Set progression
-        entity.experience = data.get("experience", 0)
-        entity.level = data.get("level", 1)
-
-        # Set modifiers (merge with defaults)
-        if "modifiers" in data:
-            entity.modifiers.update(data["modifiers"])
-
-        # Set stats (merge with defaults)
-        if "stats" in data:
-            entity.stats.update(data["stats"])
-
-        # Set skills and abilities
-        entity.skills = data.get("skills", {})
-        entity.abilities = data.get("abilities", {})
-
-        # Set health system (merge with defaults)
-        if "health" in data:
-            entity.health.update(data["health"])
-
-        # Set equipment
-        entity.equipment = data.get("equipment", {})
-
-        return entity
+        return cls.from_dict(data)
 
     @classmethod
     def load_by_id(cls, entity_id: str, directory: Path = ENTITY_DIR) -> "Entity":

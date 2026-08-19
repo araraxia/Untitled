@@ -111,9 +111,6 @@ class NewGameManager:
         if not race:
             raise ValueError(f"Race {race_id} not found")
 
-        backgrounds = race.get_backgrounds() if background_name else {}
-        background = backgrounds.get(background_name) if background_name else None
-
         # Generate entity ID
         entity_id = str(uuid.uuid4())
 
@@ -126,103 +123,13 @@ class NewGameManager:
             facing="down",
         )
 
-        # Set basic info
-        entity.name = character_name
-        entity.race = race_id
-
-        # Apply appearance if provided
-        if appearance:
-            # Map appearance options to entity attributes
-            appearance_mapping = {
-                "skinTone": "skin_tone",
-                "hairColor": "hair_color",
-                "eyeColor": "left_eye_color",
-                "bodyType": "body_type",
-            }
-            for frontend_key, entity_attr in appearance_mapping.items():
-                if frontend_key in appearance:
-                    setattr(entity, entity_attr, appearance[frontend_key])
-
-            # Set both eyes to same color if eyeColor was provided
-            if "eyeColor" in appearance:
-                entity.right_eye_color = appearance["eyeColor"]
-
-        # Set stats from race base stats and background modifiers
-        if stats:
-            # Stats are already calculated on frontend, just store them
-            entity.stats.update(stats)
-        else:
-            # Use race base stats if not provided
-            base_stats = {
-                "strength": race.base_strength,
-                "dexterity": race.base_dexterity,
-                "intelligence": race.base_intelligence,
-                "willpower": race.base_willpower,
-                "charisma": race.base_charisma,
-                "perception": race.base_perception,
-                "endurance": race.base_endurance,
-                "luck": race.base_luck,
-                "speed": race.base_speed,
-                "soul_power": race.base_soul_power,
-                "combat_sense": race.base_combat_sense,
-            }
-
-            # Apply background modifiers if available
-            if background:
-                base_stats["strength"] += background.additional_strength
-                base_stats["dexterity"] += background.additional_dexterity
-                base_stats["intelligence"] += background.additional_intelligence
-                base_stats["willpower"] += background.additional_willpower
-                base_stats["charisma"] += background.additional_charisma
-                base_stats["perception"] += background.additional_perception
-                base_stats["endurance"] += background.additional_endurance
-                base_stats["luck"] += background.additional_luck
-                base_stats["speed"] += background.additional_speed
-                base_stats["soul_power"] += background.additional_soul_power
-                base_stats["combat_sense"] += background.additional_combat_sense
-
-            entity.stats.update(base_stats)
-
-        # Apply background-specific attributes if available
-        if background:
-            # Store fame, virtue, infamy, karma
-            entity.stats["fame"] = (
-                entity.stats.get("fame", 0) + background.additional_fame
-            )
-            entity.stats["virtue"] = (
-                entity.stats.get("virtue", 0) + background.additional_virtue
-            )
-            entity.stats["infamy"] = (
-                entity.stats.get("infamy", 0) + background.additional_infamy
-            )
-            entity.stats["karma"] = (
-                entity.stats.get("karma", 0) + background.additional_karma
-            )
-
-            # Store resistance modifiers for future use
-            resistances = {
-                "physical_resistance": background.additional_physical_resistance,
-                "magical_resistance": background.additional_magical_resistance,
-                "mental_resistance": background.additional_mental_resistance,
-                "poison_resistance": background.additional_poison_resistance,
-                "disease_resistance": background.additional_disease_resistance,
-                "fire_resistance_modifier": background.additional_fire_resistance_modifier,
-                "ice_resistance_modifier": background.additional_ice_resistance_modifier,
-                "lightning_resistance_modifier": background.additional_lightning_resistance_modifier,
-                "curse_resistance_modifier": background.additional_curse_resistance_modifier,
-                "pain_resistance_modifier": background.additional_pain_resistance_modifier,
-            }
-            entity.stats["resistances"] = resistances
-
-        # Store personality and background info in entity metadata
-        if personality:
-            entity.stats["personality"] = personality
-        if background_name:
-            entity.stats["background"] = background_name
-
-        # Add starting items to equipment
-        if items:
-            entity.equipment["inventory"] = items
+        # character_name/race_id/background_name/personality/appearance/
+        # stats/items are accepted (client still sends them) but not
+        # persisted onto the entity: Entity no longer carries ad-hoc
+        # RPG/appearance fields (backend/engine/ecs/entity.py), and this
+        # data isn't read by anything downstream yet. Once a real
+        # consumer exists, store it via entity.set_data(...) instead of
+        # reintroducing hardcoded fields.
 
         # Add entity to player's controlled entities
         if self.player_character:

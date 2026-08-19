@@ -1,6 +1,14 @@
-"""Flask application with SocketIO setup."""
+"""Flask application with SocketIO setup.
 
-from flask import Flask, render_template, send_from_directory
+No HTTP page/static routes -- the legacy browser/PyWebView client
+(frontend/js/, frontend/index.html, frontend/test-3d.html,
+run_browser.py, run_desktop_test.py) was deleted; the current desktop
+client (client/main.py) reads frontend/assets/ directly off disk and
+talks to this server over SocketIO only. This app exists purely as the
+SocketIO endpoint.
+"""
+
+from flask import Flask
 from flask_socketio import SocketIO, emit
 import os
 from backend.engine.config import HOST, PORT, DEBUG
@@ -28,13 +36,9 @@ FILE_PATH = Path(__file__).resolve()
 PROJECT_ROOT = FILE_PATH.parent.parent
 FRONTEND_PATH = PROJECT_ROOT / "frontend"
 ASSET_PATH = FRONTEND_PATH / "assets"
-CSS_PATH = FRONTEND_PATH / "css"
-JS_PATH = FRONTEND_PATH / "js"
 
 
-app = Flask(
-    __name__, static_folder=str(FRONTEND_PATH), template_folder=str(FRONTEND_PATH)
-)
+app = Flask(__name__)
 app.config["SECRET_KEY"] = "your-secret-key-here"
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
@@ -43,40 +47,6 @@ from backend.game.tick import GameTick
 
 game_loop = GameTick(socketio)
 register_character_flow_handlers(socketio, game_loop, logger)
-
-
-# Entry point for the application from main.py
-@app.route("/")
-def index():
-    """Serve the main game page."""
-    return render_template("index.html")
-
-
-@app.route("/test-3d.html")
-def test_3d():
-    """[DEV ONLY] Serve the throwaway 3D billboard test page (Step 4 of
-    3d-coordinate-mapping.prompt.md). No backend state, no SocketIO —
-    delete this route along with frontend/test-3d.html once the real
-    Area/Scene viewer (Phase 11/12) exists."""
-    return render_template("test-3d.html")
-
-
-@app.route("/css/<path:filename>")
-def serve_css(filename):
-    """Serve CSS files."""
-    return send_from_directory(str(CSS_PATH), filename)
-
-
-@app.route("/js/<path:filename>")
-def serve_js(filename):
-    """Serve JavaScript files."""
-    return send_from_directory(str(JS_PATH), filename)
-
-
-@app.route("/assets/<path:filename>")
-def serve_assets(filename):
-    """Serve asset files (fonts, images, audio, etc.)."""
-    return send_from_directory(str(ASSET_PATH), filename)
 
 
 @socketio.on("connect")
@@ -136,7 +106,12 @@ def handle_load_game(data):
 
     try:
         save_manager = SaveManager(socketio, player_id=player_id)
-        save_manager.load_game()
+        # Pass the real, module-level game_loop so load_game() populates
+        # ITS current_world/current_area -- without this, game_loop
+        # .current_area stayed None (a throwaway GameLoop's, not this
+        # one's) and the code below crashed with AttributeError. See
+        # SaveManager.load_game()'s own docstring for the full story.
+        save_manager.load_game(game_loop=game_loop)
         emit(
             "player_loaded",
         )
@@ -219,11 +194,13 @@ def handle_save_game():
 if os.environ.get("DEV_HOT_RELOAD", "0") == "1":
     from backend.engine.hot_reload import HotReloadWatcher
 
-    _hot_reload = HotReloadWatcher(
-        socketio,
-        "frontend/assets",
-        "frontend/js/engine/sprites",
-    )
+    # No shaders_dir anymore: it used to watch frontend/js/engine/sprites
+    # for .wgsl/.js changes, but that directory was deleted along with
+    # the legacy browser client. The current client's WGSL lives as
+    # Python string literals in client/engine/shader_cache.py, not
+    # standalone files on disk, so there's no equivalent directory to
+    # watch -- asset hot-reload (frontend/assets/) is unaffected.
+    _hot_reload = HotReloadWatcher(socketio, "frontend/assets")
     _hot_reload.start()
 
 if __name__ == "__main__":

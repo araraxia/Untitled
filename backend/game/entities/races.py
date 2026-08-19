@@ -42,37 +42,6 @@ class Race:
     soul_power_variance: int = 5
     combat_sense_variance: int = 3
 
-    # Resistances
-    base_physical_resistance: int = 10
-    physical_resistance_variance: int = 2
-    base_stab_resistance_modifier: float = 1.0
-    base_slash_resistance_modifier: float = 1.0
-    base_blunt_resistance_modifier: float = 1.0
-
-    base_magical_resistance: int = 10
-    magical_resistance_variance: int = 2
-    fire_resistance_modifier: float = 1.0
-    ice_resistance_modifier: float = 1.0
-    lightning_resistance_modifier: float = 1.0
-    curse_resistance_modifier: float = 1.0
-    magic_illusion_resistance_modifier: float = 0.5
-
-    base_mental_resistance: int = 10
-    mental_resistance_variance: int = 5
-    pain_resistance_modifier: float = 1.0
-    mental_illusion_resistance_modifier: float = 0.5
-
-    base_poison_resistance: int = 10
-    poison_resistance_variance: int = 1
-    base_disease_resistance: int = 10
-    disease_resistance_variance: int = 10
-
-    # Other stats
-    base_fame: int = 0
-    base_virtue: int = 0
-    base_infamy: int = 0
-    base_karma: int = 0
-
     def get_backgrounds(self) -> Dict[str, object]:
         """Get available backgrounds for this race"""
         from backend.game.backgrounds import get_classes_by_tag as get_bg_by_tag
@@ -161,11 +130,8 @@ class Human(Race):
         "Versatile and adaptable, humans are the most common race in the world."
     )
     lore_text: str = (
-        "Humans are the most diverse and ambitious of all races. "
-        "Born without the long lifespans of elves or the hardiness of dwarves, "
-        "humans make up for it with determination, adaptability, and an unquenchable drive to leave their mark on the world. "
-        "Their short lives burn brightly, and they can be found in every corner of the realm, "
-        "pursuing countless paths and destinies."
+        "Humans are the most diverse and ambitious of all races, found in "
+        "every corner of the world, pursuing countless paths and destinies."
     )
 
 

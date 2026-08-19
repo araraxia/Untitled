@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 import json
 
 from backend.engine.ecs.entity import Entity
+from backend.engine.group import GroupRegistry
 from backend.engine.save_format import SAVE_VERSION, migrate
 from backend.engine.spatial import SpatialGrid
 from backend.game.config import DEF_AREA_WIDTH, DEF_AREA_HEIGHT
@@ -24,6 +25,7 @@ class Area:
         self.entities: Dict[str, Entity] = {}
         self.player_controller: Optional[PlayerCharacter] = None
         self.spatial_grid = SpatialGrid(DEF_AREA_WIDTH, DEF_AREA_HEIGHT)
+        self.groups = GroupRegistry()
         self.dirty_entities: set = set()
         self.removed_entities: set = set()
 
@@ -171,6 +173,7 @@ class Area:
             "width": self.width,
             "height": self.height,
             "entities": [entity.to_dict() for entity in self.entities.values()],
+            "groups": self.groups.to_dict(),
         }
 
     @classmethod
@@ -202,6 +205,8 @@ class Area:
         for entity_data in entity_iter:
             entity = Entity.deserialize(entity_data)
             area.add_entity(entity)
+
+        area.groups = GroupRegistry.from_dict(data.get("groups", {}))
 
         return area
 

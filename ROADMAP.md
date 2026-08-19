@@ -35,9 +35,10 @@ The engine is not a separate product — it is the lower half of this same repos
 | 7 | UI Framework | 🔲 Not started |
 | 8 | Audio | 🔲 Not started |
 | 9 | Distribution & Tooling | 🔲 Not started |
-| 10 | 3D Coordinate Mapping | 🔲 In Progress (Steps 1–8 of 14 done) |
-| 11 | Area / Scene System | 🔲 Not started |
-| 12 | Level Editor & Asset Viewer | 🔲 Not started |
+| 10 | 3D Coordinate Mapping | 🔲 In Progress (Steps 1–8 of 14 done, JS; Steps 9–14 target Phase 13's client) |
+| 11 | Area / Scene System | 🔲 Not started (targets Phase 13's client, see area-system.prompt.md) |
+| 12 | Level Editor & Asset Viewer | 🔲 Not started (targets Phase 13's client, see level-editor.prompt.md) |
+| 13 | Native wgpu-py Desktop Client | ✅ Complete (18 of 18 steps; legacy PyWebView/JS client fully deleted, not just deprecated) |
 
 ---
 
@@ -333,16 +334,18 @@ Define the stable API that game code calls into:
 
 ### 9.1 — PyInstaller Packaging
 
-- `tools/build.py` — runs PyInstaller with spec file; bundles Flask, SocketIO, PyWebView, and all game assets into a single directory or `.exe`
+> **Updated for the native client (Phase 13, `.github/prompts/wgpu-py-migration.prompt.md`) — do not bundle PyWebView or plan around `run_browser.py`; this project doesn't use either anymore.**
+
+- `tools/build.py` — runs PyInstaller with spec file; bundles Flask, SocketIO, `client/` (GLFW + `wgpu-py` + `imgui-bundle`), and all game assets into a single directory or `.exe`
 - Windows: sign with code signing certificate (optional)
 - macOS: bundle as `.app`, notarise (optional)
-- Linux: defer until WebKitGTK ships WebGPU; distribute via `run_browser.py` or AppImage
+- Linux: ships directly, same as Windows/macOS — the native client doesn't depend on WebKitGTK, so there's nothing to defer and no `run_browser.py`/AppImage fallback needed
 
 ### 9.2 — Developer Tools
 
 - **Entity Inspector**: overlay panel listing all entities in the current area with live component values
 - **Perf Overlay**: frame time, tick time, entity count, GPU memory (available via `GPUDevice.limits`)
-- **Animation Preview**: standalone page that loads a `GPUSpriteSheet` and plays animation clips; linked from `run_browser.py`
+- **Animation Preview**: a `client/`-native imgui tool that loads a `GPUSpriteSheet` and plays animation clips — not a `run_browser.py`-linked HTML page (that plan predates the native client and no longer applies)
 
 ### 9.3 — Release Versioning
 

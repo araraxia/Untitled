@@ -14,10 +14,13 @@ tools:
 
 # Task: Distribution & Tooling (Phase 9)
 
+> **STALE — predates the native client migration, re-audit before starting.** This entire prompt was written when `main.py` opened a PyWebView window around the `frontend/js/*` browser client. As of `.github/prompts/wgpu-py-migration.prompt.md`, that's no longer true: `main.py` launches `client/main.py`'s native GLFW/`wgpu-py`/`imgui-bundle` window instead, and `frontend/js/*`/`run_browser.py`/`run_desktop_test.py` are legacy, not used, kept only for historical reference. Concretely, before starting this task: **do not** bundle PyWebView in the PyInstaller spec, **do not** defer Linux distribution or plan around `run_browser.py`/AppImage (the native client already ships on Linux with no browser dependency), **do not** point the Animation Preview tool or Entity Inspector/Perf Overlay at `frontend/js/engine/renderer.js`/`frontend/js/game/main.js` or link them from `run_browser.py`/`frontend/index.html` — re-derive these against `client/main.py`/`client/engine/`/`client/game/` instead. The Required Reading list and steps below still describe the old architecture; treat them as a description of *what this task used to assume*, not current instructions, and re-verify every file path against the current repo before acting on it.
+
 You are implementing the distribution and developer-tooling phase for
 this project. This is Phase 9 of `ROADMAP.md`. All earlier phases are
-prerequisites; Phase 5 (Asset Pipeline) and Phase 1 (Engine–Game
-Separation) are most directly relevant.
+prerequisites; Phase 5 (Asset Pipeline), Phase 1 (Engine–Game
+Separation), and Phase 13 (Native wgpu-py Desktop Client) are most
+directly relevant.
 
 Complete all steps in order. Each step must leave the application in a
 runnable state before proceeding to the next.

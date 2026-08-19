@@ -7,7 +7,14 @@ from pathlib import Path
 import json
 
 FILE_PATH = Path(__file__).resolve()
-ROOT_DIRECTORY = FILE_PATH.parent.parent.parent
+# backend/game/entities/player.py -> entities -> game -> backend -> repo
+# root. Was one .parent short (landed on backend/, not the repo root),
+# silently reading/writing player saves under a phantom
+# backend/frontend/assets/data/player/ directory instead of the real
+# frontend/assets/data/player/ -- found via run_client_test.py cleanup
+# (a stray file from this exact bug, already committed, long predates
+# this session -- confirmed via git log).
+ROOT_DIRECTORY = FILE_PATH.parent.parent.parent.parent
 DATA_DIRECTORY = ROOT_DIRECTORY / "frontend" / "assets" / "data"
 PLAYER_DIRECTORY = DATA_DIRECTORY / "player"
 
@@ -163,7 +170,7 @@ class PlayerCharacter:
             if action_type == "move":
                 # Translate movement input to entity movement
                 direction = action_data.get("direction", {})
-                speed = 50.0 * entity.modifiers.get("walking_speed", 1.0)
+                speed = 50.0 * entity.get_data("walking_speed", 1.0)
 
                 entity.vx = direction.get("x", 0) * speed
                 entity.vy = direction.get("y", 0) * speed
@@ -316,7 +323,11 @@ class PlayerCharacter:
             PlayerCharacter: A new PlayerCharacter instance with loaded data and entities
         """
         file_path = Path(directory) / f"player-{player_id}.json"
-        return cls.load_from_file(file_path, entity_lookup=None)
+        # Was `entity_lookup=None` -- load_from_file() has no such
+        # parameter (only `load_entities`), so every load_by_id() call
+        # raised TypeError. Forward this method's own load_entities
+        # argument using the name load_from_file actually accepts.
+        return cls.load_from_file(file_path, load_entities=load_entities)
 
     def load_controlled_entities(self):
         """Load all controlled entities from their files.

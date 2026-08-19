@@ -99,11 +99,24 @@ class SaveManager:
     # Public API
     # ------------------------------------------------------------------
 
-    def load_game(self) -> GameLoop:
+    def load_game(self, game_loop: Optional[GameLoop] = None) -> GameLoop:
         """Load a player's save and return a ready GameLoop.
 
         Tries the new save directory first, falls back to legacy paths.
         Runs ``migrate()`` on every loaded dict.
+
+        Args:
+            game_loop: The real, running GameLoop to populate
+                (``current_world``/``current_area``) once loaded --
+                mirrors ``save_game()``'s existing ``game_loop``
+                parameter (see ``GameTick._run_autosave()``'s
+                ``sm.save_game(self.player_instance, self)`` for the
+                established pattern this follows). When omitted, falls
+                back to the previous behavior of creating/reusing a
+                throwaway ``GameLoop`` on this instance -- callers that
+                need the loaded area/world to reach the app's actual
+                running game loop (e.g. ``backend/app.py``'s
+                ``handle_load_game()``) must pass their real one.
 
         Returns:
             Configured (but not yet running) :class:`GameLoop`.
@@ -114,7 +127,9 @@ class SaveManager:
         player_file = self._find_player_file()
 
         # Initialise or reset the game loop.
-        if not self.game_loop:
+        if game_loop is not None:
+            self.game_loop = game_loop
+        elif not self.game_loop:
             self.game_loop = GameLoop(self.socketio)
         elif self.game_loop.running:
             self.game_loop.stop()
@@ -142,6 +157,17 @@ class SaveManager:
             self.world = World.load_world(data_dir, self.world_id)
         except FileNotFoundError:
             self.world = World(world_id=self.world_id, world_name="Untitled World")
+        # Real bug, found via a real socket.io round trip against the
+        # running backend (not assumed): this method never actually
+        # propagated the loaded world/area onto self.game_loop, so
+        # backend/app.py's handle_load_game() -- which reads
+        # game_loop.current_area right after calling this -- always
+        # saw None there and crashed with AttributeError. save_game()
+        # already reads world/area via self.game_loop (getattr(...,
+        # "current_world"/"current_area", None)); this mirrors that,
+        # completing the wiring load_game() was apparently never
+        # updated to match when the new saves/<id>/ layout landed.
+        self.game_loop.current_world = self.world
 
         # --- Area ---
         self.current_area_id = self.player.area_id
@@ -151,6 +177,7 @@ class SaveManager:
             self.current_area = Area(
                 area_id=self.current_area_id, area_name="Untitled Area"
             )
+        self.game_loop.current_area = self.current_area
 
         return self.game_loop
 

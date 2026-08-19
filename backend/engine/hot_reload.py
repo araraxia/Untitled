@@ -120,23 +120,30 @@ class _ShaderEventHandler(FileSystemEventHandler):
 
 
 class HotReloadWatcher:
-    """Watches asset and shader directories; emits SocketIO reload events.
+    """Watches an assets directory (and, optionally, a shader-source
+    directory) and emits SocketIO reload events.
 
     Args:
         socketio: The Flask-SocketIO instance.
         assets_dir: Path to ``frontend/assets/``.
-        shaders_dir: Path to ``frontend/js/engine/sprites/``.
+        shaders_dir: Optional path to a directory of standalone shader
+            source files to watch for ``.wgsl``/``.js`` changes. The
+            current desktop client (``client/engine/shader_cache.py``)
+            has no such directory -- its WGSL lives as Python string
+            literals, not files on disk -- so this is only meaningful
+            if some future client reintroduces standalone shader files.
+            Omit (or pass ``None``) to skip shader watching entirely.
     """
 
     def __init__(
         self,
         socketio: Any,
         assets_dir: str | Path,
-        shaders_dir: str | Path,
+        shaders_dir: "str | Path | None" = None,
     ) -> None:
         self._socketio = socketio
         self._assets_dir = Path(assets_dir).resolve()
-        self._shaders_dir = Path(shaders_dir).resolve()
+        self._shaders_dir = Path(shaders_dir).resolve() if shaders_dir else None
         self._observer = Observer()
 
     def start(self) -> None:
@@ -147,7 +154,7 @@ class HotReloadWatcher:
                 str(self._assets_dir),
                 recursive=True,
             )
-        if self._shaders_dir.exists():
+        if self._shaders_dir is not None and self._shaders_dir.exists():
             self._observer.schedule(
                 _ShaderEventHandler(self._socketio, self._shaders_dir),
                 str(self._shaders_dir),
