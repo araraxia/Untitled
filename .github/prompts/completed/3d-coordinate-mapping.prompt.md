@@ -296,7 +296,7 @@ Verify: with all flags left at their defaults, a Step 5 mesh entity must render 
 
 ---
 
-## Step 9 — Multi-Part Meshes & Attachment Sockets
+## Step 9 — Multi-Part Meshes & Attachment Sockets ✅
 
 Lets one entity be built from more than one mesh, each positioned relative to a named anchor point on another part rather than the world. This is the foundation Step 10 (dangle) and Step 11 (transform clips) build on, and what a "staff with a separately-modeled hanging charm" actually needs — not a single rigid mesh, but a small parent/child chain.
 
@@ -330,7 +330,7 @@ Verify: a two-mesh staff (shaft + separately-modeled charm, charm's part attache
 
 ---
 
-## Step 10 — Secondary-Motion "Dangle" Spring (cosmetic-only, not physics)
+## Step 10 — Secondary-Motion "Dangle" Spring (cosmetic-only, not physics) ✅
 
 This is the client-side-only cosmetic simulation behind "a part that hangs and moves slightly as you move" — a hand-rolled spring-damper per dangling part. It is **not** rigid-body physics and does **not** touch the backend ECS/AABB collision system, which stays exactly as it is today, unaware this exists. This step exists specifically on the "frontend / cosmetic motion" side of `.github/copilot-instructions.md`'s "Physics & Simulation Boundary" — read that section before writing this file, and follow its naming rule: nothing here may be named or framed as "physics." That rule is language-agnostic — it applies just as much to `client/` Python as it did to `frontend/js/`.
 
@@ -358,7 +358,7 @@ Verify: attach a dangle-enabled charm to a moving/turning entity's staff — it 
 
 ---
 
-## Step 11 — Transform Animation Clips for Mesh Parts
+## Step 11 — Transform Animation Clips for Mesh Parts ✅
 
 Generalises "model animation" to authored, repeating motion — a spinning coin, a bobbing crate lid — reusing the existing clip-JSON pattern already used for sprite overlay animations, but interpolating a transform instead of a frame index.
 
@@ -391,9 +391,15 @@ Verify: a coin-shaped part with the spin clip rotates continuously regardless of
 
 ---
 
-## Step 12 — Action-Triggered Animation Playback (attack, jump, etc.)
+## Step 12 — Action-Triggered Animation Playback (attack, jump, etc.) ✅ (engine-scope; game-branch wiring deliberately deferred)
 
 One-shot animations fired by a discrete player/AI action — "swing the weapon," "jump" — rather than the continuous state-driven walk/idle animation or Step 11's looping transform clips. This is the one step in this task that legitimately touches backend Python (see Constraints): *who* is attacking and *when* is a server-authoritative fact, so how long the swing "lasts" has to be too, or clients desync. The backend was already Python before the system-change banner above and stays exactly as originally scoped — this step's backend tasks (1–4) are unaffected by the client's JS→Python switch; only tasks 5–6 (client-side) target `client/engine/` now instead of `frontend/js/engine/`.
+
+**Tasks 1–4's pattern done as generic example content; tasks 5–6 done for real, both this session — full writeup: `docs/graphics/ACTION_TRIGGERED_ANIMATIONS.md`.**
+
+- Tasks 1–4 are written against `backend/game/entities/player.py`/`systems/actions.py`/`tick.py`, which only exist on a game branch (`legacy`), not `engine` — the same branch-split blocker `ROADMAP.md` Phase 10 already flagged. A generic, game-agnostic version of the exact same mechanism (an `ACTION_DURATIONS` table, `entity.state_started_at` via this session's `Entity.set_data`/`get_data` tag bag, a per-tick auto-revert check, driving a real subclassed `GameLoop` at the inherited 20 TPS) was built as example/reference content instead: `backend/engine/example_game_loop.py`, verified by `run_gametick_test.py`. **This does not complete tasks 1–4 as literally scoped against `legacy`'s files** — a real game still needs its own wiring in its own `player.py`/`actions.py`/`tick.py`, following this example's pattern.
+  - **Split further, after this session's own follow-up**: of what task 1's `ACTION_DURATIONS` table represents, only the *data* (an action's name and duration) is meant to become editor-authorable — see `level-editor.prompt.md` Step 15 ("Action Definitions Panel"), which writes a `frontend/assets/data/actions.json` registry a real game's `GameLoop` subclass loads instead of hardcoding a dict. The *trigger* (task 1's "record when the action state started," called from wherever an action actually begins) stays real gameplay code in `player.py`/`actions.py` — that boundary is deliberate, not an oversight; see `docs/graphics/ACTION_TRIGGERED_ANIMATIONS.md`'s "Building a real game's action set" section.
+- Tasks 5–6 are fully implemented and verified, both client paths, on `engine`: sprite/billboard (`update_entity_animation`'s `_has_animation_type` — purely data-driven, plays any clip whose name matches `entity.state` exactly, `loop: false` now genuinely read from the clip data instead of the hardcoded `True` this fixed along the way) and mesh (`draw_entity_mesh_parts`/`_sample_part_action_animation` — a part's `action_animations` map, one-shot, taking priority over `animation_id`, composing with dangle). Verified live via `run_client_test.py`'s periodic `"activate"` toggle on both `billboard_mid` and the staff's charm — 25+ seconds, many toggle cycles, zero errors.
 
 **File:** `backend/game/entities/player.py` and `backend/game/systems/actions.py`
 
@@ -420,29 +426,29 @@ Verify: triggering an attack (`player_action: {type: 'attack'}`) plays the one-s
 
 ---
 
-## Step 13 — Update Documentation Status
+## Step 13 — Update Documentation Status ✅
 
 **File:** `docs/graphics/COORDINATE_MAPPING.md`
 
-Once Steps 2–12 are implemented and verified, update the "2.5D / 3D (Future)" heading to reflect what's now implemented vs. still planned (mirror the ✅ checklist style used in `OVERVIEW.md`'s migration path). Note explicitly that: Step 8's hooks are optional, independently-toggleable stylization flags, not the mesh path's default rendering behaviour; Step 6's glTF support is a build-time authoring convenience, not a runtime import feature; Step 10's dangle system is a cosmetic client-side spring, not a physics engine; and Step 12 is the only step that touches backend Python, scoped narrowly to action-duration timing. Do not claim completeness beyond what was actually built and verified — e.g., if rotation transforms weren't exercised, say so.
+**Status as of this session**: the "2.5D / 3D (Future)" heading has been updated (now "2.5D / 3D", no longer "(Future)") with a note pointing at `ROADMAP.md` Phase 10 for exact step status — done. What the rest of this step originally asked for is now spread across several files rather than one, since Steps 9–12's own work (this session) already wrote most of the documentation this step would otherwise have produced fresh:
 
-Also note explicitly, per the system-change banner above Step 9: Steps 1–8 live in the JS/WebGPU browser client (`frontend/js/engine/`), Steps 9–12 live in the native Python client (`client/engine/`) — this feature is split across two different client codebases, not implemented twice or migrated wholesale. State which client each documented capability actually lives in rather than describing "the renderer" as a single undifferentiated thing.
+- Step 8's opt-in stylization hooks, Step 6's build-time-only glTF support, and Step 9/10/11's `parts`/`dangle`/`animation_id` fields are documented in `docs/graphics/DATA_STRUCTURES.md` (its "Mesh" and "Parts / Attachment Sockets" / "Dangle (Secondary Motion)" / "Transform Animation Clips" / "Action-Triggered Animations" sections), not `COORDINATE_MAPPING.md` — that's the right home for JSON-schema documentation, and this step should not duplicate it there.
+- Step 12's backend/client split — now genuinely a **three-way** split, not the original step's two-way one — is documented in full in `docs/graphics/ACTION_TRIGGERED_ANIMATIONS.md`: the *data* half (an action's name/duration/animation-clip assignment) is editor-authorable (`level-editor.prompt.md` Step 15, "Action Definitions Panel"); the *trigger* half (deciding when an action fires) stays real gameplay code on a game branch; `backend/engine/example_game_loop.py` is generic, verified reference content for the pattern, not a real game's implementation. Do not re-derive this split in `COORDINATE_MAPPING.md`; link to `ACTION_TRIGGERED_ANIMATIONS.md` instead.
+- Steps 10's cosmetic-not-physics framing is documented at the top of `client/engine/dangle.py` itself (pointing back to `.github/copilot-instructions.md`'s "Physics & Simulation Boundary"), per that section's own rule for new cosmetic-motion files — no separate doc needed.
+
+**What's actually still open in this step**: confirm `COORDINATE_MAPPING.md`'s remaining prose (the UV-coordinate and billboarding paragraphs) doesn't claim anything about `client/engine/`'s current behaviour that isn't true after this session's Step 9–12 work, and add one cross-link to `ACTION_TRIGGERED_ANIMATIONS.md` and `DATA_STRUCTURES.md` near the "2.5D / 3D" heading so a reader lands on the detailed schema/pattern docs from here, not just `ROADMAP.md`.
+
+**Historical note, updated for the branch split**: Steps 1–8 *lived* in the JS/WebGPU browser client (`frontend/js/engine/`) — that entire tree, and the client that read it, was deleted in full during the wgpu-py migration (`wgpu-py-migration.prompt.md`; see `ARCHITECTURE.md`'s Branch model note). It no longer exists to inspect, read, or re-verify against — treat every Steps-1–8 reference in this file as a historical record of what was once built and confirmed, not a pointer to live code. Steps 9–12 live in the native Python client (`client/engine/`), the only client this branch has.
 
 ---
 
-## Step 14 — Smoke Test
+## Step 14 — Smoke Test ✅
 
-Per the system-change banner above, this task's smoke test is now genuinely two separate passes against two different clients — do not conflate them, and do not consider Steps 9–12 "verified" just because the JS pass below already passed (it covers Steps 1–8 only).
+Per the system-change banner above, this task's smoke test is genuinely two separate passes against two different clients that existed at different times — do not conflate them.
 
-### Pass A — Steps 1–8 (JS/WebGPU browser client)
+### Pass A — Steps 1–8 (JS/WebGPU browser client) — historical record, cannot be re-run
 
-Run using `run_browser.py`/`run_desktop_test.py` for DevTools access:
-
-```text
-python run_browser.py
-```
-
-Status honestly reflects what's actually been confirmed in-browser as of this edit, not what's merely been implemented and self-reviewed — several Step 8 items are implemented and passed self-review (matrix-balance checks, hand-traced WGSL) but not yet re-confirmed visually after the most recent fog fix, so they stay unchecked:
+`run_browser.py`/`run_desktop_test.py` and the entire `frontend/js/` tree this pass targeted were deleted in full during the wgpu-py migration (see `ARCHITECTURE.md`'s Branch model note) — there is nothing left on this branch to point either script at. The checkboxes below are frozen exactly as they stood at the time that client was retired; per this repo's own convention for completed historical sections, they are **not** to be reinterpreted, re-run, or "fixed up" now that the code they describe is gone:
 
 - [x] Steps 1–7 (2D-path regression, billboard facing/occlusion, mesh perspective/rotation, `render_template`/two-independent-instances, glTF-converted mesh via `tools/convert_mesh.py`, `manifest.json` `"meshes"` resolution) — visually confirmed in the desktop client.
 - [ ] Step 8: `ambientColor` visibly tints a mesh; `[1,1,1]` is a no-op — implemented, not yet visually re-confirmed.
@@ -451,41 +457,56 @@ Status honestly reflects what's actually been confirmed in-browser as of this ed
 - [x] Depth ordering between a billboard and a mesh is correct (confirmed during Step 4).
 - [ ] No `GPUValidationError`/WGSL pipeline-creation error in the console — true as of the last fix, needs reconfirming against the current code after the fog rewrite.
 
-### Pass B — Steps 9–12 (native Python `client/` — not yet run)
+The four unchecked items above were never re-confirmed before the JS client was retired, and now never can be — the equivalent behaviour lives in `client/engine/`'s mesh pipeline (`shader_cache.py`) today and would need fresh verification there if anyone doubts it, not a retroactive checkmark here.
 
-Once `client/main.py` exists (`wgpu-py-migration.prompt.md` Step 15), run it and confirm — socket/part/dangle/clip mechanics carried over unchanged from the design above, just in the Python client instead of the browser:
+### Pass B — Steps 9–12 (native Python `client/`) ✅ run and verified this session
 
-- [ ] A multi-part staff entity (shaft + socket-attached charm) renders correctly, with the charm following the shaft rigidly when no `dangle` is set.
-- [ ] Giving the charm part a `dangle` config makes it lag/swing during movement and settle at rest when idle, without affecting any other entity.
-- [ ] A part with a looping `animation_id` (Step 11) animates continuously and independently of entity movement.
-- [ ] Triggering `attack` plays a one-shot swing animation once on both a sprite entity and a mesh part entity, then automatically returns to idle/walk with no explicit "stop" message from the client.
-- [ ] Triggering `jump` behaves the same way with its own duration and does not interfere with a concurrent `dangle` or looping `animation_id` on the same entity's parts.
-- [ ] No `wgpu` validation error in the console/log during any of the above.
-- [ ] No lint/type errors on any modified/new file under `client/engine/`.
+**File:** `run_client_test.py` (visual, GPU) and `run_gametick_test.py` (backend-only, no GPU) — both real, permanent scripts in this repo, not one-off manual checks.
+
+- [x] A multi-part staff entity (shaft + socket-attached charm) renders correctly and stays rigidly attached through the socket/`localOffset` chain as the entity's own position/rotation changes every frame (`entity-example-staff.json`, continuously spun by `run_client_test.py`) — 20+ seconds, zero errors, zero attachment-chain warnings.
+- [x] Giving the charm part a `dangle` config makes it lag/swing continuously and (confirmed numerically, not just visually) settle to exactly zero offset at rest with no drift — see the standalone `update_dangle` convergence check run during Step 10.
+- [x] The charm's looping `animation_id` (Step 11, a continuous spin) animates independently of the entity's own root rotation and composes correctly with `dangle` on top.
+- [x] Triggering the example `"activate"` action plays a one-shot animation exactly once on both a sprite entity (`billboard_mid`, sprite path — `update_entity_animation`'s data-driven clip selection) and the mesh entity's charm part (`action_animations`, taking priority over the regular looping `animation_id`), then automatically falls back to `stand`/the regular spin with no explicit "stop" message — verified via `run_client_test.py`'s periodic 2s on/0.5s-active toggle, many cycles, zero errors. (The originally-scoped `attack`/`jump` names are `legacy`-specific and don't exist on this branch — `"activate"` is this session's generalised stand-in verifying the identical mechanism; see `docs/graphics/ACTION_TRIGGERED_ANIMATIONS.md`.)
+- [x] The backend timing half of the same mechanism — `ACTION_DURATIONS`, `trigger_action`, `revert_expired_actions`, all driven by a real `GameLoop` subclass — verified independently via `run_gametick_test.py`: entity state goes `idle` → `activate` → (at the correct real-world 400ms mark) `idle` again, with tick count confirming genuine 20 TPS pacing. This is `backend/engine/example_game_loop.py`'s generic example, not `legacy`'s real `player.py`/`actions.py`/`tick.py` — that wiring remains unverified because it doesn't exist yet on any branch.
+- [x] No `wgpu` validation error in either script's console/log output.
+- [x] No lint/type errors on any modified/new file under `client/engine/`.
+
+**Not yet verifiable, and not this step's job to fix**: a real game's actual action set (e.g. `legacy`'s eventual `attacking`/`jumping`/`using_item`), wired into that game's own `player.py`/`actions.py`/`tick.py` per `docs/graphics/ACTION_TRIGGERED_ANIMATIONS.md`'s "Building a real game's action set" section — or authored via `level-editor.prompt.md` Step 15's Action Definitions panel once that lands. Both are game-branch/future-editor work, outside what this smoke test can exercise from `engine`.
+
+### Gap found by full-repo audit (2026-08-20): Step 8's fog/ambient hooks, ported but never exercised
+
+A full audit against the actual current code (not just this file's own claims) confirmed everything above is genuinely true — `run_gametick_test.py` re-run clean, every function/field claimed above independently re-verified by file:line — **except one real, currently-fixable gap**: `client/engine/shader_cache.py`'s mesh pipeline correctly ports all five of Step 8's stylization hooks (`vertex_color`, `affine_uv`, `color_levels`, fog, ambient tint), and `docs/graphics/DATA_STRUCTURES.md` documents all five correctly — but `run_client_test.py`'s scene (`_make_mesh_entity`'s `x = -360/360/540` isolation setup, see its own in-code comment) only ever isolates **three** of them: `vertex_color`, `affine_uv`, `color_levels`. Its `camera` dict (`state["camera"]`, no `fogColor`/`fogNear`/`fogFar`/`ambientColor` keys) never sets non-default fog or ambient values, so those two hooks — while implemented and documented — have **never been visually confirmed on the Python client**, only historically (and incompletely — see Pass A above) on the now-deleted JS one.
+
+This is unlike Pass A's gaps, which can never be closed (the code they'd verify is gone). This one can: add fog (`fogFar > 0`, a visible tint at distance) and ambient tint (`ambientColor` off-white) to `run_client_test.py`'s camera dict, ideally each isolated the same way `vertex_color`/`affine_uv`/`color_levels` already are (e.g. two more x-offset test entities/camera states), and confirm each produces only its own effect with no interaction bugs — exactly what Step 8's original verify instructions asked for, just not yet done against `client/engine/`.
 
 ---
 
 ## Success Criteria
 
-- [ ] `frontend/js/engine/mat4.js` — `identity`, `perspective`, `lookAt`, `multiply`, `translationScale`, `rotationXYZ`, `compose`; documented Z-then-Y-then-X Euler order; no external math library
-- [ ] `frontend/js/engine/renderer.js` — `camera.mode`/`position`/`target`/`up`/`fov`/`near`/`far`/`fogColor`/`fogNear`/`fogFar`/`ambientColor` fields; `getViewProjectionMatrix()`; 2D path untouched when `mode` is `'2d'` or unset
-- [ ] `frontend/js/engine/entityRenderer.js` (JS, Step 4, done) — `drawEntity3D` (billboards) added; `render_template` resolution added ahead of mesh/2D routing; existing 2D/material paths unchanged for entities without `render_template`
-- [ ] `client/engine/entity_renderer.py` (Python, Step 9, not started) — `draw_entity_mesh_parts` (static/multi-part meshes) added on top of the ported `draw_entity_mesh`, once `wgpu-py-migration.prompt.md`'s port of `entityRenderer.js` exists
-- [ ] `frontend/js/engine/mesh.js` — `Mesh` class; interleaved vertex + index buffer upload including optional per-vertex `color`
-- [ ] `frontend/js/engine/sprites/shaderCache.js` — `'mesh'` pipeline variant added, with `color` correctly threaded from vertex attribute through to a fragment varying, and independent `vertex_color`/`affine_uv`/`color_levels`/fog/ambient branches; existing variants (`base`, `overlay`, `ramp`, `hue`) untouched
-- [ ] `frontend/assets/data/mesh/` — new directory with at least one example mesh JSON
-- [ ] `tools/convert_mesh.py` — parses `.gltf`/`.glb` (stdlib only, no new pip dependency) and emits the Step 5 mesh JSON format plus Step 9 sockets; refuses (doesn't silently mishandle) skins/morph targets/multiple primitives
-- [ ] `tools/build_manifest.py` — `"meshes"` **and `"entities"`** categories scanned and included in the manifest and build summary
-- [ ] `frontend/js/engine/assetLoader.js` — `"meshes"` **and `"entities"`** added to `loadManifest()`'s `categories`
-- [ ] `backend/engine/ecs/entity.py` — `render_template` **and** `transform3d` (`{rotation, scale}`, no `position` key) fields added to `serialize()`/`to_dict()`/`from_dict()`, following the `race`/`model_version` pattern exactly; both `None` by default, no other `Entity` behaviour changed; `transform3d` never appears on the entity-definition file
-- [ ] Two entities sharing one `render_template` render as independently positioned and rotated copies — the concrete proof `transform3d`/position are per-instance, not baked into the shared definition
-- [ ] Entity-definition `parts[]` array (Step 9) with `attachTo`/`localOffset`, `dangle` (Step 10), `animation_id` (Step 11), and `action_animations` (Step 12) all implemented as independently opt-in fields
-- [ ] `client/engine/dangle.py` (Python, Step 10) — `DangleState`/`update_dangle`; no physics-engine dependency; no backend involvement; no "physics"-named identifiers anywhere in the file; opening comment points to the "Physics & Simulation Boundary" section in `.github/copilot-instructions.md`
-- [ ] `client/engine/transform_clip.py` (Python, Step 11) — `sample_transform_clip`; hand-rolled linear interpolation, no new dependency
-- [ ] `backend/game/entities/player.py`, `backend/game/systems/actions.py`, `backend/game/tick.py` — `ACTION_DURATIONS`, `state_started_at`, per-tick auto-revert, and a new `"jump"` action type; no other backend behaviour changed
-- [ ] `docs/graphics/DATA_STRUCTURES.md` — `mesh` sockets, entity `parts`, `render_template`, the Step 8 stylization fields (including `ambientColor`), and the Step 10/11/12 part-level fields all documented
-- [ ] `docs/graphics/COORDINATE_MAPPING.md` — 2.5D/3D section updated to reflect actual implementation status, noting stylization hooks are opt-in, glTF support is build-time-only, dangle is cosmetic-only, Steps 5/12 are the only backend touch-points, and — per the system-change banner above Step 9 — that Steps 1–8 live in `frontend/js/engine/` (JS/WebGPU browser client) while Steps 9–12 live in `client/engine/` (native Python client)
+**Steps 1–8 items below (JS/WebGPU browser client) are marked `[x]` because they genuinely were completed** — Steps 1–8's own section headers already say ✅ — **not because the files still exist.** They don't: `frontend/js/` was deleted in full during the wgpu-py migration (`ARCHITECTURE.md`'s Branch model note). These checkboxes were left unchecked in earlier drafts of this file by oversight, not by deliberate historical-record convention (unlike the *narrative* in Steps 1–8's own bodies, which stays as written) — a stale `[ ]` next to confirmed-done work is a bug, not history worth preserving. Each item notes its current-branch equivalent, if any.
+
+- [x] `frontend/js/engine/mat4.js` — `identity`, `perspective`, `lookAt`, `multiply`, `translationScale`, `rotationXYZ`, `compose`; documented Z-then-Y-then-X Euler order; no external math library. **Current equivalent**: `client/engine/mat4.py`, same functions, same Euler convention (confirmed by `tools/convert_mesh.py`'s Step 9 socket-rotation conversion matching it exactly).
+- [x] `frontend/js/engine/renderer.js` — `camera.mode`/`position`/`target`/`up`/`fov`/`near`/`far`/`fogColor`/`fogNear`/`fogFar`/`ambientColor` fields; `getViewProjectionMatrix()`; 2D path untouched when `mode` is `'2d'` or unset. **Current equivalent**: `client/engine/renderer.py`'s `get_view_projection_matrix()`, same field names/behaviour.
+- [x] `frontend/js/engine/entityRenderer.js` — `drawEntity3D` (billboards) added; `render_template` resolution added ahead of mesh/2D routing; existing 2D/material paths unchanged for entities without `render_template`. **Current equivalent**: `client/engine/entity_renderer.py`'s `draw_entity_3d`/`_resolve_render_template`.
+- [x] `client/engine/entity_renderer.py` (Python, Step 9, done this session) — `draw_entity_mesh` generalised into `draw_entity_mesh_parts` + a shared `_draw_mesh_part` helper; a `parts`-less definition renders byte-identical to before (same cache keys, same uniform packing); attachment-chain cycle/forward-reference validation happens once at definition-load time (`_resolve_render_template`), not per frame
+- [x] `frontend/js/engine/mesh.js` — `Mesh` class; interleaved vertex + index buffer upload including optional per-vertex `color`. **Current equivalent**: `client/engine/mesh.py`, same responsibilities, extended this session with `sockets` parsing/`get_socket()` (Step 9).
+- [x] `frontend/js/engine/sprites/shaderCache.js` — `'mesh'` pipeline variant added, with `color` correctly threaded from vertex attribute through to a fragment varying, and independent `vertex_color`/`affine_uv`/`color_levels`/fog/ambient branches; existing variants (`base`, `overlay`, `ramp`, `hue`) untouched. **Current equivalent**: `client/engine/shader_cache.py`, same variants, extended this session with the `'orb'` variant (unrelated, Phase 7 UI work) — the mesh pipeline itself is unchanged since the port.
+- [x] `frontend/assets/data/mesh/` — exists today, holds the original example mesh JSON plus this session's `mesh-example-staff-shaft.json`/`-charm.json` (Step 9 sockets).
+- [x] `tools/convert_mesh.py` — parses `.gltf`/`.glb` (stdlib only, no new pip dependency) and emits the Step 5 mesh JSON format **plus Step 9 sockets** (glTF nodes with a `name` but no `mesh` reference, quaternion converted to `rotation_xyz`-convention Euler — added this session); refuses (doesn't silently mishandle) skins/morph targets/multiple primitives
+- [x] `tools/build_manifest.py` — `"meshes"` **and `"entities"`** categories scanned and included in the manifest and build summary
+- [x] `frontend/js/engine/assetLoader.js` — `"meshes"` **and `"entities"`** added to `loadManifest()`'s `categories`. **Current equivalent**: `client/engine/asset_loader.py`'s `MANIFEST_CATEGORIES`, same two entries present, extended this session with `"fonts"`/`"ui_skins"` (unrelated, Phase 7 UI work).
+- [x] `backend/engine/ecs/entity.py` — `render_template` **and** `transform3d` (`{rotation, scale}`, no `position` key) fields on `Entity`, following the `race`/`model_version` pattern originally. **Still true today, though `Entity` changed shape around them**: this session's Entity-minimisation work (unrelated to this task) removed `race`/`model_version` and most other ad hoc fields, but kept `render_template`/`transform3d` specifically because they're load-bearing for this task's mesh path — confirmed still present in `to_dict`/`from_dict`/`serialize`, both `None` by default.
+- [x] Two entities sharing one `render_template` render as independently positioned and rotated copies — reconfirmed this session via `run_client_test.py`'s `crate_a`/`crate_b` (Step 5) and the new multi-part `staff` entity (Step 9), not just historically in JS.
+- [x] Entity-definition `parts[]` array (Step 9) with `attachTo`/`localOffset`, `dangle` (Step 10), `animation_id` (Step 11), and `action_animations` (Step 12) all implemented as independently opt-in fields — all four exercised together on one fixture (`entity-example-staff.json`'s `charm` part) this session.
+- [x] `client/engine/dangle.py` (Python, Step 10, done) — `DangleState`/`update_dangle`; no physics-engine dependency; no backend involvement; no "physics"-named identifiers anywhere in the file; opening comment points to the "Physics & Simulation Boundary" section in `.github/copilot-instructions.md`; convergence-to-zero-at-rest confirmed numerically
+- [x] `client/engine/transform_clip.py` (Python, Step 11, done) — `sample_transform_clip`; hand-rolled linear interpolation, no new dependency; looping and non-looping (hold-last-frame) behaviour both confirmed
+- [x] `client/engine/entity_renderer.py` (Python, Step 12 tasks 5–6, done) — `update_entity_animation`'s `_has_animation_type` selects a one-shot clip purely by matching `entity.state` against loaded animation-data clip names, no hardcoded action list; `get_animation_controller` now reads a clip's `loop` field instead of the hardcoded `True` this fixed along the way; `draw_entity_mesh_parts`/`_sample_part_action_animation` gives a part's `action_animations` map one-shot priority over its regular `animation_id`, composing with `dangle`
+- [x] `backend/engine/example_game_loop.py` (Python, Step 12 tasks 1–4's *pattern*, done as generic example content — see below) — `ACTION_DURATIONS`, `trigger_action` (using `Entity.set_data`/`get_data`, not a bespoke field), `revert_expired_actions`, `ExampleGameLoop(GameLoop)`; verified by `run_gametick_test.py` (real 20 TPS pacing, correct auto-revert timing)
+- [ ] `backend/game/entities/player.py`, `backend/game/systems/actions.py`, `backend/game/tick.py` — **not done, and not this branch's job**: these files only exist on a game branch (`legacy`). A real game's own `ACTION_DURATIONS`/`state_started_at`/per-tick-revert wiring, following `example_game_loop.py`'s pattern, is that branch's work — either hand-written there, or (once it exists) authored through `level-editor.prompt.md` Step 15's Action Definitions panel for the data half. Left unchecked deliberately, not an oversight.
+- [x] `docs/graphics/DATA_STRUCTURES.md` — `mesh` sockets, entity `parts`, `render_template`, the Step 8 stylization fields (including `ambientColor`), and the Step 10/11/12 part-level fields (`dangle`, `animation_id`, `action_animations`) all documented, including the `action_animations` priority-over-`animation_id` resolution order
+- [x] `docs/graphics/ACTION_TRIGGERED_ANIMATIONS.md` (new this session, not originally scoped as a separate file) — full Step 12 pattern end to end: backend timing, both client draw paths, the data/trigger split, and how a real game adopts it; linked from `OVERVIEW.md`'s Further Reading and `level-editor.prompt.md` Step 15
+- [x] `docs/graphics/COORDINATE_MAPPING.md` — "2.5D / 3D (Future)" heading updated (now "2.5D / 3D", no longer "Future"), pointing at `ROADMAP.md` Phase 10 for exact status; detailed schema/pattern documentation lives in `DATA_STRUCTURES.md`/`ACTION_TRIGGERED_ANIMATIONS.md` instead of being duplicated here — see Step 13 above for the current, honest breakdown of what's done vs. still open in this file specifically
 - [ ] No entity lacking `render_template`, `mesh`, `transform3d`, or 3D `camera.mode` renders any differently than before this task
-- [ ] No mesh/material lacking the Step 8 flags renders any differently than it did at the end of Step 5 — stylization is strictly additive and opt-in
-- [ ] No part lacking `attachTo`/`dangle`/`animation_id`/`action_animations` renders or behaves any differently than a plain Step 5 single-mesh entity
-- [ ] No existing action (`move`, `attack`, `use_item`, `interact`) behaves differently to a client that ignores animation entirely — the backend state machine's game-logic effects (unchanged) are separate from its new animation-timing side effect (additive)
+- [ ] No mesh/material lacking the Step 8 flags renders any differently than it did at the end of Step 5 — stylization is strictly additive and opt-in. **Left unchecked for a specific, currently-fixable reason** (found by the 2026-08-20 full-repo audit, see Step 14 Pass B's note): all five flags are correctly implemented in `client/engine/shader_cache.py`'s mesh pipeline and documented in `DATA_STRUCTURES.md`, but `run_client_test.py` only ever isolates three of them (`vertex_color`/`affine_uv`/`color_levels`) — fog and `ambientColor` have never been set to non-default values anywhere on this branch's Python client, so this line can't be checked yet purely for lack of test coverage, not a known defect.
+- [x] No part lacking `attachTo`/`dangle`/`animation_id`/`action_animations` renders or behaves any differently than a plain Step 5 single-mesh entity — confirmed via `run_client_test.py`'s existing plain-crate entities alongside the new staff fixture, unaffected
+- [ ] No existing action on a real game behaves differently to a client that ignores animation entirely — unverifiable on this branch (no real game's actions exist here); the principle (game-logic effects unchanged, animation timing purely additive) is what `example_game_loop.py`/`ACTION_TRIGGERED_ANIMATIONS.md` demonstrate generically, but a real game must confirm it for its own action set when it adopts the pattern

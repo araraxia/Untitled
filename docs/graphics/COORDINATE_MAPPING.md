@@ -23,7 +23,9 @@ For a 2D top-down or side-scrolling game the MVP degenerates to a simple transla
 
 ---
 
-## 2.5D / 3D (Future)
+## 2.5D / 3D
+
+> Implemented — see [ROADMAP.md](../../ROADMAP.md) Phase 10 (steps 1–11 of 14 done). Kept as "Future" framing below only where it describes work still ahead (e.g. Area/Scene camera authoring, Phase 11); billboarding and the mesh draw path described here are live in `client/engine/`.
 
 The same parameter map textures can be applied to 3D mesh surfaces using standard UV mapping. In the vertex shader, `(u, v)` values are interpolated across triangles and passed to the fragment shader, which samples the textures at those coordinates — the combiner logic is identical to the 2D case.
 

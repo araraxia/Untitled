@@ -2,7 +2,9 @@
 
 Practical per-feature shader recipes. Each workflow builds on the previous.
 
-Shader pipelines are compiled and cached by `ShaderCache` (`frontend/js/engine/sprites/shaderCache.js`). Material bind groups — which set up textures and uniforms for a draw call — are created by `MaterialLoader` (`frontend/js/engine/sprites/materialLoader.js`).
+Shader pipelines are compiled and cached by `ShaderCache` (`client/engine/shader_cache.py`). Material bind groups — which set up textures and uniforms for a draw call — are created by `MaterialLoader` (`client/engine/material_loader.py`).
+
+> **Historical note:** this document was written for the earlier PyWebView/browser client, whose renderer was JavaScript — `frontend/js/engine/sprites/shaderCache.js`/`materialLoader.js`, `device.queue.writeBuffer(...)`, `class PostProcessState`, etc. That client was deleted entirely during the wgpu-py migration (see `ARCHITECTURE.md`'s Branch model note); the current native client (`client/engine/`, Python) ports the same responsibilities under the file names used above. The WGSL shader code throughout this document is unaffected — WGSL is the same regardless of which language drives the CPU side — but any JavaScript snippets below (buffer-writing helpers, `PostProcessState`, etc.) are illustrative of the *pattern* only and don't correspond to real files anymore; the equivalent CPU-side code today lives in `client/engine/renderer.py`/`entity_renderer.py`/`shader_cache.py`.
 
 ---
 

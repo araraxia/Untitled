@@ -57,6 +57,11 @@ class Mesh:
         self._index_format = "uint16"
         self._vertex_count = 0
         self._index_count = 0
+        # name -> {"position": [x,y,z], "rotation": [x,y,z]} (radians,
+        # rotation_xyz convention). Step 9 of 3d-coordinate-mapping
+        # .prompt.md -- named local-space attachment points, empty dict
+        # for meshes with no `sockets` key (the common case).
+        self._sockets: dict = {}
 
     @property
     def vertex_count(self) -> int:
@@ -79,6 +84,13 @@ class Mesh:
     def index_buffer(self):
         return self._index_buffer
 
+    def get_socket(self, name: str) -> "dict | None":
+        """Return the named socket's {"position", "rotation"} dict, or
+        None if this mesh has no socket by that name (or no sockets at
+        all). Used by entity_renderer.py's attachment-chain composition
+        (Step 9)."""
+        return self._sockets.get(name)
+
     def load(self, mesh_json_path: str) -> None:
         """Read the mesh JSON, pack vertices into an interleaved
         array.array('f', ...), and upload both vertex and index buffers
@@ -92,6 +104,14 @@ class Mesh:
         if not full_path.exists():
             raise FileNotFoundError(f"[mesh] Mesh JSON not found: {full_path}")
         data = json.loads(full_path.read_text(encoding="utf-8"))
+
+        self._sockets = {
+            s["name"]: {
+                "position": s.get("position", [0.0, 0.0, 0.0]),
+                "rotation": s.get("rotation", [0.0, 0.0, 0.0]),
+            }
+            for s in data.get("sockets", [])
+        }
 
         vertices = data.get("vertices", [])
         self._vertex_count = len(vertices)
@@ -181,3 +201,4 @@ class Mesh:
             self._index_buffer = None
         self._vertex_count = 0
         self._index_count = 0
+        self._sockets = {}

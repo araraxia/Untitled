@@ -452,6 +452,57 @@ fn fs_main(@location(0) uv : vec2<f32>) -> @location(0) vec4<f32> {
 }
 """
 
+# Fragment shader -- 'orb' variant: a Diablo/PoE-style liquid-filled
+# orb for client/engine/ui/panel3d.py-driven UI elements (a health/mana
+# orb) -- procedural, no new uniform fields needed. Reuses existing
+# MatUniforms slots exactly like FS_COSINE already reuses pal_a..d for
+# an unrelated purpose: intensity = fill level (0.0 empty - 1.0 full),
+# pal_a.rgb = liquid color, pal_b.rgb = liquid surface highlight color,
+# pal_c.rgb = rim/fresnel color, ramp_steps = rim falloff exponent
+# (repurposed -- nothing about it is ramp-specific, it's just an unused
+# float slot on this draw call), time = elapsed seconds for the liquid
+# surface's wobble animation. u_albedo is sampled as a "glass" tint
+# layer (a plain white texture is a valid no-op glass); u_param_map is
+# unused by this variant but still declared/bound, same as every other
+# variant sharing this fixed 4-binding layout.
+FS_ORB = """
+@fragment
+fn fs_main(@location(0) uv : vec2<f32>) -> @location(0) vec4<f32> {
+  let atlas_uv = u.uv_rect.xy + uv * (u.uv_rect.zw - u.uv_rect.xy);
+  let glass    = textureSample(u_albedo, u_sampler, atlas_uv);
+
+  // Circular mask: uv is assumed to span a square quad the orb circle
+  // is inscribed in (center 0.5,0.5, radius 0.5 in uv space). Pixels
+  // outside the circle are fully transparent so the orb reads as
+  // round regardless of the bound quad's actual geometry.
+  let centered = uv - vec2<f32>(0.5, 0.5);
+  let dist     = length(centered) * 2.0; // 0 at center, 1 at circle edge
+  if dist > 1.0 {
+    return vec4<f32>(0.0, 0.0, 0.0, 0.0);
+  }
+
+  // Liquid surface: a horizontal fill line at u.intensity, with a small
+  // sine wobble driven by u.time so it doesn't read as perfectly static.
+  let wobble    = sin(uv.x * 12.566 + u.time * 2.0) * 0.015;
+  let fill_line = 1.0 - u.intensity;
+  let is_liquid = uv.y > (fill_line + wobble);
+
+  var liquid_color = u.pal_a.rgb;
+  if is_liquid && (uv.y - (fill_line + wobble)) < 0.02 {
+    liquid_color = u.pal_b.rgb; // bright highlight right at the surface
+  }
+  let base_color = select(vec3<f32>(0.05, 0.05, 0.08), liquid_color, is_liquid);
+
+  // Fresnel-style rim glow, brighter toward the circle's edge.
+  let rim_power = max(u.ramp_steps, 1.0);
+  let rim       = pow(dist, rim_power);
+  let rim_color = u.pal_c.rgb * rim;
+
+  let final_rgb = base_color * glass.rgb + rim_color;
+  return vec4<f32>(final_rgb, 1.0) * u.tint;
+}
+"""
+
 # Variant key -> fragment shader source mapping.
 #
 # | Key       | Trigger                     | Description                        |
@@ -461,12 +512,14 @@ fn fs_main(@location(0) uv : vec2<f32>) -> @location(0) vec4<f32> {
 # | 'hue'     | hue_shift runtime override  | HSV hue rotation                   |
 # | 'ramp'    | color_ramp.type='texture'   | gradient map LUT (256x1 texture)   |
 # | 'cosine'  | color_ramp.type='cosine'    | procedural cosine palette          |
+# | 'orb'     | client/engine/ui/ callers   | liquid-filled orb w/ fresnel rim   |
 MATERIAL_FRAGMENT_SHADERS = {
     "base": FS_BASE,
     "overlay": FS_OVERLAY,
     "hue": FS_HUE,
     "ramp": FS_RAMP,
     "cosine": FS_COSINE,
+    "orb": FS_ORB,
 }
 
 

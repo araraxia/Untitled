@@ -45,9 +45,7 @@ Usage:
 """
 
 import math
-import socket
 import sys
-import threading
 import time
 from pathlib import Path
 
@@ -65,8 +63,6 @@ logger = Logger(
     log_level=20,  # INFO
 ).get_logger()
 
-from backend.app import app, socketio
-
 from imgui_bundle import imgui
 from wgpu.utils.imgui import ImguiRenderer
 
@@ -80,36 +76,6 @@ from client.engine.asset_loader import asset_loader
 import client.main as client_main
 
 DEFAULT_SCENE = "3d-scene"
-
-
-def is_server_ready(host="127.0.0.1", port=5000, timeout=10):
-    """Check if the server is ready to accept connections. Same as
-    run_desktop_test.py's version -- this test scene doesn't itself
-    need the backend (it's hand-built, no network state), but the
-    server is started anyway for parity with every other entry point
-    and in case a future test scene wants live data.
-    """
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(1)
-            result = sock.connect_ex((host, port))
-            sock.close()
-            if result == 0:
-                return True
-        except Exception:
-            pass
-        time.sleep(0.1)
-    return False
-
-
-def start_server():
-    """Start the Flask-SocketIO server in a separate thread."""
-    logger.info("Starting game server...")
-    socketio.run(
-        app, host="127.0.0.1", port=5000, debug=False, allow_unsafe_werkzeug=True
-    )
 
 
 def register_test_assets():
@@ -131,6 +97,24 @@ def register_test_assets():
     )
     asset_loader.register(
         "entity-example-crate-quantized", "assets/data/entity/entity-example-crate-quantized.json"
+    )
+    # Step 9 of 3d-coordinate-mapping.prompt.md -- multi-part mesh with
+    # a named-socket attachment chain (a "charm" hanging off a "shaft").
+    asset_loader.register(
+        "mesh-example-staff-shaft", "assets/data/mesh/mesh-example-staff-shaft.json"
+    )
+    asset_loader.register(
+        "mesh-example-staff-charm", "assets/data/mesh/mesh-example-staff-charm.json"
+    )
+    asset_loader.register("entity-example-staff", "assets/data/entity/entity-example-staff.json")
+    # Step 11: transform animation clip played by the staff's charm part.
+    asset_loader.register(
+        "anim-transform-charm-spin", "assets/data/animation/animation-transform-charm-spin.json"
+    )
+    # Step 12: one-shot action-animation clip, mesh path.
+    asset_loader.register(
+        "anim-transform-charm-activate-swing",
+        "assets/data/animation/animation-transform-charm-activate-swing.json",
     )
 
 
@@ -204,6 +188,14 @@ def build_test_scene():
             "crate_quantized": _make_mesh_entity(
                 540, 32, -50, [0, 0, 0], "entity-example-crate-quantized"
             ),
+            # Step 9: a two-part staff+charm assembly, socket-attached.
+            # Rotation is animated per-frame (see main()'s draw loop)
+            # rather than static like the crates above, specifically to
+            # verify the charm stays rigidly attached through the
+            # socket/localOffset chain as the *root* transform changes
+            # every frame -- a static snapshot wouldn't catch a chain
+            # that's subtly wrong only once position/rotation moves.
+            "staff": _make_mesh_entity(0, 0, -400, [0, 0, 0], "entity-example-staff"),
         },
         "player": None,
         "camera": {
@@ -281,17 +273,6 @@ def main():
     logger.info(f"Target: {scene}")
     logger.info("=" * 50)
 
-    server_thread = threading.Thread(target=start_server, daemon=True)
-    server_thread.start()
-
-    logger.info("Waiting for server to start...")
-    if not is_server_ready():
-        logger.error("ERROR: Server failed to start within timeout period!")
-        return
-
-    logger.info("Server is ready!")
-    time.sleep(0.5)
-
     register_test_assets()
 
     logger.info("Opening test window...")
@@ -316,7 +297,15 @@ def main():
             "positions/rotations -- proves placement is per-instance. 3 more crates "
             "(x = -360/360/540) each isolate one stylization hook: vertex_color "
             "(rainbow faces), affine_uv (warped texture on rotation), color_levels "
-            "(banded colour) -- each must be the only difference from a plain crate."
+            "(banded colour) -- each must be the only difference from a plain crate. "
+            "The staff at z = -400 is Step 9's two-part socket-attached "
+            "assembly (shaft + charm), spinning continuously -- the charm "
+            "must stay rigidly attached to the shaft's socket the whole time. "
+            "Every ~2s, billboard_mid and the staff briefly enter Step 12's "
+            "example 'activate' action state (~0.5s) -- billboard_mid plays "
+            "a one-shot sprite clip instead of standing, and the charm plays "
+            "a one-shot swing instead of its usual spin, both falling back "
+            "automatically once the state reverts."
         )
         imgui.separator()
         pos = [round(v, 1) for v in state["camera"]["position"]]
@@ -333,6 +322,26 @@ def main():
         last_time[0] = now
 
         orbit.apply(state["camera"])
+        # Step 9 verify: spin the staff's root transform continuously
+        # so a broken socket/attachment chain (charm drifting, snapping,
+        # or detaching) would be visible every frame, not just in one
+        # static pose.
+        state["entities"]["staff"]["transform3d"]["rotation"] = [0, now * 1.2, 0]
+
+        # Step 12 verify: toggle entity.state between 'idle' and
+        # 'activate' every ~2s (active for ~0.5s), on both a sprite
+        # entity (billboard_mid, tests update_entity_animation's
+        # data-driven one-shot selection) and the mesh entity (staff,
+        # tests the charm part's action_animations override + fallback
+        # back to its regular spin) -- exercises the exact same
+        # trigger/duration shape backend/engine/example_game_loop.py's
+        # ACTION_DURATIONS['activate'] uses, just driven locally here
+        # since this script has no backend/network state at all.
+        is_active = (now % 2.0) < 0.5
+        activate_state = "activate" if is_active else "idle"
+        state["entities"]["billboard_mid"]["state"] = activate_state
+        state["entities"]["staff"]["state"] = activate_state
+
         interpolation.update_interpolation(state["entities"], delta_ms / 1000.0)
         client_main.draw_game_scene(state, delta_ms)
         imgui_renderer.render()

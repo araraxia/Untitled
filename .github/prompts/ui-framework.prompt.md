@@ -1,6 +1,6 @@
 ---
 agent: agent
-description: Implement the data-driven UI framework that renders over the WebGPU canvas (Phase 7 of ROADMAP.md). Covers HUD renderer, UI component system, theme loading, inventory panel, and dialogue box.
+description: Custom-drawn, art-asset-skinned UI framework (Phase 7 of ROADMAP.md). The engine-layer primitives (client/engine/ui/) are built and verified; this file now tracks applying them to rebuild the actual game HUD/inventory/dialogue on a game branch.
 tools:
   - read_file
   - create_file
@@ -14,544 +14,138 @@ tools:
 
 # Task: UI Framework (Phase 7)
 
-You are implementing the UI framework for this project. This is Phase 7
-of `ROADMAP.md`. Phase 3 (ECS Overhaul) and Phase 5 (Asset Pipeline)
-are prerequisites and are complete.
-
-Complete all steps in order. Each step must leave the application in a
-runnable state before proceeding to the next.
-
----
-
-## Required Reading
-
-Read these files before writing any code:
-
-- `ROADMAP.md` — Phase 7 specification (sections 7.1–7.3)
-- `frontend/index.html` — page structure; note `#overlay-canvas` and
-  `#ui-overlay`; new UI scripts will be added here
-- `frontend/js/engine/renderer.js` — `overlayCanvas` and `ctx` variables;
-  the overlay Canvas 2D context is already initialised here; understand
-  how the render loop calls into the HUD before wiring `HUDRenderer`
-- `frontend/js/game/ui.js` — existing DOM-based UI helpers (`updateUI`,
-  `updatePartyPanel`, `showCommandMenu`); these will be migrated to the
-  new system incrementally — do not delete them until the new system
-  replaces their functionality
-- `frontend/js/game/main.js` — `GameContext` enum, `gameState`, `initUI()`
-  call, render loop wiring; all new UI modules must initialise through
-  `initUI()` and update through `gameState`
-- `frontend/js/engine/assetLoader.js` — `AssetLoader`; theme JSON will
-  be loaded through it using the manifest system
-- `frontend/assets/manifest.json` — current asset registry; new entries
-  for the theme JSON file will be added here
-- `frontend/css/style.css` — existing styles; do not replicate layout
-  logic in CSS that will be owned by the JS layout engine
-- `config/engine.json` — runtime config; `ui_theme_asset` key will be
-  added here
-
----
-
-## Constraints
-
-- Follow the Airbnb JavaScript style guide for all JS: 2-space indent,
-  single quotes, semicolons.
-- All new JS classes and public functions must have JSDoc comments.
-- No DOM manipulation inside the HUD render path. All HUD drawing must
-  go through the overlay Canvas 2D context (`overlayCanvas` / `ctx`
-  in `renderer.js`). DOM nodes are only permitted for `InventoryPanel`
-  and `DialogueBox` (which are modal overlays sitting in `#ui-overlay`).
-- The layout engine must be pure JS — no CSS flexbox, no HTML elements
-  for layout. Positions and sizes are computed in JS and drawn with
-  Canvas 2D primitives.
-- Theme data is loaded from a JSON asset via `AssetLoader`; hard-coded
-  colour or font values are not permitted in any new file.
-- `UIComponent` z-order must be respected: components with higher
-  `zOrder` values are drawn on top.
-- All SocketIO event handlers for UI data (`inventory_update`,
-  `dialogue_start`, `dialogue_end`) must be registered in
-  `frontend/js/engine/network.js` and dispatch to registered callbacks.
-  Do not add `socket.on(...)` calls directly inside UI files.
-- File naming: new JS files use camelCase (`hudRenderer.js`,
-  `uiComponent.js`, etc.).
-- Run `python -c "from backend.app import app; print('app ok')"` after
-  any Python changes to confirm no import errors.
-
----
-
-## Step 1 — Audit Current State
-
-Before writing any code, read the key files listed above and produce a
-short summary covering:
-
-1. How `overlayCanvas` is currently created and sized in `renderer.js`,
-   and whether there is already any drawing code targeting it.
-2. What `initUI()` in `ui.js` currently does (or does not do), and which
-   DOM elements it relies on.
-3. What game-state data flows into `updateUI()` today, and what fields
-   are used.
-4. What SocketIO events in `network.js` are currently registered, and
-   which (if any) carry inventory or dialogue payloads.
-5. What entries currently exist in `manifest.json`, and the schema used
-   for each entry.
-6. Which `GameContext` values in `main.js` already have handling logic
-   and which (`INVENTORY`, `DIALOGUE`) do not.
-
-Do not create or edit any files in this step. Output findings, then
-proceed.
-
----
-
-## Step 2 — Theme Asset (Phase 7.2 prerequisite)
-
-**Files to modify:** `config/engine.json`,
-`frontend/assets/manifest.json`  
-**New file:** `frontend/assets/data/ui_theme.json`
-
-### `frontend/assets/data/ui_theme.json`
-
-Create the default theme file. It must contain at minimum:
-
-```json
-{
-  "colors": {
-    "background": "#1a1a2e",
-    "surface": "#16213e",
-    "border": "#0f3460",
-    "accent": "#e94560",
-    "text": "#eaeaea",
-    "textMuted": "#888888",
-    "healthFull": "#4caf50",
-    "healthLow": "#f44336",
-    "apFull": "#2196f3",
-    "apLow": "#9c27b0"
-  },
-  "fonts": {
-    "body": "16px 'Press Start 2P', monospace",
-    "small": "12px 'Press Start 2P', monospace",
-    "large": "20px 'Press Start 2P', monospace",
-    "tooltip": "11px 'Press Start 2P', monospace"
-  },
-  "layout": {
-    "padding": 8,
-    "borderWidth": 2,
-    "cornerRadius": 4,
-    "hudMargin": 12
-  }
-}
-```
-
-### `config/engine.json`
-
-Add:
-
-```json
-"ui_theme_asset": "ui_theme"
-```
-
-### `frontend/assets/manifest.json`
-
-Register the theme as a data asset using the same schema as existing
-entries. The logical asset ID must be `"ui_theme"` and the path must
-point to `assets/data/ui_theme.json`.
-
----
-
-## Step 3 — HUD Renderer (Phase 7.1)
-
-**New file:** `frontend/js/engine/hudRenderer.js`  
-**Files to modify:** `frontend/index.html`, `frontend/js/engine/renderer.js`,
-`frontend/js/game/main.js`
-
-### `frontend/js/engine/hudRenderer.js`
-
-```js
-/**
- * HUDRenderer — draws all 2-D HUD elements onto the overlay canvas
- * once per render frame using Canvas 2D.
- *
- * Usage:
- *   const hud = new HUDRenderer(overlayCanvas, theme);
- *   // each frame:
- *   hud.update(gameState);
- *   hud.draw();
- */
-```
-
-The class must expose:
-
-```js
-class HUDRenderer {
-  /**
-   * @param {HTMLCanvasElement} canvas - The overlay canvas element.
-   * @param {object} theme - Parsed ui_theme.json object.
-   */
-  constructor(canvas, theme) { ... }
-
-  /**
-   * Sync HUD state from the current game state snapshot.
-   * Call once per frame before draw().
-   * @param {object} gameState
-   */
-  update(gameState) { ... }
-
-  /**
-   * Draw all HUD elements onto the overlay canvas.
-   * Clears the canvas first, then draws in z-order.
-   */
-  draw() { ... }
-}
-```
-
-Initial HUD elements to implement (drawn with Canvas 2D, no DOM):
-
-- **HP bar** — labelled `HP`, fills left→right using `healthFull` /
-  `healthLow` colour based on `hp / max_hp` ratio (low = below 0.3)
-- **AP bar** — labelled `AP`, same style using `apFull` / `apLow`
-- **Party indicators** — one small icon row per party member showing
-  name and HP ratio; click hit-testing is not required in this step
-
-Position all elements relative to `canvas.width` / `canvas.height` so
-the HUD reflows when the window resizes. Use the `hudMargin` and
-`padding` values from the theme `layout` block.
-
-### Wiring into the render loop
-
-In `renderer.js`, after the WebGPU (or Canvas 2D fallback) draw call,
-call `hudRenderer.draw()` if a module-level `hudRenderer` variable is
-set. Expose a `setHUDRenderer(instance)` function so `main.js` can
-inject it.
-
-### Wiring into `main.js`
-
-In `initUI()` (or a new `initHUD()` called from `initUI()`):
-
-1. Load the theme via `AssetLoader` using the asset ID from
-   `engine.json`'s `ui_theme_asset`.
-2. Instantiate `HUDRenderer` with the overlay canvas and loaded theme.
-3. Call `setHUDRenderer(hudInstance)`.
-
-Call `hudRenderer.update(gameState)` from the existing `gameState`
-update path (wherever `updateUI(gameState)` is currently called).
-
-### `frontend/index.html`
-
-Add the script tag for `hudRenderer.js` in the Engine section, before
-`renderer.js`.
-
-### Verify
-
-Open the application and confirm the HP bar and AP bar appear on the
-overlay canvas above the game world. No console errors.
-
----
-
-## Step 4 — UI Component System (Phase 7.2)
-
-**New file:** `frontend/js/engine/uiComponent.js`  
-**Files to modify:** `frontend/index.html`
-
-### `frontend/js/engine/uiComponent.js`
-
-Implement the following class hierarchy. All classes live in this single
-file.
-
-#### `UIComponent` (base)
-
-```js
-class UIComponent {
-  /**
-   * @param {object} opts
-   * @param {number} opts.x
-   * @param {number} opts.y
-   * @param {number} opts.width
-   * @param {number} opts.height
-   * @param {boolean} [opts.visible=true]
-   * @param {number}  [opts.zOrder=0]
-   */
-  constructor(opts) { ... }
-
-  /** Compute child layout. Override in containers. */
-  layout() {}
-
-  /**
-   * Draw this component onto ctx.
-   * @param {CanvasRenderingContext2D} ctx
-   * @param {object} theme
-   */
-  draw(ctx, theme) {}
-
-  /**
-   * Hit-test a point. Returns true if (px, py) is inside this component.
-   * @param {number} px
-   * @param {number} py
-   * @returns {boolean}
-   */
-  contains(px, py) { ... }
-}
-```
-
-#### Leaf components
-
-| Class         | Description                                                                                                                                                                                                                                                                                                    |
-| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Label`       | Draws a text string. Supports `text`, `font` (theme key), `color` (theme key), `align` (`'left'` / `'center'` / `'right'`).                                                                                                                                                                                    |
-| `ProgressBar` | Draws a filled bar. Supports `value` (0–1), `fillColor` (theme key), `bgColor` (theme key), `label` (optional overlay text).                                                                                                                                                                                   |
-| `Icon`        | Draws a sprite frame from a loaded `GPUSpriteSheet` (or a placeholder rect if the sheet is not available). Supports `assetId`, `frame`.                                                                                                                                                                        |
-| `Button`      | A `Panel` with a `Label` child. Fires an `onClick` callback. Supports `label`, `onClick`.                                                                                                                                                                                                                      |
-| `Panel`       | A rectangular container. Supports `children: UIComponent[]`, `direction` (`'row'` / `'column'`), `gap`, `padding`. Implements a simple flexbox-inspired layout in `layout()`: distributes children along `direction` with `gap` spacing, offsetting each child's `x`/`y` relative to the panel's own position. |
-
-#### `UIManager`
-
-```js
-class UIManager {
-  constructor() { ... }
-
-  /**
-   * Register a root-level component.
-   * @param {UIComponent} component
-   */
-  add(component) { ... }
-
-  /**
-   * Remove a root-level component.
-   * @param {UIComponent} component
-   */
-  remove(component) { ... }
-
-  /**
-   * Draw all registered components sorted by zOrder (ascending).
-   * @param {CanvasRenderingContext2D} ctx
-   * @param {object} theme
-   */
-  draw(ctx, theme) { ... }
-
-  /**
-   * Forward a pointer event to the topmost component whose hit-test passes.
-   * @param {'click'|'mousemove'} type
-   * @param {number} x
-   * @param {number} y
-   */
-  handlePointer(type, x, y) { ... }
-}
-```
-
-Expose a module-level singleton: `const uiManager = new UIManager();`
-
-### Integrate with `HUDRenderer`
-
-Refactor the HP bar, AP bar, and party indicators from Step 3 to use
-`ProgressBar`, `Label`, and `Panel` components registered on `uiManager`
-rather than raw Canvas 2D calls in `HUDRenderer.draw()`.
-
-`HUDRenderer.draw()` should now call `uiManager.draw(ctx, theme)`.
-
-`HUDRenderer.update()` should update the `value` and `text` properties
-on the existing component instances rather than recreating them each
-frame.
-
-### `frontend/index.html`
-
-Add the script tag for `uiComponent.js` before `hudRenderer.js`.
-
----
-
-## Step 5 — Inventory Panel (Phase 7.3)
-
-**New file:** `frontend/js/game/inventoryPanel.js`  
-**Files to modify:** `frontend/js/engine/network.js`,
-`frontend/js/game/main.js`, `frontend/index.html`
-
-### `frontend/js/game/inventoryPanel.js`
-
-The inventory panel is a DOM overlay (inside `#ui-overlay`) displayed
-when `gameState.context === GameContext.INVENTORY`.
-
-```js
-/**
- * InventoryPanel — DOM-based modal overlay for the player inventory.
- *
- * Data contract (received via SocketIO `inventory_update` event):
- * {
- *   items: Array<{
- *     id:       string,
- *     name:     string,
- *     icon:     string,   // asset ID
- *     quantity: number,
- *     slot:     number    // 0-based grid index
- *   }>
- * }
- */
-```
-
-Requirements:
-
-- Grid layout: 5 columns × N rows, each cell 64 × 64 px. Cell count is
-  fixed at 40 (5 × 8); empty cells render as styled empty slots.
-- Each occupied cell shows the item icon (an `<img>` whose `src` is
-  resolved via `AssetLoader`) and a quantity badge if `quantity > 1`.
-- Hovering a cell shows a tooltip (`<div class="ui-tooltip">`) with
-  `name` and any additional fields present in the payload.
-- Clicking a cell fires an `item_use` SocketIO event with `{ item_id }`.
-- Drag-and-drop between cells: on `dragend`, emit `item_move` with
-  `{ item_id, from_slot, to_slot }` to the server.
-- Opening / closing is controlled by `show()` / `hide()` methods.
-  `hide()` must set `gameState.context` back to `GameContext.IN_GAME`.
-
-### SocketIO events
-
-In `network.js`, register:
-
-```js
-socket.on("inventory_update", (data) => {
-  if (onInventoryUpdate) onInventoryUpdate(data);
-});
-```
-
-Expose `setInventoryUpdateCallback(fn)` so `inventoryPanel.js` can
-register its handler without touching `network.js` internals.
-
-### Wiring into `main.js`
-
-- Instantiate `InventoryPanel` in `initUI()` and assign to a module-level
-  `inventoryPanel` variable.
-- In the keyboard input handler (in `input.js` or `main.js`), toggle
-  `inventoryPanel.show()` / `inventoryPanel.hide()` on the `I` key when
-  `context` is `IN_GAME` or `INVENTORY`.
-- Set `gameState.context = GameContext.INVENTORY` when the panel opens.
-
-### `frontend/index.html`
-
-Add the script tag for `inventoryPanel.js` after `ui.js`.
-
----
-
-## Step 6 — Dialogue Box (Phase 7.3)
-
-**New file:** `frontend/js/game/dialogueBox.js`  
-**Files to modify:** `frontend/js/engine/network.js`,
-`frontend/js/game/main.js`, `frontend/index.html`
-
-### Dialogue script format
-
-Dialogue trees are delivered from the server as JSON. Define the schema
-as follows and document it in a comment at the top of `dialogueBox.js`:
-
-```json
-{
-  "id": "npc_merchant_01",
-  "nodes": {
-    "start": {
-      "speaker": "Merchant",
-      "text": "Welcome, traveller. What do you need?",
-      "choices": [
-        { "label": "Show me your wares.", "next": "shop" },
-        { "label": "Nevermind.", "next": null }
-      ]
-    },
-    "shop": {
-      "speaker": "Merchant",
-      "text": "Ah, take a look!",
-      "choices": []
-    }
-  }
-}
-```
-
-A `next` value of `null` closes the dialogue. A node with an empty
-`choices` array also closes the dialogue after the player dismisses it
-(press `Enter` or `Space`).
-
-### `frontend/js/game/dialogueBox.js`
-
-The dialogue box is a DOM overlay (inside `#ui-overlay`).
-
-Requirements:
-
-- Displays the current node's `speaker` name and `text`.
-- Renders each choice as a button; clicking or pressing the number key
-  (1–4) selects it.
-  - Selecting a choice emits a `dialogue_choice` SocketIO event with
-    `{ dialogue_id, choice_index }`, then advances to `next` locally.
-  - If `next` is `null`, call `hide()`.
-- Text advances with a typewriter effect (character-by-character reveal
-  at a configurable WPM; default 300 WPM). Pressing `Enter` or `Space`
-  skips to the full text instantly.
-- `show(scriptData)` opens the box at node `"start"`.
-- `hide()` removes the overlay and sets `gameState.context` back to
-  `GameContext.IN_GAME`.
-
-### SocketIO events
-
-In `network.js`, register:
-
-```js
-socket.on("dialogue_start", (data) => {
-  if (onDialogueStart) onDialogueStart(data);
-});
-socket.on("dialogue_end", () => {
-  if (onDialogueEnd) onDialogueEnd();
-});
-```
-
-Expose `setDialogueStartCallback(fn)` and `setDialogueEndCallback(fn)`.
-
-### Wiring into `main.js`
-
-Instantiate `DialogueBox` in `initUI()`. Register it as the
-`onDialogueStart` callback via `setDialogueStartCallback`. Set
-`gameState.context = GameContext.DIALOGUE` when dialogue opens.
-
-### `frontend/index.html`
-
-Add the script tag for `dialogueBox.js` after `inventoryPanel.js`.
-
----
-
-## Step 7 — Backend SocketIO Events
-
-**File to modify:** `backend/app.py`
-
-Add the following SocketIO event handlers. These are stubs that emit
-test payloads for frontend development; they will be replaced with real
-game data in a later phase.
-
-```python
-@socketio.on('item_use')
-def handle_item_use(data):
-    """Handle player using an item from inventory."""
-    ...
-
-@socketio.on('item_move')
-def handle_item_move(data):
-    """Handle player moving an item between inventory slots."""
-    ...
-
-@socketio.on('dialogue_choice')
-def handle_dialogue_choice(data):
-    """Handle player making a dialogue choice."""
-    ...
-```
-
-Also add a debug-only `send_test_inventory` event that emits a
-hard-coded `inventory_update` payload (5 test items across different
-slots) so the frontend inventory panel can be exercised without a full
-game session.
-
-Verify:
-
-```bash
-python -c "from backend.app import app; print('app ok')"
-```
-
----
-
-## Step 8 — ROADMAP Update
-
-**File to modify:** `ROADMAP.md`
-
-Mark Phase 7 as complete in the phase progress table and add the prompt
-file reference at the bottom of the Phase 7 section:
-
-```text
-**Prompt file:** `.github/prompts/ui-framework.prompt.md`
-```
+**Rewritten a second time.** The first rewrite this session (imgui-bundle
+default-widget-based) was superseded before any of it was built, once a
+much larger vision was scoped: fully custom-drawn, art-asset-skinned
+menus, keyboard/mouse/gamepad navigation, animated elements, 3D content
+and shader effects embedded inside UI panels, and reusable templates.
+That architecture is now built and verified on the `engine` branch, as
+`client/engine/ui/` — this file's remaining scope is applying it to a
+real game's UI on a game branch. If you're picking this up cold, read
+`client/engine/ui/`'s module docstrings (`draw.py` especially) and
+`run_ui_test.py` before anything else — they're the real, current spec;
+what follows here is the status and the remaining work.
+
+## What's built and verified (on `engine`, done)
+
+`client/engine/ui/` — imgui-bundle used only as the input/layout/frame-
+lifecycle engine (hit-testing, keyboard state, the `new_frame()`/
+`render()` bracket); every visible pixel is drawn through `ImDrawList`,
+never imgui's own widget chrome:
+
+- **`draw.py`** — `UIDrawContext` (rect/rect_border/circle/line/text/
+  image primitives, manual hover/click hit-testing) and the
+  wgpu-texture-to-imgui bridge (`_TextureRegistry`, wrapping the
+  confirmed `imgui_renderer.backend.register_texture(view) ->
+  ImTextureRef`). **The one hard rule the whole package follows**:
+  nothing here is safe to call outside the imgui frame bracket —
+  confirmed SIGSEGV in this codebase's wgpu/imgui-bundle pairing if
+  violated (see `client/game/ui.py`, legacy branch, for the original
+  `open_popup()` reproduction this generalizes from). Anything
+  triggered from an input callback must use a pending-request pattern,
+  never call into this package directly from a callback.
+- **`theme.py`** — JSON-driven `Theme` (colors, optional custom fonts via
+  `imgui.get_io().fonts.add_font_from_file_ttf`, optional skin images) —
+  see `frontend/assets/data/ui_theme.json` for the real (colors-only
+  today; no font/skin assets exist yet, `widgets.label` falls back to
+  imgui's default font rather than drawing nothing).
+- **`gamepad.py`** — per-frame GLFW gamepad polling (`glfw.get_gamepad_state`
+  et al., confirmed present, previously unused anywhere in this
+  codebase). Edge-triggered `buttons_pressed`, per-joystick-id state.
+  **Not verified against physical hardware this session** — verify
+  before shipping a controller-dependent feature.
+- **`nav.py`** — `FocusManager`: keyboard + gamepad → one abstract
+  `NavAction` set (UP/DOWN/LEFT/RIGHT/CONFIRM/BACK). Mouse hover claims
+  focus automatically so mouse and nav never disagree. v1 is a flat
+  focus order (UP/LEFT and DOWN/RIGHT both step through one list) — real
+  2D-grid navigation (e.g. an inventory grid) is a documented future
+  extension, not yet needed by anything built.
+- **`widgets.py`** — `panel`, `label`, `button`, `image_button`,
+  `progress_bar`, `animated_icon` — composable functions, not a class
+  hierarchy, each drawing itself and reporting hover/click/confirm state
+  back to the caller (no retained widget tree, matching this codebase's
+  existing immediate-mode conventions).
+- **`panel3d.py`** — `Panel3D`: the render-to-texture bridge for
+  embedding 3D content or a shader effect inside a UI rect. Owns an
+  offscreen `GPUTexture` (+ depth), defaults its format to
+  `renderer.canvas_format` (**a real bug was found and fixed** during
+  verification: defaulting to a hardcoded `rgba8unorm` produced a GPU
+  validation error, since every existing render pipeline in this
+  codebase — `ShaderCache`'s sprite/material/mesh pipelines — is
+  compiled against `renderer.canvas_format`, not a fixed format).
+- **`templates.py`** — `window`, `confirm_dialog`, `chat_box` — game-
+  agnostic patterns; copy text/callbacks/theme are always caller-supplied.
+- **`shader_cache.py`'s new `'orb'` variant** — a liquid-fill,
+  fresnel-rimmed orb effect (Diablo/PoE-style health/mana orb), added to
+  the existing `MATERIAL_FRAGMENT_SHADERS` dict with no new bind-group-
+  layout/uniform-field plumbing — fill level, liquid/highlight/rim
+  colors, and rim falloff all reuse existing unused `MatUniforms` slots
+  (`intensity`, `pal_a..d`, `ramp_steps`), the same reuse pattern
+  `FS_COSINE` already established for a different purpose.
+- **`GPUSpriteSheet.albedo_texture_view`** (small addition to
+  `client/engine/gpu_sprite_sheet.py`) — a *stable*, cached
+  `GPUTextureView` (not recreated per call), needed so `widgets.animated_icon`
+  can display sprite frames through `draw.py`'s texture-registration
+  cache without leaking a "new" texture registration every frame.
+- **`run_ui_test.py`** — standalone smoke test (no backend, no game
+  content, mirrors `run_client_test.py`'s hand-built-scene approach).
+  Exercises every primitive above in one screen: a themed window, two
+  nav-navigable buttons, an animating progress bar, a real 4-frame
+  animated icon (`frontend/assets/images/ui/test_cursor_strip.png`, a
+  fixture created for this test), an embedded `Panel3D` showing a
+  rotating mesh (reusing `run_client_test.py`'s crate fixtures), and a
+  `confirm_dialog`. **Verified**: runs 20+ seconds with zero draw errors
+  and zero exceptions after the format-default fix above.
+
+## Branch placement
+
+Per this session's engine/game branch split: everything above is
+reusable across any game built on this engine and ships on `engine`. The
+*game-specific* application — rebuilding `client/game/ui.py`'s actual
+HUD, plus the inventory panel and dialogue box originally scoped for
+this phase, using `client/engine/ui/` instead of plain imgui widgets or
+hand-rolled DOM — belongs on a game branch (`legacy` today). That's the
+remaining work below.
+
+## Remaining work (game-branch application)
+
+Read `client/game/ui.py` (legacy branch) in full first — it already has
+a working HUD (HP/AP text, party panel, command-menu popup) built during
+the Phase 13 migration; this is a redesign of its visuals through
+`client/engine/ui/`, not a rewrite of its game logic (party selection,
+command dispatch, the `_pending_command_menu` pattern all stay).
+
+1. **HUD**: replace the plain `imgui.text()` HP/AP lines with
+   `widgets.progress_bar`, themed via a real project theme (extend
+   `ui_theme.json` with this game's actual palette/fonts/skin art —
+   the engine-side `ui_theme.json` is a placeholder with no custom
+   fonts/skins, not meant to ship as-is).
+2. **Inventory panel** (new `client/game/inventory_panel.py`): a
+   `templates.window` sized to a grid, `widgets.image_button` per slot
+   (drag-and-drop via imgui's own `begin_drag_drop_source`/
+   `set_drag_drop_payload_py_id`/`accept_drag_drop_payload_py_id` —
+   confirmed present, not yet wired to anything in `client/engine/ui/`
+   since drag-and-drop is inherently game-content-shaped, not generic).
+   Data contract (`inventory_update` SocketIO event) and backend stub
+   handlers (`item_use`/`item_move` on `backend/app.py`, game-branch
+   only) are unchanged from this phase's original scope.
+3. **Dialogue box** (new `client/game/dialogue_box.py`): `templates.window`
+   + `widgets.button` per choice + a typewriter reveal (elapsed-time
+   character count, not `time.sleep`). Dialogue JSON schema and
+   `dialogue_start`/`dialogue_end`/`dialogue_choice` events unchanged
+   from this phase's original scope.
+4. **Wire into `client/main.py`**: `client.engine.ui.draw.init(imgui_renderer)`
+   once at startup (right after `ImguiRenderer` construction, same
+   place `run_ui_test.py` does it); load the game's real theme once via
+   `client.engine.ui.theme.load_theme`; call the new HUD/inventory/
+   dialogue draw functions from the same per-frame callback
+   `render_hud()`/`render_party_command_menu()` already run from.
+5. **The orb, if this game wants one**: instantiate a `Panel3D`, draw a
+   full-quad using `shader_cache.get_material_pipeline('orb', ...)` (or
+   `get_mesh_pipeline` if drawn as a 3D quad) inside its `render()`
+   closure, display via `draw.UIDrawContext.image()`. Not started —
+   the shader variant exists and is registered, nothing calls it yet.
+6. **ROADMAP.md**: mark Phase 7 complete once the game-branch work above
+   lands, noting (as this file's own status section does) that the
+   engine-layer half shipped on `engine` and the game-layer half on
+   whichever game branch did the work.

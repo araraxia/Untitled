@@ -4,11 +4,19 @@ Build-time-only authoring bridge (Step 6 of
 .github/prompts/3d-coordinate-mapping.prompt.md): takes a single-mesh,
 single-primitive glTF export from Blender (or any glTF-exporting tool)
 and emits the small project-specific mesh JSON format consumed by
-``frontend/js/engine/mesh.js``. This is deliberately narrow — geometry
+``client/engine/mesh.py``. This is deliberately narrow — geometry
 attributes only, one mesh, one primitive — not a general-purpose glTF
 importer. It refuses (raises, never silently drops data) anything outside
 that scope: multiple meshes/primitives, non-triangle topology, skins,
 morph targets, and sparse accessors.
+
+Step 9 of the same prompt file extends this converter with **socket**
+extraction: glTF ``nodes`` that have a ``name`` but no ``mesh`` reference
+(a Blender "Empty" placed at an attachment point) become named local-space
+anchor points in the output JSON's ``sockets`` array. This is metadata
+(a name + a transform) read straight off the node, not geometry/material/
+skin data, so it doesn't broaden the converter's scope — skins/morph
+targets/extra primitives are still refused exactly as before.
 
 Uses only the Python standard library (``json``, ``struct``) — no new
 ``pip`` dependency, matching ``tools/pack_param_map.py`` and
@@ -30,6 +38,7 @@ Authoring workflow:
 import argparse
 import base64
 import json
+import math
 import struct
 import sys
 from pathlib import Path
@@ -198,6 +207,61 @@ def read_accessor(
     return values
 
 
+def quaternion_to_euler_xyz(x: float, y: float, z: float, w: float) -> list[float]:
+    """Convert a glTF node's rotation quaternion to Euler radians matching
+    ``client/engine/mat4.py``'s ``rotation_xyz`` convention exactly
+    (composition order Rx * Ry * Rz applied to a column vector) — every
+    consumer of a mesh's ``sockets`` rotation (Step 9's attachment-chain
+    composition) assumes that same convention, so a mismatch here would
+    silently misalign every socket.
+
+    Standard quaternion -> rotation-matrix -> XYZ-Euler extraction; the
+    matrix element names below (m00..m22) match ``rotation_xyz``'s own
+    internal derivation for direct comparison.
+    """
+    m00 = 1 - 2 * (y * y + z * z)
+    m01 = 2 * (x * y - w * z)
+    m02 = 2 * (x * z + w * y)
+    m11 = 1 - 2 * (x * x + z * z)
+    m12 = 2 * (y * z - w * x)
+    m21 = 2 * (y * z + w * x)
+    m22 = 1 - 2 * (x * x + y * y)
+
+    ry = math.asin(max(-1.0, min(1.0, -m02)))
+    if abs(math.cos(ry)) > 1e-6:
+        rx = math.atan2(m12, m22)
+        rz = math.atan2(m01, m00)
+    else:
+        # Gimbal lock (ry at +/-90deg) -- rx/rz aren't independently
+        # recoverable; fold everything into rx, matching the standard
+        # convention for this degenerate case.
+        rx = math.atan2(-m21, m11)
+        rz = 0.0
+
+    return [rx, ry, rz]
+
+
+def extract_sockets(gltf: dict[str, Any]) -> list[dict[str, Any]]:
+    """Scan glTF ``nodes`` for named, mesh-less nodes (Blender "Empty"
+    objects placed at attachment points) and emit each as a socket.
+
+    Returns an empty list if there are no such nodes -- callers omit
+    the ``sockets`` key entirely in that case (see convert()), matching
+    Step 9's "omit entirely for meshes with no attachment points, no
+    change to existing behaviour" rule.
+    """
+    sockets = []
+    for node in gltf.get("nodes", []):
+        name = node.get("name")
+        if not name or "mesh" in node:
+            continue
+        position = list(node.get("translation", [0.0, 0.0, 0.0]))
+        qx, qy, qz, qw = node.get("rotation", [0.0, 0.0, 0.0, 1.0])
+        rotation = quaternion_to_euler_xyz(qx, qy, qz, qw)
+        sockets.append({"name": name, "position": position, "rotation": rotation})
+    return sockets
+
+
 def convert(input_path: str, output_path: str) -> None:
     """Convert one glTF/GLB file to the project's mesh JSON format."""
     in_path = Path(input_path)
@@ -297,14 +361,19 @@ def convert(input_path: str, output_path: str) -> None:
         "indices": indices,
     }
 
+    sockets = extract_sockets(gltf)
+    if sockets:
+        mesh_json["sockets"] = sockets
+
     out_path = Path(output_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(
         json.dumps(mesh_json, indent=2) + "\n", encoding="utf-8"
     )
+    socket_note = f", {len(sockets)} sockets" if sockets else ""
     print(
         f"[convert_mesh] Wrote {out_path} "
-        f"({vertex_count} vertices, {len(indices)} indices)"
+        f"({vertex_count} vertices, {len(indices)} indices{socket_note})"
     )
 
 

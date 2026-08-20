@@ -90,6 +90,7 @@ class GPUSpriteSheet:
         self._rows = rows
 
         self._texture = None
+        self._albedo_view = None
         self._param_texture = None
         self._sampler = None
         self._loaded = False
@@ -105,6 +106,7 @@ class GPUSpriteSheet:
         create_bind_group.
         """
         self._texture = self._load_texture(self._image_path)
+        self._albedo_view = self._texture.create_view()
 
         self._sampler = self._device.create_sampler(
             min_filter="linear", mag_filter="nearest"
@@ -144,6 +146,16 @@ class GPUSpriteSheet:
             (width, height, 1),
         )
         return texture
+
+    @property
+    def albedo_texture_view(self):
+        """A stable GPUTextureView of the atlas texture -- the *same*
+        object every call, not recreated, so consumers that key on view
+        identity (client/engine/ui/draw.py's texture-registration cache)
+        don't re-register a "new" texture every frame. None until
+        load() has run.
+        """
+        return self._albedo_view
 
     @property
     def param_texture(self):
@@ -205,6 +217,7 @@ class GPUSpriteSheet:
         if self._texture:
             self._texture.destroy()
             self._texture = None
+            self._albedo_view = None
         if self._param_texture:
             self._param_texture.destroy()
             self._param_texture = None

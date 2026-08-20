@@ -12,7 +12,7 @@ _TOOLS_DIR = str(Path(__file__).resolve().parent.parent.parent / "tools")
 if _TOOLS_DIR not in sys.path:
     sys.path.insert(0, _TOOLS_DIR)
 
-_SHADER_EXTENSIONS = {".wgsl", ".js"}
+_SHADER_EXTENSIONS = {".wgsl"}
 _PENDING_SUFFIX_PARTS = ("assets", "pending")
 
 
@@ -127,7 +127,7 @@ class HotReloadWatcher:
         socketio: The Flask-SocketIO instance.
         assets_dir: Path to ``frontend/assets/``.
         shaders_dir: Optional path to a directory of standalone shader
-            source files to watch for ``.wgsl``/``.js`` changes. The
+            source files to watch for ``.wgsl`` changes. The
             current desktop client (``client/engine/shader_cache.py``)
             has no such directory -- its WGSL lives as Python string
             literals, not files on disk -- so this is only meaningful

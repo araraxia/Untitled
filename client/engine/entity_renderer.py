@@ -36,11 +36,38 @@ import array
 import json
 import time
 
-from client.engine import gpu_buffers, mat4, material_loader, particle_system, renderer, shader_cache
+from client.engine import (
+    dangle,
+    gpu_buffers,
+    mat4,
+    material_loader,
+    particle_system,
+    renderer,
+    shader_cache,
+    transform_clip,
+)
 from client.engine.animation import Animation, AnimationController
 from client.engine.asset_loader import FRONTEND_DIR, asset_loader
 from client.engine.gpu_sprite_sheet import GPUSpriteSheet
 from client.engine.mesh import Mesh
+
+
+def _validate_parts_order(parts: list) -> bool:
+    """Check that every part's attachTo.part (if any) references a
+    part that appears *earlier* in the same parts[] array -- catches
+    forward references and cycles in one pass (a cycle necessarily
+    means referencing a part id not yet seen, same as a forward
+    reference). Step 9 of 3d-coordinate-mapping.prompt.md: validated
+    once at definition-load time (_resolve_render_template), never
+    re-checked per draw call.
+    """
+    seen_ids = set()
+    for part in parts:
+        attach_to = part.get("attachTo")
+        if attach_to and attach_to.get("part") not in seen_ids:
+            return False
+        seen_ids.add(part.get("id"))
+    return True
 
 
 class EntityRenderer:
@@ -82,6 +109,29 @@ class EntityRenderer:
         self._render_templates: dict[str, "dict | None"] = {}
         # mesh asset key -> Mesh instance, or None while loading/failed.
         self._meshes: dict[str, "Mesh | None"] = {}
+
+        # --- Dangle (Step 10) ---
+        # (entity_id, part_id) -> DangleState, alongside where material
+        # handles are already cached (see draw_entity_mesh_parts).
+        self._dangle_states: dict = {}
+        # (entity_id, part_id) -> [x, y, z], this part's attachment
+        # point's world position last frame -- needed to compute
+        # parent_delta_position for update_dangle.
+        self._dangle_last_base_pos: dict = {}
+
+        # --- Transform animation clips (Step 11) ---
+        # clip id -> parsed clip JSON, or None while loading/failed --
+        # same in-flight-marker-then-cache pattern as _render_templates.
+        self._transform_clips: dict = {}
+        # (entity_id, part_id) -> elapsed ms since this part's clip
+        # started playing.
+        self._anim_clip_clocks: dict = {}
+        # (entity_id, part_id) -> (entity_state, elapsed_ms) for a
+        # part's one-shot action_animations clip (Step 12) -- separate
+        # from _anim_clip_clocks since a one-shot's clock restarts
+        # whenever entity.state newly enters the triggering value,
+        # unlike a looping animation_id's continuously-advancing clock.
+        self._action_clip_state: dict = {}
 
         # --- Material system ---
         self._material_loader = material_loader.MaterialLoader(renderer.device, asset_loader)
@@ -207,12 +257,34 @@ class EntityRenderer:
                     dir_config["start_frame_index"],
                     anim_config["frame_count"],
                     frame_duration,
-                    True,  # loop
+                    # Step 12: read from the clip's own `loop` field
+                    # (default True, matching every clip authored
+                    # before this) instead of a hardcoded True -- a
+                    # one-shot action animation sets `"loop": false`
+                    # and holds its last frame once finished, per
+                    # AnimationController.update()'s own non-loop
+                    # branch. This was previously hardcoded, contrary
+                    # to 3d-coordinate-mapping.prompt.md Step 12's
+                    # claim that `loop` was "already supported" here.
+                    anim_config.get("loop", True),
                 )
 
             self.animation_controllers[controller_id] = AnimationController(animations)
 
         return self.animation_controllers[controller_id]
+
+    def _has_animation_type(self, animation_type: "str | None") -> bool:
+        """True if any loaded animation-data source defines a clip
+        named animation_type. Used by update_entity_animation to
+        select a one-shot action animation (Step 12) purely by data --
+        no hardcoded action-name list anywhere in this engine-layer
+        file; a game's own animation data JSON is what defines which
+        entity.state values play a distinct clip. See
+        docs/graphics/ACTION_TRIGGERED_ANIMATIONS.md.
+        """
+        if not animation_type:
+            return False
+        return any(animation_type in entry["data"] for entry in self.animation_data_list)
 
     def update_entity_animation(self, entity_id: str, entity: dict, delta_time: float) -> None:
         """Update entity animation state based on entity data.
@@ -222,7 +294,17 @@ class EntityRenderer:
                 unit exactly).
         """
         self._last_delta_time = delta_time
-        animation_type = "walk" if entity.get("state") == "moving" else "stand"
+        state = entity.get("state")
+        # Step 12: if entity.state names a clip that actually exists in
+        # the loaded animation data (e.g. an action like "activate"),
+        # play it directly -- this is the one-shot action-animation
+        # mechanism, selected purely by data, not a hardcoded action
+        # list. Anything else (including the ordinary "idle"/"moving"
+        # states, which never match a clip by that exact name) falls
+        # back to the existing binary walk/stand pair.
+        animation_type = state if self._has_animation_type(state) else (
+            "walk" if state == "moving" else "stand"
+        )
         direction = entity.get("facing", "down")
 
         controller = self.get_animation_controller(entity_id, animation_type)
@@ -257,8 +339,8 @@ class EntityRenderer:
             # render_template, still loading, or a definition with no
             # mesh) falls through to the billboard path unchanged.
             definition = self._resolve_render_template(entity)
-            if definition and definition.get("mesh"):
-                self.draw_entity_mesh(entity, camera, pass_encoder, definition)
+            if definition and (definition.get("mesh") or definition.get("parts")):
+                self.draw_entity_mesh_parts(entity, camera, pass_encoder, definition)
                 return
 
             if "_anim_controller" not in entity:
@@ -553,6 +635,18 @@ class EntityRenderer:
         full_path = FRONTEND_DIR / path
         try:
             data = json.loads(full_path.read_text(encoding="utf-8"))
+            parts = data.get("parts")
+            if parts and not _validate_parts_order(parts):
+                print(
+                    f"[entity_renderer] render_template '{key}' has an "
+                    "invalid parts[] order -- every attachTo.part must "
+                    "reference a part earlier in the array (no forward "
+                    "references or cycles). Definition rejected."
+                )
+                # Leave cached as None -- same permanent-failure
+                # handling as a JSON parse error below, not a per-frame
+                # retry.
+                return self._render_templates.get(key)
             self._render_templates[key] = data
         except Exception as err:  # noqa: BLE001
             print(f"[entity_renderer] Failed to load entity definition '{key}' ({path}): {err}")
@@ -562,14 +656,24 @@ class EntityRenderer:
 
         return self._render_templates.get(key)
 
-    def draw_entity_mesh(self, entity: dict, camera: dict, pass_encoder, definition: dict) -> None:
-        """Draw a static textured 3D mesh. Position comes from the
-        entity's own x/y/z (per-instance); rotation/scale come from
-        entity['transform3d']. Neither ever comes from `definition` --
-        the entity-definition file supplies only appearance (mesh/
-        material_id), never placement, so multiple entities can share
-        one render_template and still be independently positioned and
-        rotated.
+    def draw_entity_mesh_parts(self, entity: dict, camera: dict, pass_encoder, definition: dict) -> None:
+        """Draw a static textured 3D mesh, or -- when `definition` has
+        a `parts` array -- multiple meshes composed through a named-
+        socket attachment chain (Step 9 of
+        3d-coordinate-mapping.prompt.md). Generalises the single-mesh
+        path this method replaces (formerly `draw_entity_mesh`); a
+        `parts`-less definition is treated as one implicit root part
+        with no `attachTo`/`localOffset`, rendering byte-identical to
+        before this generalisation (same material-handle cache key,
+        same mesh key, same uniform packing).
+
+        Position comes from the entity's own x/y/z (per-instance);
+        rotation/scale come from entity['transform3d'] -- both apply
+        to the chain's *root* only. Neither ever comes from
+        `definition` or a part's own fields (other than `localOffset`,
+        which is definition-level and fixed relative to the part's
+        parent) -- see docs/graphics/DATA_STRUCTURES.md's `localOffset`
+        vs. `transform3d` distinction.
 
         Reuses the entity's existing material bind group exactly like
         the 2D material path -- a mesh just needs UVs that land
@@ -579,45 +683,20 @@ class EntityRenderer:
         if pass_encoder is None:
             return
 
-        mesh_key = definition["mesh"]
-
-        if mesh_key not in self._meshes:
-            self._meshes[mesh_key] = None  # in-flight marker
-            try:
-                mesh_path = asset_loader.resolve(mesh_key)
-            except ValueError as err:
-                print(f"[entity_renderer] Cannot resolve mesh '{mesh_key}': {err}")
-                return
-            try:
-                m = Mesh(renderer.device)
-                m.load(mesh_path)
-                self._meshes[mesh_key] = m
-            except Exception as err:  # noqa: BLE001
-                print(f"[entity_renderer] Failed to load mesh '{mesh_key}' ({mesh_path}): {err}")
-            return  # nothing to draw yet this frame (or ever, if load failed)
-
-        loaded_mesh = self._meshes.get(mesh_key)
-        if loaded_mesh is None:
-            return  # still loading (or failed)
-
-        # Material -- same lazy-load-and-cache pattern as the 2D
-        # material path, keyed by entity id so this entity's handle is
-        # reused across frames. Sourced from the *definition's*
-        # material_id, not entity['material'] (that field belongs to
-        # the legacy 2D-only path).
-        mat_entity_id = entity.get("id") or entity.get("entity_id")
-        if definition.get("material_id") and mat_entity_id not in self._material_handles:
-            mat_path = "assets/data/" + definition["material_id"]
-            try:
-                handle = self._material_loader.load(mat_path)
-                self._material_handles[mat_entity_id] = handle
-            except Exception as err:  # noqa: BLE001
-                print(f"[entity_renderer] Mesh material load failed: {err}")
-                self._material_handles[mat_entity_id] = None
-
-        handle = self._material_handles.get(mat_entity_id)
-        if not handle:
-            return  # no material loaded yet -- required for the mesh path
+        parts = definition.get("parts")
+        if not parts:
+            # No parts array: one implicit root part. Building this in
+            # the exact same shape a `parts` entry takes means the
+            # material-handle cache key and mesh key below are
+            # unchanged from before this generalisation for every
+            # existing single-mesh entity.
+            parts = [
+                {
+                    "id": None,
+                    "mesh": definition.get("mesh"),
+                    "material_id": definition.get("material_id"),
+                }
+            ]
 
         c_w, c_h = self._canvas.get_physical_size()
         aspect = c_w / c_h
@@ -629,9 +708,279 @@ class EntityRenderer:
         rotation = transform_3d.get("rotation", [0, 0, 0])
         scale = transform_3d.get("scale", [1, 1, 1])
         position = [entity.get("x", 0), entity.get("y", 0), entity.get("z", 0)]
+        root_transform = mat4.compose(position, rotation, scale)
 
-        model = mat4.compose(position, rotation, scale)
-        mvp = mat4.multiply(view_projection, model)
+        entity_id = entity.get("id") or entity.get("entity_id")
+        parts_by_id = {p.get("id"): p for p in parts}
+        # part id -> resolved world Mat4, this frame only -- attachTo
+        # may only reference an *earlier* part (validated once at
+        # definition-load time, _resolve_render_template), so a single
+        # forward pass through `parts` always resolves parents before
+        # their children need them.
+        part_world: dict = {}
+
+        for part in parts:
+            part_id = part.get("id")
+            mesh_key = part.get("mesh")
+            if not mesh_key:
+                continue
+
+            attach_to = part.get("attachTo")
+            if attach_to:
+                parent_id = attach_to.get("part")
+                parent_world = part_world.get(parent_id)
+                parent_part = parts_by_id.get(parent_id)
+                if parent_world is None or parent_part is None:
+                    continue  # parent hasn't resolved this frame (still loading/failed) -- skip, never guess
+                parent_mesh = self._meshes.get(parent_part.get("mesh"))
+                socket = parent_mesh.get_socket(attach_to.get("socket")) if parent_mesh else None
+                if socket is None:
+                    print(
+                        f"[entity_renderer] Part '{part_id}' attachTo "
+                        f"references unknown socket "
+                        f"'{attach_to.get('socket')}' on part "
+                        f"'{parent_id}' -- skipping."
+                    )
+                    continue
+                socket_transform = mat4.compose(
+                    socket["position"], socket["rotation"], [1.0, 1.0, 1.0]
+                )
+                base_transform = mat4.multiply(parent_world, socket_transform)
+            else:
+                base_transform = root_transform
+
+            local_offset = part.get("localOffset") or {}
+            local_position = list(local_offset.get("position", [0.0, 0.0, 0.0]))
+            local_rotation = list(local_offset.get("rotation", [0.0, 0.0, 0.0]))
+            local_scale = list(local_offset.get("scale", [1.0, 1.0, 1.0]))
+
+            # Step 12: an action clip (part.action_animations) takes
+            # priority over the part's regular looping animation_id
+            # whenever entity.state currently matches one of its keys
+            # -- falls back to animation_id (or rest, if neither is
+            # set/matching) the moment entity.state reverts, exactly
+            # like the sprite path's animation_type selection above.
+            sampled = None
+            action_animations = part.get("action_animations")
+            if action_animations:
+                sampled = self._sample_part_action_animation(
+                    entity_id, part_id, entity.get("state"), action_animations
+                )
+            if sampled is None:
+                animation_id = part.get("animation_id")
+                if animation_id:
+                    sampled = self._sample_part_animation(entity_id, part_id, animation_id)
+
+            if sampled:
+                if "position" in sampled:
+                    local_position = sampled["position"]
+                if "rotation" in sampled:
+                    local_rotation = sampled["rotation"]
+                if "scale" in sampled:
+                    local_scale = sampled["scale"]
+
+            dangle_config = part.get("dangle")
+            if dangle_config:
+                local_position = self._apply_dangle(
+                    entity_id, part_id, dangle_config, base_transform, local_position
+                )
+
+            offset_transform = mat4.compose(local_position, local_rotation, local_scale)
+            world = mat4.multiply(base_transform, offset_transform)
+            # Record the resolved transform as soon as it's computable
+            # (needs only the parent chain, not this part's own mesh/
+            # material state) so a child can still attach to this
+            # part's socket even on a frame where this part's own mesh
+            # is loaded but its material isn't yet, or vice versa.
+            part_world[part_id] = world
+
+            self._draw_mesh_part(
+                entity_id, part_id, mesh_key, part.get("material_id"),
+                world, view_projection, camera, pass_encoder,
+            )
+
+    def _apply_dangle(
+        self,
+        entity_id,
+        part_id,
+        dangle_config: dict,
+        base_transform,
+        local_position: list,
+    ) -> list:
+        """Update this part's cached DangleState (Step 10) from its
+        attachment point's frame-to-frame world-position delta, and
+        return local_position with the resulting cosmetic offset added
+        -- the caller composes this into offset_transform in place of
+        the part's raw localOffset.position. Purely visual; see
+        client/engine/dangle.py's module docstring -- never touches
+        any authoritative/networked value.
+        """
+        key = (entity_id, part_id)
+        state = self._dangle_states.get(key)
+        if state is None:
+            state = dangle.DangleState()
+            self._dangle_states[key] = state
+
+        # Translation lives in the last column of a column-major Mat4
+        # (client/engine/mat4.py's multiply()/compose() convention).
+        base_position = [base_transform[12], base_transform[13], base_transform[14]]
+        last_position = self._dangle_last_base_pos.get(key)
+        if last_position is None:
+            parent_delta = [0.0, 0.0, 0.0]  # first frame -- no history yet, no kick
+        else:
+            parent_delta = [
+                base_position[0] - last_position[0],
+                base_position[1] - last_position[1],
+                base_position[2] - last_position[2],
+            ]
+        self._dangle_last_base_pos[key] = base_position
+
+        params = dangle.dangle_params_from_dict(dangle_config)
+        dt_seconds = self._last_delta_time / 1000.0
+        dangle.update_dangle(state, parent_delta, params, dt_seconds)
+
+        return [
+            local_position[0] + state.offset[0],
+            local_position[1] + state.offset[1],
+            local_position[2] + state.offset[2],
+        ]
+
+    def _sample_part_animation(self, entity_id, part_id, animation_id: str) -> dict:
+        """Advance this part's transform-clip clock by one frame and
+        return the sampled {position, rotation, scale} (whichever
+        fields the clip defines) -- Step 11 of
+        3d-coordinate-mapping.prompt.md. Empty dict if the clip hasn't
+        loaded yet (or failed to) -- caller falls back to the part's
+        static localOffset fields in that case, same graceful
+        degradation as a still-loading mesh/material.
+        """
+        clip = self._get_transform_clip(animation_id)
+        if clip is None:
+            return {}
+
+        key = (entity_id, part_id)
+        elapsed = self._anim_clip_clocks.get(key, 0.0) + self._last_delta_time
+        self._anim_clip_clocks[key] = elapsed
+
+        return transform_clip.sample_transform_clip(clip, elapsed)
+
+    def _sample_part_action_animation(
+        self,
+        entity_id,
+        part_id,
+        entity_state: "str | None",
+        action_animations: dict,
+    ) -> "dict | None":
+        """Step 12: if entity_state names a one-shot action clip in
+        this part's action_animations map, advance and sample it,
+        ignoring the clip's own `loop` field -- action playback is
+        always one-shot, holding its last pose once finished
+        (sample_transform_clip's own non-loop branch already does
+        this for free once loop=False is forced here). Returns None
+        if entity_state doesn't match any configured action, so the
+        caller falls back to the part's regular animation_id/rest.
+        """
+        clip_id = action_animations.get(entity_state)
+        if clip_id is None:
+            return None
+
+        key = (entity_id, part_id)
+        tracked_state, elapsed = self._action_clip_state.get(key, (None, 0.0))
+        if tracked_state != entity_state:
+            elapsed = 0.0  # just entered this action state -- restart from frame 0
+        else:
+            elapsed += self._last_delta_time
+        self._action_clip_state[key] = (entity_state, elapsed)
+
+        clip = self._get_transform_clip(clip_id)
+        if clip is None:
+            return None
+
+        return transform_clip.sample_transform_clip({**clip, "loop": False}, elapsed)
+
+    def _get_transform_clip(self, animation_id: str) -> "dict | None":
+        """Resolve and cache one transform clip JSON, same in-flight-
+        marker-then-permanent-cache pattern as _resolve_render_template.
+        """
+        if animation_id in self._transform_clips:
+            return self._transform_clips[animation_id]
+
+        self._transform_clips[animation_id] = None
+        try:
+            path = asset_loader.resolve(animation_id)
+        except ValueError as err:
+            print(f"[entity_renderer] Cannot resolve transform clip '{animation_id}': {err}")
+            return None
+
+        full_path = FRONTEND_DIR / path
+        try:
+            data = json.loads(full_path.read_text(encoding="utf-8"))
+            self._transform_clips[animation_id] = data
+        except Exception as err:  # noqa: BLE001
+            print(f"[entity_renderer] Failed to load transform clip '{animation_id}' ({path}): {err}")
+
+        return self._transform_clips.get(animation_id)
+
+    def _draw_mesh_part(
+        self,
+        entity_id,
+        part_id,
+        mesh_key: str,
+        material_id: "str | None",
+        world_matrix,
+        view_projection,
+        camera: dict,
+        pass_encoder,
+    ) -> bool:
+        """Load (if needed) and draw one mesh part at a precomputed
+        world transform. Returns True if a draw call was actually
+        issued this frame (mesh AND material both ready), False
+        otherwise (still loading, or permanently failed) -- callers
+        treat False as "nothing to draw this frame", never as an error
+        to surface every frame.
+
+        `part_id=None` is the parts-less single-mesh case -- the
+        material-handle cache key then is exactly `entity_id`,
+        unchanged from before Step 9's generalisation.
+        """
+        if mesh_key not in self._meshes:
+            self._meshes[mesh_key] = None  # in-flight marker
+            try:
+                mesh_path = asset_loader.resolve(mesh_key)
+            except ValueError as err:
+                print(f"[entity_renderer] Cannot resolve mesh '{mesh_key}': {err}")
+                return False
+            try:
+                m = Mesh(renderer.device)
+                m.load(mesh_path)
+                self._meshes[mesh_key] = m
+            except Exception as err:  # noqa: BLE001
+                print(f"[entity_renderer] Failed to load mesh '{mesh_key}' ({mesh_path}): {err}")
+            return False  # nothing to draw yet this frame (or ever, if load failed)
+
+        loaded_mesh = self._meshes.get(mesh_key)
+        if loaded_mesh is None:
+            return False  # still loading (or failed)
+
+        # Material -- same lazy-load-and-cache pattern as the 2D
+        # material path. Sourced from the part's own material_id, not
+        # entity['material'] (that field belongs to the legacy
+        # 2D-only path).
+        handle_key = entity_id if part_id is None else f"{entity_id}:{part_id}"
+        if material_id and handle_key not in self._material_handles:
+            mat_path = "assets/data/" + material_id
+            try:
+                handle = self._material_loader.load(mat_path)
+                self._material_handles[handle_key] = handle
+            except Exception as err:  # noqa: BLE001
+                print(f"[entity_renderer] Mesh material load failed: {err}")
+                self._material_handles[handle_key] = None
+
+        handle = self._material_handles.get(handle_key)
+        if not handle:
+            return False  # no material loaded yet -- required for the mesh path
+
+        mvp = mat4.multiply(view_projection, world_matrix)
 
         # Combiner variant (base/ramp/hue/cosine) selection from
         # material flags isn't wired up for mesh entities yet -- always
@@ -691,6 +1040,7 @@ class EntityRenderer:
         pass_encoder.set_vertex_buffer(0, loaded_mesh.vertex_buffer)
         pass_encoder.set_index_buffer(loaded_mesh.index_buffer, loaded_mesh.index_format)
         pass_encoder.draw_indexed(loaded_mesh.index_count)
+        return True
 
     def set_entity_runtime(self, entity_id: str, key: str, value) -> None:
         """Store a named runtime value for an entity's material
@@ -793,6 +1143,11 @@ class EntityRenderer:
         self._render_templates.clear()
         self._material_handles.clear()
         self._runtime_overrides.clear()
+        self._dangle_states.clear()
+        self._dangle_last_base_pos.clear()
+        self._transform_clips.clear()
+        self._anim_clip_clocks.clear()
+        self._action_clip_state.clear()
 
         self.animation_controllers = {}
         self.animation_data_list = []

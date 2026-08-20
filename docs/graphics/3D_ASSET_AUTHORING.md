@@ -1,15 +1,14 @@
 # Graphics System — 3D Asset Authoring (Blender → Mesh Pipeline)
 
-> **Status: planned, not yet implemented.** This document describes the asset
-> pipeline specified in
+> **Status: implemented.** This document describes the asset pipeline
+> specified in
 > [`.github/prompts/3d-coordinate-mapping.prompt.md`](../../.github/prompts/3d-coordinate-mapping.prompt.md).
-> None of `frontend/js/engine/mat4.js`, `frontend/js/engine/mesh.js`, or
-> `tools/convert_mesh.py` exist yet. Written so asset creation can start
-> ahead of the engine work landing — the moment the pipeline ships, assets
-> built to this spec should convert and load without rework. If you're
-> looking for the *current, working* asset pipeline (2D sprite atlases),
-> see [DATA_STRUCTURES.md](DATA_STRUCTURES.md) instead — this document is
-> its 3D-mesh counterpart.
+> `client/engine/mat4.py`, `client/engine/mesh.py`, and `tools/convert_mesh.py`
+> all exist and are in use — per [ROADMAP.md](../../ROADMAP.md) Phase 10,
+> steps 1–11 (including the mesh authoring pipeline, step 10.4) are done.
+> If you're looking for the *2D sprite atlas* pipeline instead, see
+> [DATA_STRUCTURES.md](DATA_STRUCTURES.md) — this document is its 3D-mesh
+> counterpart.
 
 ## Scope — what this pipeline is and isn't
 

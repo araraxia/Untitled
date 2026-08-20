@@ -38,13 +38,14 @@ As of the split after Phase 13, this `engine` branch carries engine/tooling code
 | 4 | Simulation Systems | ✅ Complete |
 | 5 | Asset Pipeline | ✅ Complete |
 | 6 | Save / Load / Persistence | ✅ Complete |
-| 7 | UI Framework | 🔲 Not started |
+| 7 | UI Framework | 🔲 In Progress — engine-layer half done & verified (`client/engine/ui/`: custom-drawn primitives, theme, nav w/ gamepad, render-to-texture panels, `run_ui_test.py`); game-layer half (rebuild the HUD, add inventory panel + dialogue box on a game branch) not started. See ui-framework.prompt.md. |
 | 8 | Audio | 🔲 Not started |
 | 9 | Distribution & Tooling | 🔲 Not started |
-| 10 | 3D Coordinate Mapping | 🔲 In Progress (Steps 1–8 of 14 done, JS; Steps 9–14 target Phase 13's client) |
-| 11 | Area / Scene System | 🔲 Not started (targets Phase 13's client, see area-system.prompt.md) |
-| 12 | Level Editor & Asset Viewer | 🔲 Not started (targets Phase 13's client, see level-editor.prompt.md) |
-| 13 | Native wgpu-py Desktop Client | ✅ Complete (18 of 18 steps; legacy PyWebView/JS client fully deleted, not just deprecated) |
+| 10 | 3D Coordinate Mapping | ✅ Complete (engine-branch scope) — Steps 1–14 all done; see `docs/graphics/ACTION_TRIGGERED_ANIMATIONS.md` and a full-repo audit logged in `completed/3d-coordinate-mapping.prompt.md`, 2026-08-20. Every step independently re-confirmed against current code, not just against the prompt's own prior claims; `run_gametick_test.py` re-run clean. Two things remain deliberately open, neither blocking "complete" on this branch: (1) Step 12's real backend wiring — `example_game_loop.py` is verified generic reference content, but a real game still needs its own `ACTION_DURATIONS`/revert logic in `player.py`/`actions.py`/`tick.py` on a game branch, which doesn't exist here by design (see CLAUDE.md's Branch model); (2) Step 8's fog/`ambientColor` stylization hooks are correctly ported to `client/engine/shader_cache.py` and documented, but `run_client_test.py` only isolates `vertex_color`/`affine_uv`/`color_levels` — fog/ambient have never been visually exercised on the Python client, a test-coverage gap, not a known defect. |
+| 11 | Area / Scene System | 🔲 Not started — **prompt not yet reconciled with the branch split**: `area-system.prompt.md` is written against `backend/game/area.py`, `backend/game/systems/systems.py`, `backend/game/tick.py`, and `client/game/area_viewer.py`, none of which exist on `engine` anymore. Needs a decision before starting: revise the prompt to target `client/engine/`/`backend/engine/` generically, or do this work on a game branch instead. |
+| 12 | Zones & Triggers | 🔲 Not started — new this session. Backend-only: `Zone`/`ZoneRegistry` (AABB or mesh-footprint volumes), declarative `on_enter`/`on_exit` effects (EventBus events, `GroupRegistry` membership, tag data/component application). Same `ecs_world`-not-populated caveat as everything else touching the ECS System pipeline — driven from `Area.update()`, not registered as a `System`, mirroring `backend/engine/group.py`'s own precedent. See zones.prompt.md. Depends on Phase 11 (`Area`/`Scene`) for the Area-file schema it extends. |
+| 13 | Native wgpu-py Desktop Client | ✅ Complete (18 of 18 steps; legacy PyWebView/JS client fully deleted, not just deprecated) — numbered out of chronological order (added after Phase 12 was already assigned); left as-is per this repo's own convention of not renumbering a completed, widely-cross-referenced phase. |
+| 14 | Level Editor & Asset Viewer | 🔲 Not started — same branch-split caveat as Phase 11 (`level-editor.prompt.md` extends `client/game/area_viewer.py`/adds `client/game/launcher.py`); also depends on Phase 11 landing first either way. Scope extended this session with Steps 13–15: Zone authoring (depends on Phase 12, above), a UI-menu editor built on Phase 7's `client/engine/ui/` with keybind/zone/entity-interact triggers, and an Action Definitions panel (Phase 10 Step 12's `actions.json`/`action_animations` *data* only — trigger-wiring stays real game code, deliberately not editor-authorable; see `docs/graphics/ACTION_TRIGGERED_ANIMATIONS.md`). |
 
 ---
 
@@ -278,26 +279,28 @@ Define the stable API that game code calls into:
 
 ## Phase 7 — UI Framework
 
-**Goal:** A data-driven UI system that renders over the WebGPU canvas without mixing Canvas 2D and DOM concerns.
+**Goal:** A fully custom-drawn, art-asset-skinned UI — imgui-bundle used only as the input/hit-testing/frame-lifecycle engine, never its default widget chrome — supporting keyboard/mouse/gamepad navigation, animated elements, and 3D/shader content embedded inside UI panels (e.g. a liquid health orb). Redesigned mid-phase from an earlier, narrower "use imgui's default widgets" draft once the real scope was clear — see `.github/prompts/ui-framework.prompt.md`.
 
-### 7.1 — HUD Layer
+**Engine-layer half: done and verified**, ships on `engine` as `client/engine/ui/` (`draw.py`/`theme.py`/`gamepad.py`/`nav.py`/`widgets.py`/`panel3d.py`/`templates.py`) plus a new `shader_cache.py` `'orb'` variant and a standalone smoke test, `run_ui_test.py` (confirmed: runs 20+ seconds, zero draw errors). One real bug found and fixed during verification: `Panel3D` must default its offscreen texture format to `renderer.canvas_format`, not a hardcoded format, since every existing render pipeline in this codebase is compiled against the former.
 
-- Overlay canvas (already implemented) hosts all 2D HUD elements
-- Separate renderer class (`HUDRenderer`) manages Canvas 2D draw calls on overlay
-- HUD data bound to game state; updated once per render frame
+**Game-layer half: not started**, belongs on a game branch (`legacy` today), not `engine` — see the prompt file's "Remaining work" section: rebuild `client/game/ui.py`'s existing HUD (built ad hoc during Phase 13, not previously tracked here) plus a new inventory panel and dialogue box using `client/engine/ui/` instead of plain imgui widgets.
 
-### 7.2 — UI Component System
+### 7.1 — Core drawing/input primitives (`client/engine/ui/`) — ✅ done, engine-layer
 
-- `UIComponent` base: position, size, visibility, z-order
-- Leaf types: `Label`, `ProgressBar`, `Icon`, `Button`, `Panel`
-- Flexbox-inspired layout engine (no DOM, pure JS)
-- Theme system: colour palette + font config loaded from JSON
+- `draw.py`'s `ImDrawList`-based primitives + the confirmed `imgui_renderer.backend.register_texture()` wgpu-to-imgui texture bridge
+- `nav.py`'s input-method-agnostic focus (keyboard + `gamepad.py`'s GLFW polling, mouse hover claims focus so the two never disagree)
+- `widgets.py`'s composable functions (not a class hierarchy) and `templates.py`'s game-agnostic patterns (confirm/deny, chat box, titled window)
 
-### 7.3 — Inventory & Dialogue
+### 7.2 — Theme + embedded 3D/shader content — ✅ done, engine-layer
 
-- `InventoryPanel` — grid layout, drag-and-drop, item tooltips
-- `DialogueBox` — scripted conversation trees; script format TBD (JSON or simple DSL)
-- Both driven by data fetched from server via SocketIO events
+- `theme.py`: JSON colour palette + optional custom fonts/skin images, applied via `draw.py`'s primitives directly (no `imgui.push_style_color` widget-chrome dependency)
+- `panel3d.py`'s render-to-texture bridge for embedding 3D content or a shader effect in a UI rect; `shader_cache.py`'s new `'orb'` variant is the first real consumer (liquid fill + fresnel rim, reusing existing unused `MatUniforms` slots — no new bind-group layout needed)
+
+### 7.3 — Inventory & Dialogue — 🔲 not started, game-layer (see prompt file)
+
+- `InventoryPanel` — grid layout, drag-and-drop (`imgui`'s own drag-drop API, confirmed present), item tooltips, built on `widgets.image_button`
+- `DialogueBox` — scripted conversation trees (JSON schema in the prompt file), built on `templates.window` + `widgets.button`
+- Both driven by data fetched from server via SocketIO, wired through `network.py`'s existing callback-dict pattern; both must reuse `ui.py`'s pending-request pattern for anything triggered outside the imgui frame bracket (confirmed SIGSEGV otherwise — the same rule `client/engine/ui/draw.py`'s whole design enforces)
 
 ---
 
@@ -437,7 +440,7 @@ Define the stable API that game code calls into:
 ### 11.2 — `Scene`: Single Runtime Container
 
 - `frontend/js/engine/scene.js` — the one object both the network path and a file load populate; `entities`/`camera`/`lighting`/`startCamera` plus `addEntity`/`updateEntity`/`removeEntity`/`setCamera`/`setLighting`/`setStartCamera`
-- `camera` is the live, constantly-moving view; `lighting` and `startCamera` are the authored values actually written to a save file — separated specifically so flying around to inspect a scene never silently changes what gets saved as the spawn point/ambience (Phase 12's editor is the only thing that calls `setStartCamera`)
+- `camera` is the live, constantly-moving view; `lighting` and `startCamera` are the authored values actually written to a save file — separated specifically so flying around to inspect a scene never silently changes what gets saved as the spawn point/ambience (Phase 14's editor is the only thing that calls `setStartCamera`)
 - Every entity tagged `'authoritative'` (network or file) or `'local'` (runtime-injected); a same-id collision across tags is refused with a warning, never silently arbitrated
 - `gameState` (the existing global in `main.js`) becomes a thin proxy onto `Scene`, so `renderer.js`/`ui.js`/`input.js` need zero changes — this phase wraps the working gameplay path, it doesn't rewrite it
 
@@ -471,33 +474,55 @@ Define the stable API that game code calls into:
 
 ---
 
-## Phase 12 — Level Editor & Asset Viewer (Future)
+## Phase 12 — Zones & Triggers (Future)
 
-**Goal:** Turn Phase 11's deliberately crude builder mode into a fairly polished level editor and asset viewer — a real launcher for opening/starting areas and previewing assets, a full translate/rotate/scale gizmo, undo/redo, a property panel, an asset browser, grid/snapping, and a proper save flow. Depends on Phase 11 (`Scene`, the standalone boot path) and Phase 10 (`mat4.compose`/`rotationXYZ`, `render_template`, stylization hooks, `parts`/`dangle`/`animation_id`).
+**Goal:** Spatial trigger volumes — `Zone`/`ZoneRegistry`, added this session (not part of the original phase plan). Two shapes: a simple two-corner AABB, or a mesh-footprint volume (a cached 2D XZ-plane point-in-polygon test plus a Y-range check — an explicit, documented approximation, not true volumetric containment). Declarative `on_enter`/`on_exit` effects: fire an `EventBus` event, add/remove the entity from a `GroupRegistry` group (`backend/engine/group.py`), or set/clear tag data / attach a `Component` on the entity directly. Depends on Phase 11 (the Area-file schema this extends with a `zones` key).
 
-### 12.1 — Entry Point / Launcher
+**Architectural note carried over from `backend/engine/group.py`'s own precedent this session**: `ZoneRegistry` is driven from `Area.update()` each tick, *not* registered as an ECS `System` with the `SystemScheduler` — because nothing in this codebase ever populates `ecs_world` (confirmed: no call to `ecs_world.add()`/`add_component()` anywhere), so a registered `System` would compile correctly and never see real data. This is the same reasoning, not a new one.
 
-- One landing screen (Open Area / New Area / View Asset) shown when `area-viewer.html` loads with no query params — manifest-driven (`"areas"` category, new alongside the existing `"meshes"`/`"entities"`), zero backend connection required
-- Asset preview mode (`?asset=<key>&type=...`) generalises and supersedes `ROADMAP.md`'s own Phase 9.2 "Animation Preview" page concept — one orbit-camera viewer with live stylization toggles and animation playback, not a second redundant page
+**Scope note:** exactly two shapes, no general 3D-volume system; no third-party geometry dependency (hand-rolled point-in-polygon); effects are declarative data, never `eval`/`exec`.
 
-### 12.2 — Full Transform Gizmo
+**Prompt file:** `.github/prompts/zones.prompt.md`
+
+---
+
+## Phase 14 — Level Editor & Asset Viewer (Future)
+
+**Goal:** Turn Phase 11's deliberately crude builder mode into a fairly polished level editor and asset viewer — a real launcher for opening/starting areas and previewing assets, a full translate/rotate/scale gizmo, undo/redo, a property panel, an asset browser, grid/snapping, and a proper save flow. Depends on Phase 11 (`Scene`, the standalone boot path) and Phase 10 (`mat4.compose`/`rotationXYZ`, `render_template`, stylization hooks, `parts`/`dangle`/`animation_id`). Extended this session with zone authoring (depends on Phase 12, above), a UI-menu editor built on Phase 7's `client/engine/ui/`, and an Action Definitions panel (Phase 10 Step 12's data half only).
+
+### 14.1 — Entry Point / Launcher
+
+- One landing screen (Open Area / New Area / View Asset), shown by `client/game/launcher.py` when the native client starts with no `--area`/`--asset` argument — manifest-driven (`"areas"` category, alongside the existing `"meshes"`/`"entities"`), zero backend connection required
+- Asset preview mode generalises and supersedes this document's own Phase 9.2 "Animation Preview" page concept — one orbit-camera viewer with live stylization toggles and animation playback, not a second redundant page
+
+### 14.2 — Full Transform Gizmo
 
 - Mode-switchable (`T`/`R`/`S`) translate/rotate/scale gizmo — axis handles for translate and scale, rotation rings per axis, plus a uniform-scale handle — working in both 2D and 3D, synced live with numeric property-panel fields
 - No free-form bounding-box/corner-drag resize (axis and uniform handles only) and no multi-select — explicit scope boundaries
 
-### 12.3 — Undo/Redo, Property Panel, Asset Browser
+### 14.3 — Undo/Redo, Property Panel, Asset Browser
 
-- `EditorCommands` command-stack layer wraps `Scene`'s existing API (`addEntity`/`updateEntity`/`removeEntity`/`setCamera`/`setLighting`) — `Scene` itself stays unaware undo exists
+- `EditorCommands` command-stack layer wraps `Scene`'s existing API (`add_entity`/`update_entity`/`remove_entity`/`set_camera`/`set_lighting`) — `Scene` itself stays unaware undo exists
 - Property panel splits instance-level fields (transform, `render_template`, `ScriptComponent`) — plain edit, no confirmation — from template-level fields (`parts[]`'s `localOffset`/`dangle`/`animation_id`/`action_animations`) — explicit confirm + warning, since a write there changes every placement of that template, everywhere, not just the selected one
 - Manifest-driven, searchable asset browser replaces the crude "type a raw asset id" flow from Phase 11.3
 
-### 12.4 — Grid/Snapping and Save Flow
+### 14.4 — Grid/Snapping and Save Flow
 
 - Ground grid, position snapping, optional rotation snapping, live entity-count/FPS readout
-- A Scene Settings panel with explicit "Set Start Camera"/"Set Start Lighting" actions — the only calls to `Scene.setStartCamera()` in the whole system
-- `POST /dev/save_area` **and** `POST /dev/save_entity_definition` finished for real (both dev-mode-gated, both refreshing `manifest.json` after writing so new/edited files are immediately discoverable via the 12.1 launcher); download fallback when the area route is unavailable; "Load" is the 12.1 launcher, not a second dialog
+- A Scene Settings panel with explicit "Set Start Camera"/"Set Start Lighting" actions — the only calls to `Scene.set_start_camera()` in the whole system
+- Area-save and entity-definition-save finished for real as direct filesystem writes (`open(path, 'w')` — no Flask dev route, matching the native client's direct-filesystem-access convention), both refreshing `manifest.json` after writing so new/edited files are immediately discoverable via the 14.1 launcher; "Load" is the 14.1 launcher, not a second dialog
 
-**Scope note:** No multi-select, no history-panel UI, no custom asset import UI, no terrain tools, no real-time collaborative editing, no visual behaviour-tree/script editor.
+### 14.5 — Zone Authoring and UI Menu Authoring (added this session)
+
+- Zone placement reuses this phase's own gizmo (AABB) and asset browser (mesh-footprint) rather than inventing new interactions; a property panel edits Phase 12's 8 effect types as repeatable `on_enter`/`on_exit` rows
+- A 2D-only UI-menu editor built directly on Phase 7's `client/engine/ui/` real widget functions — the live preview *is* the runtime appearance, not separate editor chrome — with keybind, zone, and entity-interact triggers; zone/entity triggers write back into the *referenced* zone's/entity's own data rather than inventing a parallel mechanism
+
+### 14.6 — Action Definitions Panel (added this session)
+
+- An `actions.json` registry (name + `duration_ms`, the editor-authored equivalent of `backend/engine/example_game_loop.py`'s `ACTION_DURATIONS`) plus a per-part "Action Animations" section assigning a transform clip per action, both undoable and manifest-free (a single well-known asset, like `ui_theme.json`)
+- Deliberately data-only: deciding *when* an action fires is real gameplay logic in a game branch's own `player.py`/`actions.py`, not something this panel authors — see `docs/graphics/ACTION_TRIGGERED_ANIMATIONS.md`'s data/trigger split
+
+**Scope note:** No multi-select, no history-panel UI, no custom asset import UI, no terrain tools, no real-time collaborative editing, no visual behaviour-tree/script editor, no new zone shapes/effect types beyond what Phase 12 already defines, no action trigger-wiring (data authoring only).
 
 **Prompt file:** `.github/prompts/level-editor.prompt.md`
 
@@ -505,23 +530,29 @@ Define the stable API that game code calls into:
 
 ## Prompt Files
 
-Each phase has a companion agent prompt in `.github/prompts/`:
+Each phase has a companion agent prompt in `.github/prompts/`. Completed
+phases (all steps done) move to `.github/prompts/completed/` to keep the
+working directory to just what's still active — a plain relocation, not
+a rewrite; see each file's own historical content for what actually
+shipped.
 
 | Phase | Prompt file |
 | ----- | ----------- |
-| 0 | `webgpu-migration.prompt.md` ✅ |
-| 1 | `engine-architecture.prompt.md` |
-| 2 | `material-system.prompt.md` ✅ |
-| 3 | `ecs-overhaul.prompt.md` ✅ |
-| 4 | `simulation-systems.prompt.md` |
-| 5 | `asset-pipeline.prompt.md` |
-| 6 | `save-load.prompt.md` ✅ |
-| 7 | `ui-framework.prompt.md` |
+| 0 | `completed/webgpu-migration.prompt.md` ✅ |
+| 1 | `completed/engine-architecture.prompt.md` ✅ |
+| 2 | `completed/material-system.prompt.md` ✅ |
+| 3 | `completed/ecs-overhaul.prompt.md` ✅ |
+| 4 | `completed/simulation-systems.prompt.md` ✅ |
+| 5 | `completed/asset-pipeline.prompt.md` ✅ |
+| 6 | `completed/save-load.prompt.md` ✅ |
+| 7 | `ui-framework.prompt.md` 🔶 in progress |
 | 8 | `audio.prompt.md` |
 | 9 | `distribution.prompt.md` |
-| 10 | `3d-coordinate-mapping.prompt.md` |
+| 10 | `completed/3d-coordinate-mapping.prompt.md` ✅ |
 | 11 | `area-system.prompt.md` |
-| 12 | `level-editor.prompt.md` |
+| 12 | `zones.prompt.md` |
+| 13 | `completed/wgpu-py-migration.prompt.md` ✅ |
+| 14 | `level-editor.prompt.md` |
 
 ---
 

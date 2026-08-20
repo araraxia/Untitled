@@ -108,8 +108,10 @@ Materials map each combiner slot to a named source. The renderer reads this at l
 
 | File | Responsibility |
 | --- | --- |
-| `frontend/js/engine/sprites/shaderCache.js` | Compiles and caches `GPURenderPipeline` variants; one pipeline per unique material flag combination |
-| `frontend/js/engine/sprites/materialLoader.js` | Reads `material/*.json`, constructs a `GPUBindGroup` per material at load time |
+| `client/engine/shader_cache.py` | Compiles and caches `GPURenderPipeline` variants; one pipeline per unique material flag combination |
+| `client/engine/material_loader.py` | Reads `material/*.json`, constructs a `GPUBindGroup` per material at load time |
 | `tools/pack_param_map.py` | CLI tool that packs greyscale channel images into a single RGBA param map PNG |
+
+> These were originally JS files (`frontend/js/engine/sprites/shaderCache.js`, `materialLoader.js`) under the deleted PyWebView/browser client. The native `wgpu-py` client (`client/engine/`) ported the same responsibilities to Python; see [ARCHITECTURE.md](../../ARCHITECTURE.md).
 
 See [RENDER_WORKFLOWS.md](RENDER_WORKFLOWS.md) for per-effect WGSL shader code and [DATA_STRUCTURES.md](DATA_STRUCTURES.md) for the full material JSON schema.

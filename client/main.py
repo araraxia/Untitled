@@ -69,7 +69,16 @@ logger = Logger(
     log_level=20,  # INFO
 ).get_logger()
 
-from backend.app import app, socketio
+try:
+    from backend.app import app, socketio
+except ImportError:
+    # backend.app only exists on a game branch (see ARCHITECTURE.md's
+    # Branch model note) -- rendering-only consumers of this module
+    # (draw_game_scene/get_entity_renderer/render_entities/_gather_lights,
+    # e.g. run_client_test.py) don't need it, only start_server()/main()
+    # do, and those already can't run without a game branch either.
+    app = None
+    socketio = None
 
 from imgui_bundle import imgui
 from wgpu.utils.imgui import ImguiRenderer
@@ -78,8 +87,15 @@ from client.engine import imgui_wgpu_compat  # noqa: F401 -- apply the compat sh
 from client.engine import input as input_engine
 from client.engine import interpolation, network, renderer
 from client.engine.entity_renderer import EntityRenderer
-from client.game import character_creation, player_select, ui
-from client.game.player_select import GameContext, game_state
+
+try:
+    from client.game import character_creation, player_select, ui
+    from client.game.player_select import GameContext, game_state
+except ImportError:
+    # client.game only exists on a game branch -- see note above.
+    character_creation = player_select = ui = None
+    GameContext = None
+    game_state = None
 
 DEFAULT_ANIMATION_DATA_PATHS = ["assets/data/human_animations.json"]
 

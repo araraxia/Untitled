@@ -53,10 +53,20 @@ FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
 
 # Manifest categories currently scanned by tools/build_manifest.py and
 # read here -- matches assetLoader.js's categories list exactly as of
-# this port. "areas" (level-editor.prompt.md's Python-targeted Step 2)
-# is not in this list yet because that step hasn't landed; add it there
-# when it does, not here speculatively.
-MANIFEST_CATEGORIES = ["images", "animations", "materials", "meshes", "entities", "audio"]
+# this port, plus "fonts"/"ui_skins" (client/engine/ui/theme.py, this
+# session's custom-drawn UI framework). "areas" (level-editor.prompt.md's
+# Python-targeted Step 2) is not in this list yet because that step
+# hasn't landed; add it there when it does, not here speculatively.
+MANIFEST_CATEGORIES = [
+    "images",
+    "animations",
+    "materials",
+    "meshes",
+    "entities",
+    "audio",
+    "fonts",
+    "ui_skins",
+]
 
 
 class AssetLoader:
