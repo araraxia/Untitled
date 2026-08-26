@@ -53,7 +53,7 @@ Do not create or edit files in this step.
 
 ---
 
-## Step 2 — `Zone` / `ZoneRegistry`
+## Step 2 — `Zone` / `ZoneRegistry` ✅
 
 **New file:** `backend/engine/zone.py`
 
@@ -81,14 +81,14 @@ Verify: construct a `ZoneRegistry`, add an `aabb` zone, call `update()` with a f
 
 ---
 
-## Step 3 — Containment Tests
+## Step 3 — Containment Tests ✅
 
 **File:** `backend/engine/zone.py`
 
 1. `contains_point(zone: Zone, x: float, y: float, z: float) -> bool` — dispatches on `zone.shape["type"]`.
 2. `aabb`: `shape = {"type": "aabb", "min": [x, y, z], "max": [x, y, z]}` — a plain per-axis min/max compare. This is the "simple two-coordinate square zone" — two corner points, nothing else.
 3. `mesh`: `shape = {"type": "mesh", "mesh": "<mesh-asset-key>", "position": [x, y, z], "rotation": [rx, ry, rz], "scale": [sx, sy, sz]}`.
-   - At zone-load time (not per-tick): resolve the mesh asset key the same way any backend code resolves an asset path (read the JSON directly via `open()`/`json.load()` — the mesh format is plain project JSON, no GPU/`wgpu` involvement needed here at all, this is pure geometry read on the backend), extract vertex positions, project onto the XZ plane (drop Y), and cache the resulting 2D point list plus the mesh's own min/max Y as `zone._cached_footprint`/`zone._cached_y_range` (computed once, invalidated only if the zone's shape data changes).
+   - At zone-load time (not per-tick): resolve the mesh asset key the same way any backend code resolves an asset path (read the JSON directly via `open()`/`json.load()` — the mesh format is plain project JSON, no GPU/`wgpu` involvement needed here at all, this is pure geometry read on the backend), extract vertex positions, project onto the XZ plane (drop Y), and cache the resulting 2D point list plus the mesh's own min/max Y as `zone._cached_footprint`/`zone._cached_y_range` (computed once, invalidated only if the zone's shape data changes). **Correction, found while verifying (`run_zone_test.py`)**: "the resulting 2D point list" cannot be fed to ray-casting point-in-polygon directly — a mesh's stored vertices come in triangle/face order, not a perimeter walk, so the raw projected list is a self-intersecting, meaningless "polygon." The cached footprint must be the 2D **convex hull** of the projected points (Andrew's monotone chain, hand-rolled, same dependency-free spirit as the point-in-polygon test itself) — documented as an additional, permanent approximation: a concave footprint (an L-shaped room) flattens to its hull, same class of scope boundary as the Y-range check already is.
    - Per-tick test: transform the query point into the mesh's local space (inverse of `position`/`rotation`/`scale`, reusing whatever matrix helper `client/engine/mat4.py`'s *math* is already hand-rolled from — this is backend Python, so re-derive the equivalent small transform functions here rather than importing from `client/`, but do not diverge from its column-major/row convention), then: (a) Y-range check against `_cached_y_range`, (b) 2D point-in-polygon test (ray-casting/even-odd) against `_cached_footprint`.
 4. Write the point-in-polygon function as a small, standalone, testable function — not inlined into `contains_point` — so Step 2's verify (and this step's own) can exercise it directly with a hand-built polygon.
 
@@ -96,15 +96,19 @@ Verify: a point clearly inside a simple rectangular mesh footprint returns `True
 
 ---
 
-## Step 4 — Effects
+## Step 4 — Effects ✅ (reclassified engine-layer — see note)
 
-**File:** `backend/game/area.py` (the dispatcher — game-layer, since it touches `Area`'s own `groups`/`entities` and `EventBus`, unlike the shape-only logic in `zone.py`)
+**Reclassified during implementation, 2026-08-20**: originally scoped to `backend/game/area.py` ("game-layer, since it touches `Area`'s own `groups`/`entities` and `EventBus`") — but every effect type below only touches generic engine primitives (`GroupRegistry`, `Entity.set_data`/`add_component`, `EventBus`), nothing game-specific. Same reasoning that already reclassified `client/engine/area_viewer.py` (see `area-system.prompt.md`'s branch-reconciliation banner). Implemented instead in **`backend/engine/zone.py`** (alongside `Zone`/`ZoneRegistry`), as `apply_zone_effect(entities, entity_id, effect, groups, event_bus, zone)` — explicit `entities`/`groups`/`event_bus` parameters instead of a full `area` object. A game branch's `Area.update()` calls this exactly like any other engine-layer helper, passing its own `self.entities`/`self.groups`/`self.event_bus`. This unblocked Steps 2–4 to be built and verified on `engine` today (`run_zone_test.py`) — only Step 5's literal `Area.update()` wiring call stays blocked, since `Area` itself doesn't exist here.
 
-An effect is one dict from a zone's `on_enter`/`on_exit` list. Implement a dispatcher function, `apply_zone_effect(area, entity_id, effect)`, handling:
+**Second correction, also found during implementation**: task 8 below references `zone.zone_id` for the `fire_event` payload, but the dispatcher signature as originally sketched (`apply_zone_effect(area, entity_id, effect)`, and `ZoneRegistry.update()`'s injected callback as `(entity_id, effects)`) never actually receives which zone triggered the effect. Fixed by having `ZoneRegistry.update()`'s injected `effect_dispatcher` receive the `Zone` itself: `effect_dispatcher(zone, entity_id, effects)` — see Step 2's `update()` for the corrected signature.
 
-1. `{"type": "add_group", "group": "<name>"}` — `area.groups.add_to_group(entity_id, group_name)`.
-2. `{"type": "remove_group", "group": "<name>"}` — `area.groups.remove_from_group(entity_id, group_name)`.
-3. `{"type": "set_group_attribute", "group": "<name>", "key": "...", "value": ...}` — `area.groups.set_group_attribute(group_name, key, value)` — convenience for a zone that configures a group's shared attribute inline (e.g. an `on_enter` effect that both adds the entity to `"gravity"` and, the first time, sets `"gravity"`'s `strength` attribute).
+**File:** `backend/engine/zone.py`
+
+An effect is one dict from a zone's `on_enter`/`on_exit` list. Implemented as `apply_zone_effect(entities, entity_id, effect, groups, event_bus=None, zone=None)`, handling:
+
+1. `{"type": "add_group", "group": "<name>"}` — `groups.add_to_group(entity_id, group_name)`.
+2. `{"type": "remove_group", "group": "<name>"}` — `groups.remove_from_group(entity_id, group_name)`.
+3. `{"type": "set_group_attribute", "group": "<name>", "key": "...", "value": ...}` — `groups.set_group_attribute(group_name, key, value)` — convenience for a zone that configures a group's shared attribute inline (e.g. an `on_enter` effect that both adds the entity to `"gravity"` and, the first time, sets `"gravity"`'s `strength` attribute).
 4. `{"type": "set_data", "key": "...", "value": ...}` — `entity.set_data(key, value)` (the tag-data-bag API, this session's `Entity.get_data`/`set_data`). This is the practical "apply an attribute to entities within" mechanism — deliberately *not* routed through the ECS `Component`/`World` system, per the gap noted in Required Reading.
 5. `{"type": "clear_data", "key": "..."}` — removes `key` from the entity's `DataComponent` if present (a small addition to `Entity`/`DataComponent`'s existing API may be needed — a `clear_data`/`remove_data` method that pops the key, following the exact same lazy-get-or-create pattern `get_data`/`set_data` already use; add it there if it doesn't already exist, don't reimplement the lookup here).
 6. `{"type": "add_component", "component": {"type": "ComponentClassName", ...}}` — `entity.add_component(Component.from_dict(effect["component"]))`, using the entity-local component store (`Entity.add_component`/`get_component`, round-trips through `to_dict`/`from_dict`). **State explicitly, in a code comment at this branch, that this attaches to the entity's own local store, not `World`'s** — it will not be picked up by any `System` that queries `world.query_with_components(...)`, because of the same `ecs_world` gap. It *is* visible to any code that calls `entity.get_component(SomeType)` directly, and *does* persist/round-trip through save files.
@@ -118,45 +122,58 @@ Verify: each effect type produces the expected, isolated change (group membershi
 
 ## Step 5 — Wire Into `Area.update()`
 
-**File:** `backend/game/area.py`
+**File:** `backend/game/area.py` — **blocked, still**: this file doesn't exist on `engine` (see `area-system.prompt.md`'s branch-reconciliation banner). Everything this step needs from `zone.py` (`ZoneRegistry`, `apply_zone_effect`) is done and verified; only this literal wiring call is pending a game branch.
 
 1. `Area.__init__` gains `self.zones = ZoneRegistry()`, alongside the existing `self.groups`/`self.spatial_grid`.
-2. `Area.update(delta_time)`: after the existing per-entity `entity.update(delta_time)` loop (so zones test settled, post-move positions, not mid-integration — same ordering reasoning `area-system.prompt.md` Step 9 established for `PhysicsSystem` running last), call `self.zones.update(self.entities, lambda eid, effects: [apply_zone_effect(self, eid, e) for e in effects])` (or an equivalent small wrapper — the exact call shape matters less than the ordering and the fact effects flow through `apply_zone_effect`, Step 4).
+2. `Area.update(delta_time)`: after the existing per-entity `entity.update(delta_time)` loop (so zones test settled, post-move positions, not mid-integration — same ordering reasoning `area-system.prompt.md` Step 9 established for `PhysicsSystem` running last), call:
+   ```python
+   self.zones.update(
+       self.entities,
+       lambda zone, eid, effects: [
+           apply_zone_effect(self.entities, eid, e, self.groups, self.event_bus, zone)
+           for e in effects
+       ],
+   )
+   ```
+   **Corrected call shape** (see Step 4's note): the dispatcher receives `zone` now, not just `(eid, effects)`, and `apply_zone_effect` takes explicit `entities`/`groups`/`event_bus` rather than a full `area` object.
 3. `to_dict()`/`from_dict()`: add `"zones": self.zones.to_dict()` / `self.zones = ZoneRegistry.from_dict(data.get("zones", {}))`, mirroring exactly how `self.groups` was wired into these two methods this session.
 
-Verify: an `Area` with one AABB zone and an entity that moves through it (via a few manual `entity.x =`/`update()` calls in a test script) fires the zone's `on_enter`/`on_exit` effects at the right ticks, and the zone (with its effects) round-trips correctly through `to_dict()`/`from_dict()`.
+Verify: an `Area` with one AABB zone and an entity that moves through it (via a few manual `entity.x =`/`update()` calls in a test script) fires the zone's `on_enter`/`on_exit` effects at the right ticks, and the zone (with its effects) round-trips correctly through `to_dict()`/`from_dict()`. **Not run** — needs `Area` to exist; the equivalent wiring shape (`ZoneRegistry.update()` → `apply_zone_effect`, against a plain fake entities dict/`GroupRegistry`/`EventBus` standing in for `Area`) is verified in `run_zone_test.py`'s `test_full_tick_through_dispatcher`.
 
 ---
 
-## Step 6 — Documentation
+## Step 6 — Documentation ✅
 
-**File:** `docs/graphics/AREA_SYSTEM.md` (extend — created by `area-system.prompt.md` Step 12; if that step hasn't landed yet, create this file now with just the Zones section, and note at the top that the rest of the document is pending that task)
+**File:** `docs/graphics/AREA_SYSTEM.md` (extended — `area-system.prompt.md` Step 12 landed first this session, so this is a real extension, not the fallback "Zones-only" file the original text anticipated).
 
-1. Document `Zone`'s two shapes, the effect types (Step 4's list, with an example JSON snippet per type), and the enter/exit de-dup semantics.
-2. Document the `ZoneRegistry`-is-driven-from-`Area.update()`-not-`SystemScheduler` decision and *why* (the `ecs_world` gap) — this is exactly the kind of non-obvious architectural choice a future reader needs spelled out, not silently encoded in file placement alone.
-3. Document the mesh-zone containment approximation (2D footprint + Y-range, not true volumetric containment) as an explicit, permanent scope boundary, not a TODO.
+1. Document `Zone`'s two shapes, the effect types (Step 4's list, with an example JSON snippet per type), and the enter/exit de-dup semantics. Done.
+2. Document the `ZoneRegistry`-is-driven-from-`Area.update()`-not-`SystemScheduler` decision and *why* (the `ecs_world` gap). Done.
+3. Document the mesh-zone containment approximation (2D footprint + Y-range, not true volumetric containment) as an explicit, permanent scope boundary, not a TODO. Done — plus the convex-hull correction found during implementation.
 
 ---
 
 ## Step 7 — Smoke Test
 
-- [ ] An AABB zone's `on_enter`/`on_exit` fire exactly once per crossing, never once per tick while inside/outside.
-- [ ] A mesh-footprint zone correctly includes/excludes points inside/outside an irregular (non-rectangular) footprint, and correctly respects the mesh's Y range.
-- [ ] `add_group`/`remove_group`/`set_group_attribute` effects produce the expected `GroupRegistry` state.
-- [ ] `set_data`/`clear_data` effects produce the expected `Entity.get_data()` state.
-- [ ] `add_component`/`remove_component` effects produce the expected `Entity.get_component()` state, and round-trip through `Entity.to_dict()`/`from_dict()`.
-- [ ] `fire_event` publishes on the shared `EventBus` with the documented payload shape.
-- [ ] A zone with an unknown effect type logs once and does not crash the tick loop.
-- [ ] An `Area` with zones (including at least one of each shape type and effect type) round-trips through `to_dict()`/`from_dict()` with no data loss.
-- [ ] No lint/type errors on any modified/new file.
+**Run this session, 2026-08-20, via `run_zone_test.py`** (new, no GPU, no backend server, no game branch — mirrors `run_gametick_test.py`/`run_scene_test.py`'s pattern):
+
+- [x] An AABB zone's `on_enter`/`on_exit` fire exactly once per crossing, never once per tick while inside/outside.
+- [x] A mesh-footprint zone correctly includes/excludes points inside/outside an irregular (non-rectangular — a synthetic 10×40 rectangle, since a square footprint is 90°-rotation-invariant and can't demonstrate a flip) footprint, and correctly respects the mesh's Y range. Also verified against the real `mesh-example-crate.json` fixture (translation path).
+- [x] `add_group`/`remove_group`/`set_group_attribute` effects produce the expected `GroupRegistry` state.
+- [x] `set_data`/`clear_data` effects produce the expected `Entity.get_data()` state.
+- [x] `add_component`/`remove_component` effects produce the expected `Entity.get_component()` state, and round-trip through `Entity.to_dict()`/`from_dict()`.
+- [x] `fire_event` publishes on the shared `EventBus` with the documented payload shape (`entity_id`/`zone_id` merged onto the effect's own `payload`).
+- [x] A zone with an unknown effect type logs once (confirmed by calling it twice and checking the log) and does not crash.
+- [ ] An `Area` with zones round-trips through `to_dict()`/`from_dict()` with no data loss — **not run**, `Area` doesn't exist on `engine`. `ZoneRegistry.to_dict()`/`from_dict()` itself is verified directly (not through `Area`).
+- [x] No lint/type errors on any modified/new file (`backend/engine/zone.py`, `entity.py`'s/`component.py`'s additions, `run_zone_test.py`).
 
 ---
 
 ## Success Criteria
 
-- [ ] `backend/engine/zone.py` — `Zone`, `ZoneRegistry` (enter/exit de-dup, `to_dict`/`from_dict`), `contains_point` (aabb + mesh dispatch), a standalone point-in-polygon function
-- [ ] `backend/game/area.py` — `self.zones`, `apply_zone_effect` dispatcher (all 8 effect types from Step 4), `Area.update()` wired to run zone checks after entity position updates, `to_dict`/`from_dict` persistence
-- [ ] `ZoneRegistry` is driven from `Area.update()`, **not** registered with `SystemScheduler` — confirmed consistent with `backend/engine/group.py`'s own precedent and documented reasoning (the `ecs_world` gap)
-- [ ] `docs/graphics/AREA_SYSTEM.md` — Zones section: shapes, effects, the `Area.update()`-not-`System` decision and why, the mesh-zone approximation's documented scope boundary
-- [ ] No third-party geometry dependency added
-- [ ] Nothing in this task touches `client/`/`frontend/` — backend-only, per the Constraints section (zone *authoring* UI is `level-editor.prompt.md`'s job)
+- [x] `backend/engine/zone.py` — `Zone`, `ZoneRegistry` (enter/exit de-dup, `to_dict`/`from_dict`), `contains_point` (aabb + mesh dispatch), a standalone point-in-polygon function, a standalone convex-hull function (the correction found during implementation) — all done, verified via `run_zone_test.py`
+- [x] `apply_zone_effect` (all 8 effect types from Step 4) — done, in `backend/engine/zone.py` (reclassified engine-layer, see Step 4's note), not `backend/game/area.py`
+- [ ] `backend/game/area.py` — `self.zones`, `Area.update()` wired to run zone checks after entity position updates, `to_dict`/`from_dict` persistence — **blocked**, `Area` doesn't exist on `engine`; the exact wiring snippet is documented in `docs/graphics/AREA_SYSTEM.md`'s "Zones' one remaining piece" section for whoever lands it on a game branch
+- [x] `ZoneRegistry` is driven from `Area.update()`, **not** registered with `SystemScheduler` — confirmed consistent with `backend/engine/group.py`'s own precedent and documented reasoning (the `ecs_world` gap)
+- [x] `docs/graphics/AREA_SYSTEM.md` — Zones section: shapes, effects, the `Area.update()`-not-`System` decision and why, the mesh-zone approximation's documented scope boundary (including the convex-hull addition)
+- [x] No third-party geometry dependency added — convex hull (Andrew's monotone chain) and point-in-polygon (ray-casting) both hand-rolled
+- [x] Nothing in this task touches `client/`/`frontend/` — backend-only, per the Constraints section (zone *authoring* UI is `level-editor.prompt.md`'s job). `run_zone_test.py` (repo root) reads one existing `frontend/assets/data/mesh/` fixture file for its containment test but adds no `client/`/`frontend/` code.

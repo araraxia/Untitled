@@ -109,8 +109,10 @@ Paths show the target layout after Phase 1 restructure. Phase 0 systems are ✅ 
 
 - [COMBINER.md](COMBINER.md) — Multi-texture combiner, parameter maps, channel packing
 - [COORDINATE_MAPPING.md](COORDINATE_MAPPING.md) — UV coordinates, 2D and 3D projection
+- [MAT4.md](MAT4.md) — `client/engine/mat4.py`'s matrix layout, function reference, Euler rotation convention, and how callers chain P/V/M into an MVP
 - [RENDER_WORKFLOWS.md](RENDER_WORKFLOWS.md) — Practical per-feature shader workflows
 - [DATA_STRUCTURES.md](DATA_STRUCTURES.md) — JSON schemas for animation clips, materials, entities
 - [ACTION_TRIGGERED_ANIMATIONS.md](ACTION_TRIGGERED_ANIMATIONS.md) — one-shot animations for a discrete server-authoritative action (attack, jump), backend timing + both client draw paths
+- [AREA_SYSTEM.md](AREA_SYSTEM.md) — `Scene`, the standalone viewer/builder tool, and the four run modes (Phase 11, `Scene`/`area_viewer.py` done on `engine`; backend Area-file schema pending a game branch)
 - [3D_ASSET_AUTHORING.md](3D_ASSET_AUTHORING.md) — Blender → mesh pipeline for 3D content; both the textured-mesh render path and the Blender/glTF authoring side (`tools/convert_mesh.py`) are implemented (Phase 10, steps 1–11 of 14 done)
 - [ROADMAP.md](../../ROADMAP.md) — Full engine packaging roadmap; authoritative for current phase status

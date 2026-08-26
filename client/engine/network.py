@@ -65,6 +65,16 @@ _state_handlers: dict = {
     "on_initial_state": None,
     "on_state_update": None,
     "on_connect": None,
+    # Step 8 of .github/prompts/area-system.prompt.md: a server-sent
+    # cosmetic-dressing cue (a temporary camera pan, a decorative prop
+    # for a cutscene). Deliberately a callback slot, not a direct
+    # `scene.add_entity(...)` call from this module -- per this file's
+    # own module docstring, `client/engine/` must never hold a
+    # reference to a specific game-layer/Scene state object directly;
+    # whichever code owns the live `Scene` instance (a game branch's
+    # own state-owning module, once Step 5's shim exists there)
+    # registers this the same way it registers `on_state_update`.
+    "on_scene_cue": None,
 }
 
 
@@ -97,6 +107,7 @@ def set_state_handlers(
     on_initial_state: Optional[Callable] = None,
     on_state_update: Optional[Callable] = None,
     on_connect: Optional[Callable] = None,
+    on_scene_cue: Optional[Callable] = None,
 ) -> None:
     """Register connection/state handlers -- the engine-boundary-safe
     replacement for the JS version's direct handleInitialState/
@@ -108,6 +119,42 @@ def set_state_handlers(
         _state_handlers["on_state_update"] = on_state_update
     if on_connect is not None:
         _state_handlers["on_connect"] = on_connect
+    if on_scene_cue is not None:
+        _state_handlers["on_scene_cue"] = on_scene_cue
+
+
+# Audio intent callbacks -- audio.prompt.md Step 4. A third, separate
+# dict rather than three more keys on _state_handlers: this file
+# already keeps connection/state-sync (_state_handlers) and onboarding
+# (character_flow_callbacks) in their own dicts, each with its own
+# setter -- audio intents are a third, distinct concern, so this
+# follows that same "one dict per concern" precedent instead of
+# overloading _state_handlers with an unrelated responsibility. This
+# module never imports client.engine.audio directly (see module
+# docstring's engine-boundary rule) -- whichever code wires a real
+# client together registers closures over its own audio calls here.
+_audio_handlers: dict = {
+    "on_play_music": None,
+    "on_stop_music": None,
+    "on_play_sfx": None,
+}
+
+
+def set_audio_handlers(
+    on_play_music: Optional[Callable] = None,
+    on_stop_music: Optional[Callable] = None,
+    on_play_sfx: Optional[Callable] = None,
+) -> None:
+    """Register audio-intent handlers -- play_music/stop_music/play_sfx
+    server events. See _audio_handlers' own comment for why this is a
+    separate dict/setter rather than folded into set_state_handlers().
+    """
+    if on_play_music is not None:
+        _audio_handlers["on_play_music"] = on_play_music
+    if on_stop_music is not None:
+        _audio_handlers["on_stop_music"] = on_stop_music
+    if on_play_sfx is not None:
+        _audio_handlers["on_play_sfx"] = on_play_sfx
 
 
 def _client_url() -> str:
@@ -131,10 +178,13 @@ def init_network() -> None:
 
     Connects to the server and registers handlers for the full event
     list network.js currently handles: connect, disconnect,
-    connection_response, initial_state, state_update, save_list,
-    races_list, backgrounds_list, save_complete, autosave_complete,
-    player_loaded, error, player_deleted, new_player_initialized,
-    character_created.
+    connection_response, initial_state, state_update, scene_cue,
+    save_list, races_list, backgrounds_list, save_complete,
+    autosave_complete, player_loaded, error, player_deleted,
+    new_player_initialized, character_created -- plus, added by
+    audio.prompt.md Step 4 (no JS equivalent, this event set didn't
+    exist when network.js was ported): play_music, stop_music,
+    play_sfx.
     """
     global sio
     sio = socketio.Client()
@@ -164,6 +214,45 @@ def init_network() -> None:
     @sio.on("state_update")
     def on_state_update_event(data):
         handler = _state_handlers.get("on_state_update")
+        if callable(handler):
+            handler(data)
+
+    @sio.on("scene_cue")
+    def on_scene_cue_event(data):
+        # Step 8 of area-system.prompt.md: purely cosmetic, non-
+        # authoritative dressing (a temporary camera pan, a decorative
+        # prop for a cutscene) -- see .github/copilot-instructions.md's
+        # "Physics & Simulation Boundary". Anything a registered
+        # on_scene_cue callback does with this payload must add data
+        # through `scene.add_entity(..., 'local')`/`set_camera`/
+        # `remove_entity`, never anything that could be mistaken for an
+        # authoritative, server-simulated entity -- if the dressing
+        # needs to be hittable/collidable/detectable, it must be a real
+        # backend entity delivered through the normal state_update path
+        # instead, not this event.
+        handler = _state_handlers.get("on_scene_cue")
+        if callable(handler):
+            handler(data)
+
+    @sio.on("play_music")
+    def on_play_music_event(data):
+        # data: {"asset_id": str, "crossfade": bool}
+        handler = _audio_handlers.get("on_play_music")
+        if callable(handler):
+            handler(data)
+
+    @sio.on("stop_music")
+    def on_stop_music_event(data):
+        # data: {"fade": bool}
+        handler = _audio_handlers.get("on_stop_music")
+        if callable(handler):
+            handler(data)
+
+    @sio.on("play_sfx")
+    def on_play_sfx_event(data):
+        # data: {"asset_id": str, "world_x": float, "world_y": float,
+        #        "world_z": float} -- world_* absent/None for UI SFX
+        handler = _audio_handlers.get("on_play_sfx")
         if callable(handler):
             handler(data)
 

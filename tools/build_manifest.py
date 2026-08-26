@@ -64,10 +64,44 @@ def image_dimensions(path: Path) -> tuple[int, int]:
 
 
 def audio_type(rel_path: Path) -> str:
-    """Classify audio as ``'music'`` or ``'sfx'`` from its relative path."""
+    """Classify audio as ``'music'``, ``'ambient'``, or ``'sfx'`` from its
+    relative path (``music``/``ambient`` subdirectories under
+    ``assets/audio/``; anything else defaults to ``sfx``).
+    """
     if "music" in rel_path.parts:
         return "music"
+    if "ambient" in rel_path.parts:
+        return "ambient"
     return "sfx"
+
+
+def audio_loop_metadata(fpath: Path, kind: str) -> dict[str, Any]:
+    """Loop metadata for an audio manifest entry.
+
+    Defaults: ``loop`` is ``True`` for ``music``/``ambient``, ``False``
+    for ``sfx``; ``loop_start_s`` is ``0.0``; ``loop_end_s`` is ``None``
+    (loop to the file's natural end). A sidecar ``<filename>.meta.json``
+    next to the audio file (e.g. ``town_day.ogg.meta.json`` for
+    ``town_day.ogg``) can override any of the three, e.g.
+    ``{"loop_start_s": 4.2, "loop_end_s": 58.0}`` -- audio-only, no
+    other manifest category has this override mechanism.
+    """
+    metadata: dict[str, Any] = {
+        "loop": kind in ("music", "ambient"),
+        "loop_start_s": 0.0,
+        "loop_end_s": None,
+    }
+    meta_path = fpath.parent / f"{fpath.name}.meta.json"
+    if meta_path.exists():
+        try:
+            overrides = json.loads(meta_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            overrides = {}
+        if isinstance(overrides, dict):
+            for key in ("loop", "loop_start_s", "loop_end_s"):
+                if key in overrides:
+                    metadata[key] = overrides[key]
+    return metadata
 
 
 def json_asset_id(path: Path) -> str:
@@ -104,6 +138,8 @@ def build_manifest() -> dict[str, Any]:
     materials: dict[str, Any] = {}
     meshes: dict[str, Any] = {}
     entities: dict[str, Any] = {}
+    areas: dict[str, Any] = {}
+    ui_menus: dict[str, Any] = {}
     audio_entries: dict[str, Any] = {}
 
     images_dir = ASSETS_DIR / "images"
@@ -189,6 +225,38 @@ def build_manifest() -> dict[str, Any]:
                 "hash": file_hash(fpath),
             }
 
+    area_dir = ASSETS_DIR / "data" / "area"
+    if area_dir.exists():
+        for fpath in sorted(area_dir.rglob("*")):
+            if not fpath.is_file():
+                continue
+            if fpath.name.startswith("example_"):
+                continue
+            if fpath.suffix.lower() not in JSON_EXTENSIONS:
+                continue
+            rel = fpath.relative_to(FRONTEND_DIR)
+            asset_id = json_asset_id(fpath)
+            areas[asset_id] = {
+                "path": rel.as_posix(),
+                "hash": file_hash(fpath),
+            }
+
+    ui_dir = ASSETS_DIR / "data" / "ui"
+    if ui_dir.exists():
+        for fpath in sorted(ui_dir.rglob("*")):
+            if not fpath.is_file():
+                continue
+            if fpath.name.startswith("example_"):
+                continue
+            if fpath.suffix.lower() not in JSON_EXTENSIONS:
+                continue
+            rel = fpath.relative_to(FRONTEND_DIR)
+            asset_id = json_asset_id(fpath)
+            ui_menus[asset_id] = {
+                "path": rel.as_posix(),
+                "hash": file_hash(fpath),
+            }
+
     audio_dir = ASSETS_DIR / "audio"
     if audio_dir.exists():
         for fpath in sorted(audio_dir.rglob("*")):
@@ -199,11 +267,14 @@ def build_manifest() -> dict[str, Any]:
             if fpath.suffix.lower() not in AUDIO_EXTENSIONS:
                 continue
             rel = fpath.relative_to(FRONTEND_DIR)
-            audio_entries[fpath.stem] = {
+            kind = audio_type(rel)
+            entry = {
                 "path": rel.as_posix(),
-                "type": audio_type(rel),
+                "type": kind,
                 "hash": file_hash(fpath),
             }
+            entry.update(audio_loop_metadata(fpath, kind))
+            audio_entries[fpath.stem] = entry
 
     return {
         "version": MANIFEST_VERSION,
@@ -213,6 +284,8 @@ def build_manifest() -> dict[str, Any]:
         "materials": materials,
         "meshes": meshes,
         "entities": entities,
+        "areas": areas,
+        "ui_menus": ui_menus,
         "audio": audio_entries,
     }
 
@@ -230,11 +303,13 @@ def main() -> None:
     n_mat = len(manifest["materials"])
     n_mesh = len(manifest["meshes"])
     n_ent = len(manifest["entities"])
+    n_area = len(manifest["areas"])
+    n_menu = len(manifest["ui_menus"])
     n_aud = len(manifest["audio"])
     print(
         f"Generated manifest: {n_img} images, {n_anim} animations, "
         f"{n_mat} materials, {n_mesh} meshes, {n_ent} entities, "
-        f"{n_aud} audio"
+        f"{n_area} areas, {n_menu} ui_menus, {n_aud} audio"
     )
 
 

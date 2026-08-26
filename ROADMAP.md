@@ -15,7 +15,7 @@ The engine is not a separate product — it is the lower half of this same repos
 │  ENGINE API  (stable, versioned)        │
 ├──────────────┬──────────────────────────┤
 │  Simulation  │  Rendering               │
-│  (Python)    │  (JavaScript / WebGPU)   │
+│  (Python)    │  (wgpu)                  │
 └──────────────┴──────────────────────────┘
 ```
 
@@ -39,13 +39,13 @@ As of the split after Phase 13, this `engine` branch carries engine/tooling code
 | 5 | Asset Pipeline | ✅ Complete |
 | 6 | Save / Load / Persistence | ✅ Complete |
 | 7 | UI Framework | 🔲 In Progress — engine-layer half done & verified (`client/engine/ui/`: custom-drawn primitives, theme, nav w/ gamepad, render-to-texture panels, `run_ui_test.py`); game-layer half (rebuild the HUD, add inventory panel + dialogue box on a game branch) not started. See ui-framework.prompt.md. |
-| 8 | Audio | 🔲 Not started |
+| 8 | Audio | 🔶 In Progress (engine-branch scope, fallback playback path implemented and verified, 2026-08-25) — `client/engine/audio.py`: a `miniaudio`-backed fallback playback engine (master/`music`/`sfx`/`ambient` bus mixing, manual equal-power pan + linear distance attenuation, music streaming with crossfade, loop points) plus `client/engine/network.py`'s `play_music`/`stop_music`/`play_sfx` callback slots (Step 4) and `tools/build_manifest.py`'s audio scan extended with `ambient` classification + loop metadata (Step 2) are all done, verified via `run_audio_test.py` (headless, 25 assertions, no GPU/backend/game branch needed) against real project assets (`frontend/assets/audio/sfx/{footstep1,hit4}.wav`). **Real bug found and fixed via the prompt's own required cross-thread stress test, not theorized**: the mixer's per-sample Python mixing loop stalls past ~1000 simultaneous voices (confirmed: 1200 concurrent voices never drained); capped at `_MAX_SFX_VOICES = 64`, re-verified clean afterward. `miniaudio` confirmed installed from a prebuilt wheel and playing real audio on Windows during Step 3's own dependency checkpoint; Linux installation is still unconfirmed (`docs/DEBIAN_SETUP.md` not yet updated with any system-package finding). Not yet built, but buildable on `engine`: Step 6 (`backend/engine/osc.py`, the generic SuperCollider/OSC sender) and Step 8 (its hardening). Blocked on a game branch: Step 7 (mapping real gameplay events to OSC cues/`play_music` calls, and `backend/app.py`'s own SocketIO handlers — neither exists on `engine`). See `.github/prompts/audio.prompt.md`. |
 | 9 | Distribution & Tooling | 🔲 Not started |
 | 10 | 3D Coordinate Mapping | ✅ Complete (engine-branch scope) — Steps 1–14 all done; see `docs/graphics/ACTION_TRIGGERED_ANIMATIONS.md` and a full-repo audit logged in `completed/3d-coordinate-mapping.prompt.md`, 2026-08-20. Every step independently re-confirmed against current code, not just against the prompt's own prior claims; `run_gametick_test.py` re-run clean. Two things remain deliberately open, neither blocking "complete" on this branch: (1) Step 12's real backend wiring — `example_game_loop.py` is verified generic reference content, but a real game still needs its own `ACTION_DURATIONS`/revert logic in `player.py`/`actions.py`/`tick.py` on a game branch, which doesn't exist here by design (see CLAUDE.md's Branch model); (2) Step 8's fog/`ambientColor` stylization hooks are correctly ported to `client/engine/shader_cache.py` and documented, but `run_client_test.py` only isolates `vertex_color`/`affine_uv`/`color_levels` — fog/ambient have never been visually exercised on the Python client, a test-coverage gap, not a known defect. |
-| 11 | Area / Scene System | 🔲 Not started — **prompt not yet reconciled with the branch split**: `area-system.prompt.md` is written against `backend/game/area.py`, `backend/game/systems/systems.py`, `backend/game/tick.py`, and `client/game/area_viewer.py`, none of which exist on `engine` anymore. Needs a decision before starting: revise the prompt to target `client/engine/`/`backend/engine/` generically, or do this work on a game branch instead. |
-| 12 | Zones & Triggers | 🔲 Not started — new this session. Backend-only: `Zone`/`ZoneRegistry` (AABB or mesh-footprint volumes), declarative `on_enter`/`on_exit` effects (EventBus events, `GroupRegistry` membership, tag data/component application). Same `ecs_world`-not-populated caveat as everything else touching the ECS System pipeline — driven from `Area.update()`, not registered as a `System`, mirroring `backend/engine/group.py`'s own precedent. See zones.prompt.md. Depends on Phase 11 (`Area`/`Scene`) for the Area-file schema it extends. |
+| 11 | Area / Scene System | 🔶 In Progress (engine-branch scope implemented and verified, 2026-08-20) — `client/engine/scene.py`'s `Scene` (Steps 3–4, entities/camera/lighting/start_camera/zones, source-tagged refuse-on-collision, load/save round-trip), `client/engine/free_camera.py` + `client/engine/area_viewer.py` (Steps 6–7, the standalone viewer/builder tool, reclassified engine-layer — see `area-system.prompt.md`'s branch-reconciliation banner), a `scene_cue` callback slot in `network.py` (Step 8), and `docs/graphics/AREA_SYSTEM.md` (Step 12) are all done, verified via `run_scene_test.py` (headless) and live GPU runs of all three area-viewer modes against `frontend/assets/data/area/area-example.json`. Blocked on a game branch: Step 2 (`backend/game/area.py`'s schema extension), Step 5's game-layer shim (`game_state` is owned by `client/game/player_select.py`, which doesn't exist on `engine`), and Steps 9–10 (movement/collision fix, `ScriptComponent`/`ScriptMovementSystem` — also blocked a second, independent way: they target the `System`/`World` ECS pipeline `zones.prompt.md` documents as never populated, re-confirm before resuming either). |
+| 12 | Zones & Triggers | 🔶 In Progress (engine-branch scope implemented and verified, 2026-08-20) — `backend/engine/zone.py`: `Zone`/`ZoneRegistry` (AABB or mesh-footprint volumes, enter/exit de-dup), `contains_point` (both shapes; mesh footprints reduced to their 2D convex hull — a necessary correction found during implementation, raw mesh vertex order isn't a perimeter walk), and `apply_zone_effect` (all 8 declarative effect types — reclassified engine-layer from its original `backend/game/area.py` placement, since none of them are game-specific). Verified headless via `run_zone_test.py`, no backend/GPU/game branch needed. Same `ecs_world`-not-populated caveat as everything else touching the ECS System pipeline — driven from a plain `update()` call, not registered as a `System`, mirroring `backend/engine/group.py`'s own precedent. Only Step 5 (a one-line `Area.update()` wiring call, documented in `docs/graphics/AREA_SYSTEM.md`) stays blocked on a game branch — `Area` doesn't exist on `engine`. |
 | 13 | Native wgpu-py Desktop Client | ✅ Complete (18 of 18 steps; legacy PyWebView/JS client fully deleted, not just deprecated) — numbered out of chronological order (added after Phase 12 was already assigned); left as-is per this repo's own convention of not renumbering a completed, widely-cross-referenced phase. |
-| 14 | Level Editor & Asset Viewer | 🔲 Not started — same branch-split caveat as Phase 11 (`level-editor.prompt.md` extends `client/game/area_viewer.py`/adds `client/game/launcher.py`); also depends on Phase 11 landing first either way. Scope extended this session with Steps 13–15: Zone authoring (depends on Phase 12, above), a UI-menu editor built on Phase 7's `client/engine/ui/` with keybind/zone/entity-interact triggers, and an Action Definitions panel (Phase 10 Step 12's `actions.json`/`action_animations` *data* only — trigger-wiring stays real game code, deliberately not editor-authorable; see `docs/graphics/ACTION_TRIGGERED_ANIMATIONS.md`). |
+| 14 | Level Editor & Asset Viewer | 🔶 In Progress (engine-branch scope implemented, 2026-08-22) — `launcher.py`, `asset_preview.py`, `editor_commands.py`, `picking.py`, `gizmo.py` (imgui-overlay rendering, not a new GPU pipeline), the full property/asset-browser/grid/save panels, zone authoring, the UI-menu editor (`ui_editor.py`/`ui_menu_runtime.py`), and the Action Definitions panel are all built into `client/engine/area_viewer.py` and verified — pure logic (picking/gizmo/commands/zone-pose/action-registry math) via new unit tests, rendering/wiring via clean GPU boot tests with real and forced-selected data. **Real limitation, stated plainly**: no literal mouse-click/drag interaction was exercised (this environment can't simulate GLFW input events) — the math every handler calls is verified, the event-handler wiring itself needs a real interactive pass before trusting it fully. Also found and fixed while implementing: `client/main.py` had no path to the launcher at all (zero arguments fell through to real gameplay `main()` and crashed on `engine`); `AssetLoader` had no way to list a manifest category's contents (needed for the asset browser). Still blocked: `ScriptComponent`'s property-panel section (that component doesn't exist yet) and the UI-menu editor's `zone`/`entity_interact` trigger delivery (no `EventBus`→SocketIO bridge exists anywhere in this codebase). |
 
 ---
 
@@ -307,32 +307,61 @@ Define the stable API that game code calls into:
 ## Phase 8 — Audio
 
 **Goal:** Integrated audio engine for music and spatial sound effects.
+SuperCollider + OSC is the primary event-driven runtime path; a small
+Python playback engine is the fallback. Rebuilt 2026-08-25 against the
+native `client/`/engine-branch architecture — the original 8.1–8.3
+below targeted the deleted `frontend/js/` browser client's Web Audio
+API, which no longer applies (no browser, no autoplay policy, no
+`AudioContext`). See `.github/prompts/audio.prompt.md` for the full,
+current spec, including the engine/game-branch split this phase now
+requires (`backend/app.py`-side event mapping is a game-branch
+concern, same as Phases 11/12/14).
 
-### 8.1 — Web Audio API Wrapper
+### 8.1 — Engine-Layer Fallback Playback Engine
 
-- `AudioEngine` class: initialise `AudioContext` on first user interaction
-- Master gain, music bus, sfx bus, ambient bus
-- All audio routed through buses for global volume control
+- `client/engine/audio.py`: a `miniaudio`-backed playback engine,
+  opened at client startup (no user-gesture gate — native apps don't
+  need one)
+- Master volume, `music`/`sfx`/`ambient` buses, implemented as plain
+  gain multiplication in a manual mixing callback, not a node graph
+- All audio routed through its bus before the master multiplier;
+  nothing writes straight to the output device
 
 ### 8.2 — Music Playback
 
-- Streaming from `assets/audio/music/`
-- Crossfade between tracks on area transition
-- Loop points defined in audio manifest
+- Streaming/decoding from `frontend/assets/audio/music/` via
+  `client/engine/asset_loader.py` (direct filesystem read, no
+  `fetch()`)
+- Crossfade between tracks via a linear gain ramp inside the mixing
+  callback
+- Loop points defined in the audio manifest (`tools/build_manifest.py`
+  extended in Step 2 of the prompt file)
 
 ### 8.3 — Spatial SFX
 
-- `PannerNode` per active sound source
-- Entity position → panner x/y, camera defines listener position
-- Fire-and-forget API: `audioEngine.playSFX(sfxId, worldX, worldY)`
+- Manual stereo pan + distance attenuation per active voice, computed
+  from listener/source position vectors each mixer callback — a
+  deliberate approximation, not `PannerNode`/HRTF; real
+  spatialization quality is SuperCollider's job (8.4)
+- Listener position/orientation updates from whatever owns the live
+  `camera` dict each frame (`client/engine/camera_modes.py`/
+  `free_camera.py`'s `apply(camera)` convention), never a direct
+  `Scene` reference from the playback engine itself
+- Fire-and-forget API: `audio.play_sfx(asset_id, world_x, world_y, world_z)`
 
 ### 8.4 — Live Coding Option (SuperCollider + OSC)
 
-- Optional external audio pipeline for live-coded or procedural music design
-- Launch and supervise SuperCollider (`scsynth`/`sclang`) from backend startup
-- Use OSC bridge (`python-osc`) to send tempo, pattern, and event messages
-- Map game events (`area_enter`, `combat_start`, `low_health`) to OSC cues
-- Fallback to in-engine Web Audio playback if SuperCollider is unavailable
+- `backend/engine/osc.py`: generic, config-driven, no-op-safe OSC
+  sender (`send_tempo`/`send_pattern`/`send_event`) — engine-layer,
+  no game-event knowledge, mirroring where `EventBus`/`SpatialGrid`/
+  `GroupRegistry` already live
+- Launch and supervise SuperCollider (`scsynth`/`sclang`) optionally,
+  config-driven (`auto_launch`)
+- Mapping real game events (`area_enter`, `combat_start`,
+  `low_health`) to OSC cues is a game branch's own system
+  (`backend/game/systems/`), subscribing to `EventBus` — **blocked on
+  a game branch existing**, not buildable on `engine`
+- Fallback to `client/engine/audio.py` if SuperCollider is unavailable
 - Keep this path optional so packaged builds can ship without requiring SuperCollider
 
 ---
@@ -353,8 +382,8 @@ Define the stable API that game code calls into:
 ### 9.2 — Developer Tools
 
 - **Entity Inspector**: overlay panel listing all entities in the current area with live component values
-- **Perf Overlay**: frame time, tick time, entity count, GPU memory (available via `GPUDevice.limits`)
-- **Animation Preview**: a `client/`-native imgui tool that loads a `GPUSpriteSheet` and plays animation clips — not a `run_browser.py`-linked HTML page (that plan predates the native client and no longer applies)
+- **Perf Overlay**: superseded — Phase 14's level editor already has this (entity count + live FPS, in its Scene Settings panel), not a separate future page
+- **Animation Preview**: superseded — Phase 14's asset preview mode (`client/engine/asset_preview.py`) generalises this: orbit camera, live stylization toggles, animation playback, works for meshes/entities/materials, not just sprite clips. See [docs/graphics/AREA_SYSTEM.md](docs/graphics/AREA_SYSTEM.md#asset-preview-mode).
 
 ### 9.3 — Release Versioning
 
@@ -492,7 +521,7 @@ Define the stable API that game code calls into:
 
 ### 14.1 — Entry Point / Launcher
 
-- One landing screen (Open Area / New Area / View Asset), shown by `client/game/launcher.py` when the native client starts with no `--area`/`--asset` argument — manifest-driven (`"areas"` category, alongside the existing `"meshes"`/`"entities"`), zero backend connection required
+- One landing screen (Open Area / New Area / View Asset), shown by `client/engine/launcher.py` when the native client starts with no `--area`/`--asset` argument — manifest-driven (`"areas"` category, alongside the existing `"meshes"`/`"entities"`), zero backend connection required
 - Asset preview mode generalises and supersedes this document's own Phase 9.2 "Animation Preview" page concept — one orbit-camera viewer with live stylization toggles and animation playback, not a second redundant page
 
 ### 14.2 — Full Transform Gizmo

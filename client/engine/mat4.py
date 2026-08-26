@@ -17,6 +17,10 @@ X -- the returned matrix is Rx * Ry * Rz applied to a column vector
 project must use this exact convention -- it must match mat4.js's
 convention exactly, since both clients need to agree on how a
 transform3d/socket/keyframe rotation is interpreted.
+
+KEEP docs/graphics/MAT4.md IN SYNC -- any change to this file's
+function set, matrix layout, or Euler rotation convention must update
+that doc in the same change.
 """
 
 import math

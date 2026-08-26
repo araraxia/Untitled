@@ -61,6 +61,19 @@ class Component:
             raise ValueError("Cannot instantiate abstract Component base class.")
         return component_cls.from_dict(data)
 
+    @classmethod
+    def lookup(cls, type_name: str) -> "Type[Component] | None":
+        """Return the registered subclass for *type_name* (its class
+        name, e.g. ``"ColliderComponent"``), or ``None`` if
+        unregistered. Public accessor for ``_COMPONENT_REGISTRY`` --
+        `Component.from_dict` already uses the registry internally for
+        deserialisation; this is the same lookup exposed for callers
+        (e.g. `backend/engine/zone.py`'s `remove_component` effect)
+        that need to resolve a type by name without an instance/dict to
+        deserialise.
+        """
+        return _COMPONENT_REGISTRY.get(type_name)
+
 
 # Populated automatically by Component.__init_subclass__ above.
 _COMPONENT_REGISTRY: Dict[str, Type[Component]] = {}

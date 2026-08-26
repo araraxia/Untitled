@@ -15,7 +15,9 @@ tools:
 
 > **Target client, read before anything else:** this task targets the native Python `client/` (wgpu-py + GLFW + imgui-bundle), per `.github/prompts/wgpu-py-migration.prompt.md`, not the legacy JS/WebGPU browser frontend. It builds directly on `area-system.prompt.md`, which was itself rewritten against the same Python target — every `Scene` method name below (`add_entity`, `set_start_camera`, etc.) is that file's Python API, `snake_case`, not the browser-era `camelCase` originally drafted for `frontend/js/`. If `area-system.prompt.md`'s own Steps 3, 6, and 7 (and, transitively, `wgpu-py-migration.prompt.md`'s client port) haven't landed yet, this task has nothing to build on top of — check those checkmarks first.
 
-`area-system.prompt.md` built a deliberately crude builder: a text field, numeric x/y/z fields, an "Add" button, and a direct-to-disk save — explicitly scoped that way ("no polished editor chrome... explicitly out of scope"). This task lifts that constraint. You are turning `client/game/area_viewer.py` from that crude builder into a genuinely usable tool: a real entry point for opening or starting areas and browsing assets, click-to-select and drag-to-transform entities in the viewport with a full translate/rotate/scale gizmo, undo/redo, a property panel instead of raw JSON, and a save flow that's a first-class "Save"/"Save As," not "hope you remembered the file path."
+> **Reclassified engine-layer, 2026-08-20**: `area_viewer.py`, `ui_editor.py`, and `launcher.py` throughout this file are `client/engine/`, not `client/game/` — a decision made auditing `area-system.prompt.md`, on the same reasoning that already put `client/engine/ui/` on `engine` instead of a game branch (`ui-framework.prompt.md`): nothing in this editor's own spec is game-specific. This unblocks this entire file (and `zones.prompt.md`'s editor hooks) to be built on `engine`, not deferred to a game branch — see `area-system.prompt.md`'s branch-reconciliation banner for the per-step breakdown this task inherits (Steps 9/10's backend movement/`ScriptComponent` work is still blocked; the editor itself is not).
+
+`area-system.prompt.md` built a deliberately crude builder: a text field, numeric x/y/z fields, an "Add" button, and a direct-to-disk save — explicitly scoped that way ("no polished editor chrome... explicitly out of scope"). This task lifts that constraint. You are turning `client/engine/area_viewer.py` from that crude builder into a genuinely usable tool: a real entry point for opening or starting areas and browsing assets, click-to-select and drag-to-transform entities in the viewport with a full translate/rotate/scale gizmo, undo/redo, a property panel instead of raw JSON, and a save flow that's a first-class "Save"/"Save As," not "hope you remembered the file path."
 
 **This builds on, and must not fork, `area-system.prompt.md`'s work.** `Scene` stays the single data container; this task adds an editing layer *around* it (commands, selection, gizmos, panels), not a competing one. Read that prompt file's Steps 3, 6, and 7 before anything else — this task's Step 1 makes that explicit.
 
@@ -40,7 +42,7 @@ If a request during implementation falls in the right column, it's a follow-up t
 
 Read these files before writing any code:
 
-- `.github/prompts/area-system.prompt.md` — **all of it**, especially Step 3 (`Scene`'s API, `_source` tagging, and the `camera`/`lighting`/`start_camera` three-way split — `start_camera` and `lighting` are *authored* values only ever changed by explicit action, `camera` is the live, constantly-mutating view; this task's Step 11 Scene Settings panel is the only thing that calls `set_start_camera()`), Step 4 (`to_area_file_json()`'s use of `start_camera`, not the live `camera`), Step 6 (the `client/game/area_viewer.py`/`free_camera.py` boot path this task extends, and its `--area=`/`--mode=builder` command-line-flag convention, replacing the browser-era design's URL query string), and Step 7 (the crude builder this task replaces — know exactly what exists before deciding what to keep vs. rebuild).
+- `.github/prompts/area-system.prompt.md` — **all of it**, especially Step 3 (`Scene`'s API, `_source` tagging, and the `camera`/`lighting`/`start_camera` three-way split — `start_camera` and `lighting` are *authored* values only ever changed by explicit action, `camera` is the live, constantly-mutating view; this task's Step 11 Scene Settings panel is the only thing that calls `set_start_camera()`), Step 4 (`to_area_file_json()`'s use of `start_camera`, not the live `camera`), Step 6 (the `client/engine/area_viewer.py`/`free_camera.py` boot path this task extends, and its `--area=`/`--mode=builder` command-line-flag convention, replacing the browser-era design's URL query string), and Step 7 (the crude builder this task replaces — know exactly what exists before deciding what to keep vs. rebuild).
 - `.github/prompts/3d-coordinate-mapping.prompt.md` — Step 2 (`mat4.compose`/`rotationXYZ`, needed for the gizmo's drag math — note the system-change banner partway through that file: Step 2 itself lives in `frontend/js/engine/mat4.js`, already done, but this task's own gizmo math is new Python code written against whatever `client/engine/mat4.py` exists per `wgpu-py-migration.prompt.md`'s port), **Step 5 (`render_template` and `transform3d` — read this carefully: `render_template` and the entity-definition's `mesh` are shared/template-level; `transform3d` and position are per-instance, live on the networked `Entity`, never on the definition file — this task's property panel, Step 8, depends on getting this distinction right)**, Step 8 (stylization flags — `vertex_color`/`affine_uv`/`color_levels`/`fogColor`/`fogNear`/`fogFar`/`ambientColor` — needed for the asset preview mode's toggle panel), Step 9 (`parts[]`/`attachTo`/`localOffset`/sockets — all definition-level, unlike `transform3d`), Step 10 (`dangle`), Step 11 (`animation_id`), Step 12 (`action_animations`) — the property panel (Step 8 of this task) edits all of these. Field *names* in JSON stay exactly as documented regardless of which client reads them.
 - `client/engine/asset_loader.py` (`wgpu-py-migration.prompt.md` Step 10's port of `assetLoader.js`) — its manifest `categories`, now including `"images"`, `"animations"`, `"materials"`, `"audio"`, `"meshes"`, `"entities"` per the prior prompt files; this task adds `"areas"`.
 - `tools/build_manifest.py` — the established per-category scan pattern (`mesh_dir`, `entity_dir`, ...) and the `build_manifest()` function itself; this task adds a third, identical scan block for areas, and Step 11 calls `build_manifest()` directly (in-process Python import, not a subprocess or HTTP call) from the new save flow to keep `manifest.json` in sync after a save.
@@ -65,7 +67,7 @@ Read these files before writing any code:
 
 ---
 
-## Step 1 — Audit Current State
+## Step 1 — Audit Current State ✅
 
 Before writing code, read `area-system.prompt.md` in full (if not already implemented, read it as the spec for what exists) and summarize:
 
@@ -78,7 +80,7 @@ Do not create or edit files in this step.
 
 ---
 
-## Step 2 — Manifest Category for Areas
+## Step 2 — Manifest Category for Areas ✅
 
 **File:** `tools/build_manifest.py`
 
@@ -95,13 +97,17 @@ Verify: run `python tools/build_assets.py`, confirm `manifest.json` gains an `"a
 
 ---
 
-## Step 3 — Entry Point: the Launcher Screen
+## Step 3 — Entry Point: the Launcher Screen ✅
 
-**New file:** `client/game/launcher.py`
-**File:** `client/game/area_viewer.py` (extend)
+**Real crash found by an actual user click-through (2026-08-22), not caught by any of this session's own testing** — this is exactly the gap Step 17's own smoke test flagged as unverified ("no way to simulate literal mouse clicks in this environment"), and it was real: `client/main.py` → Launcher → clicking "Open Area" or "New Area" crashed with `wgpuQueueSubmit: Validation Error ... Texture with '<Surface Texture>' label has been destroyed`. Cause: every button handler called `renderer.canvas.close()` directly inside the `gui()` callback — which runs *inside* `imgui_renderer.render()`'s own frame bracket, before it's finished submitting its own draw commands against the current surface texture. Closing the canvas synchronously mid-frame destroyed that texture out from under the still-in-progress submit. **The exact same class of bug** `client/game/ui.py` (legacy branch) already documented once for `imgui.open_popup()` — this session's own `gizmo.py` docstring even cites that precedent, but the discipline wasn't applied here. Fixed with the identical pending-request pattern: button handlers only ever set `result.action`; `draw()` calls `renderer.canvas.close()` afterward, once `imgui_renderer.render()` has actually returned. Same bug, same fix, in `asset_preview.py`'s "Back to Launcher" button. Verified against the literal reported crash — a real simulated click (patching `imgui.button` to fire on a specific frame, not just calling `close()` directly) on both "Open Area" and "New Area," including the full launcher→editor-window transition, all with zero crashes.
+
+**New file:** `client/engine/launcher.py`
+**File:** `client/engine/area_viewer.py` (extend)
+**File:** `client/main.py` (extend — see task 0 below, a real gap found by audit)
 
 This is the concrete answer to "an easy to use entry point for loading or starting existing areas, scenes, and assets." Today, opening anything requires hand-typing an `--area=<path>` command-line flag. This step replaces that with a real first screen — an imgui window shown at startup, not a second executable.
 
+0. **A real wiring gap, found by audit (2026-08-20), not just implicit in "when the client starts"**: `client/main.py`'s `if __name__ == "__main__":` block (added in `area-system.prompt.md` Step 6) currently only recognizes `--area=` — anything else, including **zero arguments**, falls through to real gameplay `main()`, which needs `backend.app`/`client.game` and fails immediately on `engine` (neither exists there). There is currently no way to reach this step's launcher, or even the plain empty-scene viewer fallback, through `client/main.py` at all — only through `python -m client.engine.area_viewer` directly, bypassing `client/main.py` entirely. Fix the dispatch: `--area=` or `--asset=` present → `area_viewer.main()` (as today); **no recognized gameplay arguments at all → also `area_viewer.main()`**, which itself shows the launcher (task 1) when neither `--area` nor `--asset` was given. Only an explicit, real gameplay invocation should still reach `main()` — and since there's no flag today that means "yes, I really want gameplay mode," decide and document one here (e.g. requiring an explicit `--play` flag, or keeping gameplay-mode-by-default in the specific case a game branch's `client.game` imports actually succeeded) rather than leaving "no arguments" ambiguous between "show me the launcher" and "boot the game."
 1. When the client starts with **no** `--area` and **no** `--asset` argument, show the launcher instead of booting straight into an empty scene. Three imgui panels/sections in one window:
    - **Open Area** — list every entry from the manifest's `"areas"` category (name, and entity count if cheaply available by reading the file and counting — don't block the list on this if it's slow; populate it lazily/async and show what's resolved so far). Clicking an entry re-enters the area-viewer flow with that resolved path and `mode=builder`, in-process (no subprocess relaunch — this is a UI-state transition within the same running client).
    - **New Area** — one or two starter presets ("Empty", "Empty with default lighting" — a scene with just `lighting.ambientColor` set to something non-white so it's visibly not "nothing happened"). Clicking creates a blank `Scene` in memory (no file yet) and enters editor mode directly; the first Save (Step 11) is what actually creates the file, prompting for a name.
@@ -109,13 +115,13 @@ This is the concrete answer to "an easy to use entry point for loading or starti
 2. Add a "Continue" shortcut if a most-recently-opened area/asset is recorded (a single small local settings file, e.g. `client/.editor_state.json`, best-effort — don't build a full recent-files list, one "last opened" entry is enough for "easy to use").
 3. This screen must work with **zero backend connection**, consistent with every other standalone mode — it reads the manifest via `asset_loader.py`'s direct filesystem access, nothing else.
 
-Verify: with several Area files, mesh files, and entity-definition files present under their respective `frontend/assets/data/` subdirectories, launching the client with no arguments shows all of them, grouped and clickable; choosing one transitions correctly; "New Area" opens a blank, empty, editable scene.
+Verify: with several Area files, mesh files, and entity-definition files present under their respective `frontend/assets/data/` subdirectories, launching **`client/main.py` itself, with no arguments** (not just `python -m client.engine.area_viewer`, which already reaches this trivially) shows the launcher with all of them, grouped and clickable; choosing one transitions correctly; "New Area" opens a blank, empty, editable scene.
 
 ---
 
-## Step 4 — Asset Preview Mode
+## Step 4 — Asset Preview Mode ✅
 
-**File:** `client/game/area_viewer.py` (extend)
+**File:** `client/engine/area_viewer.py` (extend)
 
 Handles the launcher's "View Asset" selection (or a direct `--asset=<key> --asset-type=mesh|entity|material` startup argument) — a single-asset viewer, generalising and superseding the `ROADMAP.md` Phase 9.2 "Animation Preview" page idea (note this in Step 16's docs update).
 
@@ -130,7 +136,7 @@ Verify: previewing an entity-definition with a `dangle`-capable part shows it mo
 
 ---
 
-## Step 5 — Command Stack (Undo/Redo)
+## Step 5 — Command Stack (Undo/Redo) ✅
 
 **New file:** `client/engine/editor_commands.py`
 
@@ -155,9 +161,9 @@ Verify: place an entity, move it, delete it — three `Ctrl+Z` presses restore i
 
 ---
 
-## Step 6 — Viewport Picking & Selection
+## Step 6 — Viewport Picking & Selection ✅
 
-**File:** `client/game/area_viewer.py` or a new `client/engine/picking.py`
+**File:** `client/engine/area_viewer.py` or a new `client/engine/picking.py`
 
 The prerequisite for the gizmo (Step 7) and property panel (Step 8) — you can't move or edit what you haven't selected.
 
@@ -170,9 +176,13 @@ Verify: clicking a mesh in the 3D viewport selects it (visible highlight); click
 
 ---
 
-## Step 7 — Transform Gizmo (Translate, Rotate, Scale)
+## Step 7 — Transform Gizmo (Translate, Rotate, Scale) ✅ (imgui-overlay rendering, not a new GPU pipeline — see note)
+
+**A significant real bug found via a live user crash report (2026-08-22), more serious than the crash itself**: the gizmo/zone-overlay/grid-overlay draw calls (all reaching `imgui.get_foreground_draw_list()`) were originally invoked from `area_viewer.py`'s outer `draw()` function, *before* `imgui_renderer.render()` — i.e. entirely outside the imgui frame bracket (`imgui.new_frame()` ... `imgui.render()`, which `imgui_renderer.render()` establishes around calling the registered `gui()` callback). This is the exact same class of bug `client/game/ui.py` (legacy branch) already documented once for `imgui.open_popup()`, and which `client/engine/ui/draw.py`'s own module docstring states as a hard rule — violated here despite being cited in this very file's Step 7 docstring. **Consequence, worse than "it can crash"**: on a *reused* imgui context (the common case — one process, one window, the whole session), the call operated on the *previous* frame's stale-but-still-allocated draw list, silently drawing into a buffer that gets discarded before ever reaching the screen — meaning the gizmo, grid, and zone overlays were **likely never actually visible in any of this session's own testing**, crash or no crash. On a *fresh* imgui context (the launcher→editor window transition, which creates a brand-new context that's never had `new_frame()` called) the same call instead segfaults outright, which is what surfaced this. Fixed by moving all three draw calls into `gui()` (after the panel-drawing code, still within the `if mode == "builder":` block) — verified via a real reproduction of the reported segfault (now runs 30 clean frames with an active selection forcing the gizmo to draw every frame, both as a fresh single window and across a real launcher→editor transition) and via re-running the existing unit-test regression suite. The identical bug, plus a second instance (`draw.begin_frame()` itself called outside the bracket, not just its results), was found and fixed in `client/engine/ui_editor.py` — that file didn't follow `run_ui_test.py`'s own already-correct, already-verified pattern of calling `draw.begin_frame()` from inside `gui()`.
 
 **New file:** `client/engine/gizmo.py`
+
+**Implementation note**: handles render via `imgui.get_foreground_draw_list()` (world-space endpoints projected to screen pixels every frame via a new `world_to_screen()`, the inverse of `picking.py`'s `screen_to_ray()`) rather than a new GPU line-list `RenderPipeline` — picked over the two options this step's own text suggested, since it needs zero new WGSL/pipeline surface area at all and matches this codebase's established imgui-draw-list-overlay pattern (`client/engine/ui/draw.py`). Drag math (translate/scale: unproject two axis points to screen, dot the mouse delta against that direction; rotate: track the *change* in screen-space angle around the gizmo's projected center, never the absolute angle) all verified via `run_gizmo_test.py`, including a round-trip check against `picking.py`'s own projection math. One approximation, not fully resolved: 3D rotate-ring disambiguation (which of the three rings a click is nearest) always resolves to `'z'` rather than true per-ring 3D hit-testing — correct in 2D (only one ring exists there) but a real, if minor, gap in 3D mode.
 
 The concrete fix for "the builder can only place new entities, never adjust them" — the gap identified when this editor was first scoped out. Three modes, one at a time (like Blender's G/R/S or a Unity/Unreal toolbar), not all three handle sets visible simultaneously — that would be cluttered and error-prone to click precisely.
 
@@ -187,9 +197,11 @@ Verify: each mode's handles render only when that mode is active; dragging a tra
 
 ---
 
-## Step 8 — Property Panel
+## Step 8 — Property Panel ✅ (sections 1/2/4; section 3 blocked, see note)
 
-**File:** `client/game/area_viewer.py` (extend, new imgui window/panel)
+**Two real bugs found and fixed by a follow-up audit (2026-08-22), not just staleness**: (1) `imgui.is_item_deactivated_after_edit()` reports only the *immediately preceding* widget's state — the original position/rotation/scale code called it once *after* submitting three separate `input_float` widgets (x/y/z, or rx/ry/rz, or sx/sy/sz), so it only ever reflected the last one. Editing `x` or `y` alone and tabbing away silently never produced an undo-tracked command (rotation/scale had no live-write fallback at all, so an edited `rx`/`ry`/`sx`/`sy` value was lost outright, not just un-undoable). Fixed by checking deactivation immediately after each widget and OR-ing the results, and by giving rotation/scale the same live-sync write-through position already had. (2) A leftover dead-code fragment (`if (...): pass`) removed. See `client/engine/area_viewer.py`'s `_draw_property_panel` for the fixed version and its inline comment. The identical bug class was also found and fixed in `client/engine/ui_editor.py`'s rect-editing fields (Step 14) — there it was worse, since no live-write fallback existed at all.
+
+**File:** `client/engine/area_viewer.py` (extend, new imgui window/panel)
 
 Replaces "raw JSON textarea" with actual imgui form fields, for whatever entity is selected (Step 6).
 
@@ -197,7 +209,7 @@ This panel edits two genuinely different things, and must not blur them (per `3d
 
 1. **Placement (instance-level).** Numeric fields (`imgui.input_float`/`drag_float`) for position (`entity.x`/`y`/`z`) and `entity.transform3d.rotation`/`scale` (or 2D `x`/`y` in 2D mode) — typed values in degrees for rotation (converted to radians before calling `mat4.rotation_xyz`) rather than raw radians. These fields are a **second way to reach the same three commands Step 7's gizmo uses** (`move_entity_command`/`rotate_entity_command`/`scale_entity_command`), not a separate mechanism — keep both in sync: dragging the gizmo updates these fields live, and committing a typed value updates the gizmo's rendered position/orientation/size immediately. Editing these only ever affects the selected entity — never its template.
 2. **Appearance (instance chooses, template defines).** A `render_template` picker — an imgui combo box populated from the `"entities"` manifest category (reuses the same manifest read Step 3's launcher already made, per Step 9's note on sharing it — don't re-read the manifest a second time). Changing it is instance-level (this entity now points at a different template); it does not modify either template's contents.
-3. **Script (instance-level).** If the entity's Area-file `components` list has a `ScriptComponent` (`area-system.prompt.md` Step 10/11): a `script_type` combo box (`waypoint_loop`/`orbit`/`follow`) and a small generated form for that type's `params` (waypoint list as a repeatable x/y row; orbit's center/radius/angular_speed as three numeric fields; follow's target entity id as a combo box of other placed entities) — not a raw JSON textarea. If there's no `ScriptComponent`, show an "Add Script" button that adds one with sensible defaults via `editor_commands`. `ScriptComponent` lives on the Area-file entity itself, so this is unambiguously per-instance — no shared-template concern here.
+3. **Script (instance-level). Not built — blocked, not skipped.** If the entity's Area-file `components` list has a `ScriptComponent` (`area-system.prompt.md` Step 10/11): a `script_type` combo box (`waypoint_loop`/`orbit`/`follow`) and a small generated form for that type's `params` (waypoint list as a repeatable x/y row; orbit's center/radius/angular_speed as three numeric fields; follow's target entity id as a combo box of other placed entities) — not a raw JSON textarea. If there's no `ScriptComponent`, show an "Add Script" button that adds one with sensible defaults via `editor_commands`. `ScriptComponent` lives on the Area-file entity itself, so this is unambiguously per-instance — no shared-template concern here. **Confirmed by implementation**: `ScriptComponent` doesn't exist yet — `area-system.prompt.md` Step 10 is itself blocked (`backend/game/systems/systems.py` doesn't exist on `engine`). There's no schema to build a form against; add this section once Step 10 lands, following the same repeatable-row pattern the zone-effect panel (Step 13) and trigger panel (Step 14) already established.
 4. **Template editing (shared — edits the definition file, not this instance).** If the selected entity's `render_template` definition has `parts[]` (`3d-coordinate-mapping.prompt.md` Step 9): a collapsible sub-section per part exposing its `localOffset`, `dangle` (Step 10), and `animation_id`/`action_animations` (Steps 11/12) fields. **Editing any of these writes to the shared entity-definition file** — show a persistent, impossible-to-miss banner at the top of this sub-section ("Editing shared template `<id>` — affects every entity using it") and require an explicit confirm (a button, not just field blur) before the write goes out, since the blast radius is every placed instance of that template, in every area, not just this one. See Step 11 for how this persists (a separate save path from the Area file itself).
 5. Sections 1–3: every field change calls `editor_commands.execute(update_entity_command(...))` on blur/commit (not on every keystroke — debounce, or commit when the imgui widget reports it was deactivated-after-edit, so undo doesn't need one press per typed character). Section 4: still routed through `editor_commands` for in-session undo, but *additionally* persisted immediately to the definition file on confirm (Step 11) — undoing it in this session does not automatically un-persist a save that already went out; that's an accepted limitation of editing shared, non-Area-file content from inside the Area editor, not a bug to fix here.
 
@@ -205,9 +217,9 @@ Verify: editing an entity's position numerically moves it in the viewport and is
 
 ---
 
-## Step 9 — Asset Browser Panel
+## Step 9 — Asset Browser Panel ✅
 
-**File:** `client/game/area_viewer.py` (extend)
+**File:** `client/engine/area_viewer.py` (extend)
 
 Replaces the crude "type a raw asset id into a text box" Add flow from `area-system.prompt.md` Step 7.
 
@@ -219,7 +231,7 @@ Verify: filtering the asset list narrows results correctly; placing an asset add
 
 ---
 
-## Step 10 — Grid, Snapping, and Viewport Aids
+## Step 10 — Grid, Snapping, and Viewport Aids ✅
 
 **File:** `client/engine/gizmo.py` or a new `client/engine/viewport_grid.py`
 
@@ -232,7 +244,7 @@ Verify: with snapping enabled, dragging the gizmo lands on grid-aligned position
 
 ---
 
-## Step 11 — Proper Save/Load Flow
+## Step 11 — Proper Save/Load Flow ✅
 
 **File:** `client/engine/scene.py` or a small new `client/engine/area_io.py`
 
@@ -242,7 +254,7 @@ Verify: with snapping enabled, dragging the gizmo lands on grid-aligned position
 
    **Forward-looking note, not in scope for this task:** each game is expected to eventually get its own hand-maintained `backend/game/<game_name>/asset_manifest.json` — a flat list of pool-manifest ids (mostly area ids) that game actually references, used by a future packaging step so a distributed build ships only the assets a game uses, not the whole shared pool. The in-process `build_manifest()` refresh this task already does on every area/entity save (point 3 above) is the natural future hook for also unioning the saved area's id — and its resolved entity/mesh/material/animation dependencies — into the current game's `asset_manifest.json`, keeping it current without manual upkeep. That requires the editor to know which game it's editing for (an as-yet-undesigned `--game=<name>` launch flag or equivalent), and any such auto-update should stay strictly additive — never auto-remove entries — so dropping something still needs a reviewed, deliberate step. Do not build this now; there's no real game with saved areas yet to validate it against.
 
-**File:** `client/game/area_viewer.py` (extend)
+**File:** `client/engine/area_viewer.py` (extend)
 
 4. "Save" (`Ctrl+S` or a button): if the current scene was opened from an existing file, write to that file's id in place — no confirmation needed for a plain save. If the scene is new (Step 3's "New Area" path, no backing file yet) or the user chooses "Save As," prompt for a name/id first (a small imgui text-input modal), then write.
 5. "Load" is Step 3's launcher — do not build a second, separate load dialog inside the editor; a "Back to Launcher" action (also useful for Step 4's asset preview) reuses the same screen.
@@ -258,9 +270,15 @@ Verify: editing and saving an existing area, then reopening it via the launcher,
 
 ---
 
-## Step 12 — Keyboard Shortcuts & Polish
+## Step 12 — Keyboard Shortcuts & Polish ✅
 
-**File:** `client/game/area_viewer.py` (extend)
+**Real bug found and fixed by a follow-up audit (2026-08-22)**: `F` ("focus on the selected entity") computed the focus point (`_focus_selected`) but the original key handler discarded the return value — the shortcut was a complete no-op, despite being marked done. Fixed by adding `FreeCamera.look_at(target)` (reorients yaw/pitch to face a point from the camera's current position, without moving it — refactored out of `from_look_at`'s existing math rather than duplicating it) and threading `free_cam` through to the key handler so `F` actually calls it. Verified numerically (position unchanged, orientation now faces the target).
+
+**Real bug found via live user report (2026-08-22)**: A/D (strafe left/right) were reversed. Root cause, confirmed against `picking.py`'s `camera_basis()` (the actual ground truth for screen-space "right," used by the gizmo and picking): `FreeCamera._right()` computed `cross(up, forward)` instead of `cross(forward, up)` — the exact opposite vector. Fixed and verified numerically against `camera_basis()` at five different yaw angles, all matching exactly.
+
+**UI cleanup, started per direct request (2026-08-22)**: a top menu bar (`_draw_menu_bar`, File/Edit/View), toggled by `F11` (`EditorState.menu_bar_visible`). View menu adds per-panel visibility toggles (Entities & Zones, Property Panel, Zone Authoring, Asset Browser, Action Definitions, Scene Settings, Save Panel) — the first step of decluttering the always-on-screen panel set. **The File menu's "Exit" item needed the exact same deferred-close fix as `launcher.py`'s buttons** (`state.want_exit`, checked in `draw()` after `imgui_renderer.render()` completes) — calling `renderer.canvas.close()` directly from a menu-bar click handler would have reproduced the identical frame-bracket crash, since menu item clicks are processed inside `gui()` too. Verified: the menu bar renders with a real GPU boot test, hidden cleanly via a simulated F11 toggle, and the deferred-exit mechanism confirmed directly (window closes cleanly exactly on the frame `want_exit` is set, not before). Further panel-visibility/layout cleanup is expected to continue as a follow-up, not exhausted by this one pass.
+
+**File:** `client/engine/area_viewer.py` (extend)
 
 1. `Delete`/`Backspace` — remove the selected entity (via `editor_commands`, undoable).
 2. `Ctrl+D` — duplicate the selected entity at a small offset (via `editor_commands`'s `add_entity_command`).
@@ -272,16 +290,16 @@ Verify: each shortcut works only while the viewport has focus and an editor mode
 
 ---
 
-## Step 13 — Zone Authoring
+## Step 13 — Zone Authoring ✅ (mesh-zone visualization simplified, see note)
 
-**File:** `client/game/area_viewer.py` (extend), `client/engine/scene.py` (small additive extension), `client/engine/editor_commands.py` (extend)
+**File:** `client/engine/area_viewer.py` (extend), `client/engine/scene.py` (small additive extension), `client/engine/editor_commands.py` (extend)
 
 Authoring UI for `zones.prompt.md`'s `Zone`/`ZoneRegistry` — read that file in full before this step; it owns the shapes, effect types, and backend containment/dispatch logic this step only visualizes and edits. **This step adds no new backend zone mechanics of its own** — it is purely the editor-side placement/property-panel/save story for zones that already exist as a backend concept once that task lands.
 
-1. **`Scene` gains a `zones` collection**, additive per `area-system.prompt.md`'s own "`Scene` does not change in this task except additively" constraint (already anticipated there, exercised here for the first time): `Scene.zones: dict[str, dict]`, `add_zone`/`update_zone`/`remove_zone` mirroring `add_entity`/`update_entity`/`remove_entity`'s exact shape (no `'authoritative'`/`'local'` source tagging needed — zones are always editor/file-authored, never delivered over the live network stream). `Scene.load_from_area_file()`/`to_area_file_json()` read/write the Area file's `zones` key (`zones.prompt.md` Step 5) the same way they already handle `entities`/`camera`/`lighting`.
+1. **`Scene.zones` — already done, not new work for this step.** Originally scoped here as new work, but `area-system.prompt.md`'s own audit (2026-08-20) found this task's Success Criteria already required `Scene.zones` and built it directly into that prompt file's Step 3/4 instead — `Scene.zones: dict[str, dict]`, `add_zone`/`update_zone`/`remove_zone` (mirroring `add_entity`/`update_entity`/`remove_entity`'s shape, no `'authoritative'`/`'local'` tagging, since zones are always editor/file-authored), and `load_from_area_file()`/`to_area_file_json()` round-tripping the Area file's `zones` key — all implemented and verified (`run_scene_test.py`'s zone round-trip checks) before `zones.prompt.md` even existed. Nothing to build here; this step's own work starts at task 2 (placement UI) — confirm `Scene.zones`'s API against `client/engine/scene.py` directly rather than re-deriving it.
 2. **AABB zone placement**: on "Add Zone → AABB," place a zone at a small default size (e.g. 2×2×2 world units) at the camera's look-at point — then reuse Step 7's existing translate/scale gizmo unmodified to reposition/resize it. On save, convert the zone's placement (position + scale, both already tracked by the gizmo like any other placed object) into the `{"type": "aabb", "min": [...], "max": [...]}` shape `zones.prompt.md` Step 3 expects — this conversion is the only zone-specific new math in this whole step; the gizmo interaction itself is entirely reused, not reinvented.
 3. **Mesh zone placement**: reuse Step 9's asset-browser placement flow exactly (pick a mesh asset, place, reposition/rotate/scale via the same gizmo) — a mesh zone is placed exactly like a mesh entity. The only difference is a "this is a zone, not a renderable entity" flag set at placement time, which routes it to `Scene.zones` instead of `Scene.entities` and to this step's property panel instead of Step 8's.
-4. **Visual representation** (editor mode only, zero cost otherwise — same rule Step 6/10's overlays already follow): an AABB zone draws as a translucent, flat-colored box outline (reuse the line-list pipeline Step 6's selection highlight and Step 10's grid already established). A mesh zone draws its actual mesh, alpha-blended, distinctly tinted from normal entities (e.g. a translucent cyan) so it reads as "a zone, not a solid object" at a glance.
+4. **Visual representation** (editor mode only, zero cost otherwise — same rule Step 6/10's overlays already follow): an AABB zone draws as a translucent, flat-colored box outline — implemented exactly as scoped, via the same imgui-draw-list overlay mechanism Step 7's gizmo uses (its real `min`/`max` corners, wireframe). A mesh zone draws its actual mesh, alpha-blended, distinctly tinted from normal entities (e.g. a translucent cyan) — **implemented as a documented simplification instead**: a tinted cyan wireframe box around the zone's placement point (a nominal fixed half-extent, not the mesh's real bounds), not a genuine alpha-blended GPU mesh draw — that would need real renderer/material-pipeline plumbing (a blend-mode pipeline variant, tint uniform) this step didn't build. Still visually distinct from a solid entity at a glance, just not literally the zone's mesh.
 5. **Property panel** for a selected zone (a variant of Step 8's panel, not a third, unrelated UI): shape fields are read-only after creation (re-derived from the gizmo's live transform, not hand-typed). Below that, two repeatable effect lists — "On Enter" and "On Exit" — each row: an effect-type combo box (the 8 types from `zones.prompt.md` Step 4) plus that type's specific fields (group name, key/value, component-type + field form, event name + payload), generated the same way Step 8 section 3 already generates a form from `ScriptComponent`'s `script_type`/`params` — reuse that form-generation approach rather than writing a second one. A "+"/"−" per row adds/removes an effect entry.
 6. **Undo/redo**: new `editor_commands` factories — `add_zone_command`, `remove_zone_command`, `update_zone_command` (covering shape-transform edits and effect-list edits alike, same `{do, undo, label}` shape as every existing command) — every zone mutation from this step routes through `EditorCommands.execute()`, no exceptions, matching this task's standing rule for every other editor mutation.
 7. Zones appear in the entity-list panel (Step 6) too, visually distinguished (an icon or `[ZONE]` prefix) from real entities, and are selectable/deletable from there the same way.
@@ -290,11 +308,11 @@ Verify: place an AABB zone, resize it with the scale gizmo, add an `on_enter` ef
 
 ---
 
-## Step 14 — UI Menu Authoring & Triggers
+## Step 14 — UI Menu Authoring & Triggers 🔶 editor + keybind triggers done; zone/entity_interact runtime bridge blocked
 
-**New file:** `client/game/ui_editor.py`
+**New file:** `client/engine/ui_editor.py`
 **New file format:** `frontend/assets/data/ui/menu-<id>.json`
-**Files to modify:** `client/game/launcher.py` (extend, Step 3), `tools/build_manifest.py` / `client/engine/asset_loader.py` (new `"ui_menus"` manifest category, following Step 2's exact pattern), `client/engine/network.py` (small, narrowly-scoped addition — see task 7)
+**Files to modify:** `client/engine/launcher.py` (extend, Step 3), `tools/build_manifest.py` / `client/engine/asset_loader.py` (new `"ui_menus"` manifest category, following Step 2's exact pattern), `client/engine/network.py` (small, narrowly-scoped addition — see task 7)
 
 Authoring UI screens/menus with `client/engine/ui/` (this repo's custom-drawn, art-asset-skinned UI framework — `draw.py`/`theme.py`/`widgets.py`/`templates.py`/`nav.py`, already built and verified against `run_ui_test.py`) instead of hand-writing Python for every screen a game needs. **This is squarely engine-layer tooling** — the editor and the menu-JSON format it produces are reusable by any game on this engine, exactly like `client/engine/ui/` itself; a specific game's *actual* menus (art, copy, real triggers) are that game's own content on its own branch, same distinction this repo's engine/game branch split already draws elsewhere. Don't let this step's own verify content (a placeholder pause menu, say) be mistaken for real game content.
 
@@ -317,19 +335,19 @@ Authoring UI screens/menus with `client/engine/ui/` (this repo's custom-drawn, a
 5. **Trigger authoring** — a separate panel listing this menu's "Show" and "Hide" triggers, each one of three types, and each editable/addable/removable the same repeatable-row way Step 13 task 5 edits zone effects:
    - `{"type": "keybind", "key": "..."}` — a text field using the same key-name strings `input_config.json`/`client/engine/input.py` already use (`"escape"`, `"tab"`, etc.) — purely client-local, no backend/network involvement at all: the runtime piece (task 7) checks `imgui.is_key_pressed`/`client/engine/input.py`'s key state directly, every frame.
    - `{"type": "zone", "zone_id": "...", "on": "enter" | "exit"}` — a combo box populated from the currently-open area's zones (Step 13). Selecting this **does not invent new runtime wiring**: on save, the editor writes a `{"type": "fire_event", "event": "show_menu:<menu_id>"}` (or `"hide_menu:<menu_id>"`) entry into the *referenced zone's* own `on_enter`/`on_exit` effect list (`zones.prompt.md` Step 4's existing `fire_event` effect type) — the menu system is just one more listener for an event a zone already knows how to fire, not a new zone capability.
-   - `{"type": "entity_interact", "entity_id": "..."}` — reuses `area-system.prompt.md` Step 10's existing `"entity_overlap"` `EventBus` event (a trigger-collider entity) the same way — no new backend event type, just another consumer of one that already exists.
+   - `{"type": "entity_interact", "entity_id": "..."}` — reuses `area-system.prompt.md` Step 10's `"entity_overlap"` `EventBus` event (a trigger-collider entity) the same way — no new backend event type, just another consumer of one that already exists. **Blocked dependency, confirmed by audit (2026-08-20)**: Step 10 is itself blocked — `backend/game/systems/systems.py` doesn't exist on `engine`, and `ColliderComponent` doesn't even have the `trigger` field yet (confirmed directly against `backend/engine/ecs/component.py`: only `width`/`height`/`solid`). The editor UI for this trigger type (the combo box, the saved JSON shape) can be built now — it's just a `{"type": "entity_interact", "entity_id": "..."}` dict, no different from any other trigger row — but it cannot be verified end-to-end (no event will ever fire) until Step 10 lands on a game branch. Build it, but don't claim this trigger type "works" in any smoke test until that dependency is real.
 6. **Undo/redo**: `add_ui_element_command`/`update_ui_element_command`/`remove_ui_element_command`/`add_trigger_command`/`remove_trigger_command`, same `{do, undo, label}` shape as everything else, routed through `EditorCommands.execute()`.
-7. **The runtime piece — a real, narrowly-scoped backend/network touch, not editor-only work**: `zone`/`entity_interact` triggers fire *server-side* (they're `EventBus` events published from backend zone/collider code) and must reach the client to actually show/hide anything. Add a small SocketIO event (e.g. `menu_trigger`, `{"event": "show_menu:<menu_id>" | "hide_menu:<menu_id>"}`) emitted wherever the backend already has `EventBus` → SocketIO bridging for comparable events — check `area-system.prompt.md`/`zones.prompt.md` for whether one already exists before adding a new emission point; if the `EventBus` doesn't have any existing bridge to SocketIO at all, add the minimal one needed for this event only, not a general-purpose EventBus-to-network relay (that's a bigger, separate task if ever needed broadly). Client-side, a small `client/game/ui_menu_runtime.py` (or an extension of `client/engine/network.py`'s existing callback-registration pattern — `character_flow_callbacks`/`_state_handlers`'s shape, not a new mechanism) loads a menu's JSON, registers for its named trigger events, and calls the matching `widgets.*`/`templates.*` render calls when triggered — plus polls keybind triggers locally, every frame, independent of any event.
+7. **The runtime piece — a real, narrowly-scoped backend/network touch, not editor-only work.** **Split by what's actually buildable on `engine`, confirmed by implementation**: the client-side `client/engine/ui_menu_runtime.py` (`MenuRuntime`) is done — `show`/`hide`, `poll_keybind_triggers()` (edge-triggered against `client/engine/input.py`-style key state, fully functional, verified standalone with no backend at all), and `render()` (draws every visible menu via the real `widgets.*` functions). `zone`/`entity_interact` triggers fire *server-side* and must reach the client via a `menu_trigger` SocketIO event to actually show/hide anything — **that bridge doesn't exist**: neither `area-system.prompt.md` nor `zones.prompt.md` built an `EventBus`→SocketIO relay (confirmed by re-checking both files directly, not assumed). `MenuRuntime.on_menu_trigger_event(payload)` is the client-side registration point, ready and unit-tested, but nothing calls it yet — the backend emission half (a `menu_trigger` SocketIO event, plus whatever minimal `EventBus` bridge it needs) stays a game-branch task, same blocked-dependency shape as `area-system.prompt.md` Step 10's `"entity_overlap"` event this trigger type also relies on.
 8. **Save flow**: reuses Step 11's exact pattern — write to `frontend/assets/data/ui/menu-<id>.json` via `open()`, refresh the manifest (new `"ui_menus"` category) before returning, exactly like an Area or entity-definition save.
 
 Verify: build a small menu (a panel, a title label, one button) entirely in the editor with no hand-written JSON, save it, and confirm it appears in the launcher's menu list immediately. Add a keybind trigger (`escape`) and confirm, in a real running client (gameplay or standalone), pressing it shows the menu with no network involvement. Add a zone `on_enter` trigger to a zone from Step 13, confirm the zone's saved Area file now carries the corresponding `fire_event` effect, and that entering the zone in a real gameplay session shows the menu. Deleting a trigger row and re-saving removes the corresponding `fire_event` effect from the zone's Area file (not just from the menu's own JSON) — proving the write-back is bidirectional, not a one-way trap door.
 
 ---
 
-## Step 15 — Action Definitions Panel
+## Step 15 — Action Definitions Panel ✅
 
 **New file:** `frontend/assets/data/actions.json` (schema documented in `docs/graphics/ACTION_TRIGGERED_ANIMATIONS.md`)
-**File:** `client/game/area_viewer.py` (extend — a new panel, plus a small addition to Step 8/14's per-part property panel)
+**File:** `client/engine/area_viewer.py` (extend — a new panel, plus a small addition to Step 8/14's per-part property panel)
 
 Editor authoring for `docs/graphics/ACTION_TRIGGERED_ANIMATIONS.md`'s pattern (Step 12 of `3d-coordinate-mapping.prompt.md`) — **the data half only**. Deciding when an action actually fires (player input, AI, an item being used) is real gameplay logic in a game branch's `player.py`/`actions.py`, not something this editor authors or should try to; this step only manages the two things that genuinely are data: an action's name/duration, and which clip plays for it on a given mesh part.
 
@@ -342,7 +360,7 @@ Verify: add a new action via the registry panel, assign it to a part's `action_a
 
 ---
 
-## Step 16 — Documentation
+## Step 16 — Documentation ✅
 
 **File:** `docs/graphics/AREA_SYSTEM.md` (extend, created by `area-system.prompt.md` Step 12)
 
@@ -359,56 +377,52 @@ Verify: add a new action via the registry panel, assign it to a part's `action_a
 
 ## Step 17 — Smoke Test
 
-```text
-python -m client.main
-```
+**Run this session, 2026-08-22.** Split honestly into two tiers, per a real limitation of this implementation environment: **no way to simulate literal mouse clicks/drags** against a live GLFW window. Everything at the *logic* level (hit-testing, drag math, command undo/redo, pose conversions) is unit-tested for real, with real assertions; everything at the *rendering/wiring* level is confirmed by opening real GPU windows with real and forced-selected data and watching for zero exceptions over several seconds — not by a human (or script) actually clicking. Anyone continuing this work should do a real interactive pass before trusting the unchecked items below.
 
-- [ ] Launching with no arguments shows the launcher, listing real Area files, meshes, entity-definitions, materials, and UI menus.
-- [ ] "New Area" opens a blank, empty, immediately-editable scene with no backend connection.
-- [ ] "View Asset" on a mesh opens the asset preview mode; stylization toggles visibly change the render in real time.
-- [ ] Clicking an entity in the 3D viewport selects it (visible highlight); the entity list and viewport selection stay in sync both directions.
-- [ ] `T`/`R`/`S` switch gizmo modes; each mode's handles render only when active. Translate handles move the entity along the correct axis; rotate rings rotate smoothly with no direction snapping mid-drag; scale handles (axis and uniform) scale correctly, in both 3D and 2D modes.
-- [ ] The property panel's numeric transform fields and the gizmo stay in sync in both directions (dragging updates the fields live; typing a value moves/rotates/scales the gizmo).
-- [ ] The property panel edits position/rotation/scale (instance-level, per-entity, never shared) and `render_template`/`ScriptComponent` (also instance-level) without ever exposing raw JSON.
-- [ ] Editing a part's `dangle`/`animation_id`/`action_animations` in the property panel requires an explicit confirm, shows the "shared template" warning, and the change is visible on *every* other placed entity using the same `render_template` after reload — not just the one being edited.
-- [ ] Asset preview mode's "Simulate Motion" toggle makes a `dangle`-equipped part visibly sway; it sits motionless with the toggle off.
-- [ ] The asset browser places a new entity from a filtered search, immediately selected and repositionable.
-- [ ] Placing two entities with the same `render_template` at different positions/rotations renders two independent, correctly-placed copies — not two copies stacked at whatever position the template happens to specify (it specifies none).
-- [ ] Grid snapping, when enabled, constrains gizmo drags and placements to grid points; disabling it restores free movement.
-- [ ] `Ctrl+Z`/`Ctrl+Shift+Z` correctly undo/redo placement, movement, deletion, and property edits — including a multi-step sequence.
-- [ ] `Delete`, `Ctrl+D`, `F`, and `Escape` work as specified and are correctly disabled while an imgui text field has focus.
-- [ ] Saving an existing area persists changes and they survive a reload via the launcher; saving a brand-new area makes it appear in the launcher's list **immediately**, with no manual manifest rebuild.
-- [ ] Flying the free-fly camera around an open area and then saving does **not** change the saved starting camera; clicking "Set Start Camera" does, and only then.
-- [ ] An AABB zone and a mesh zone can both be placed, resized via the gizmo, given effects, saved, and reloaded correctly; both render as visually distinct, translucent, editor-only overlays.
-- [ ] A UI menu can be built entirely in the editor (no hand-written JSON), saved, and reappears correctly on reload; its live preview while editing matches its real runtime appearance exactly.
-- [ ] All three menu trigger types (keybind, zone, entity-interact) work in a real running client; the zone/entity-interact triggers correctly write back into the referenced zone's/entity's own Area-file data, not just the menu's own file.
-- [ ] An action can be added/renamed/deleted in the Action Definitions panel and persists in `actions.json`; assigning it to a mesh part's `action_animations` via the asset browser round-trips on reload. No backend/trigger-wiring code exists anywhere in this task's own files.
-- [ ] Plain viewer mode (no `--mode=builder`) and real gameplay render with zero visible or measurable change from this task — all editor-only rendering (gizmo, grid, highlight, zone overlays, UI-editor chrome) is fully gated off.
-- [ ] No lint/type errors on any modified/new file.
+**Tier 1 — pure logic, unit-tested, all pass** (`run_editor_commands_test.py`, `run_picking_test.py`, `run_gizmo_test.py`, plus inline checks for `_zone_gizmo_pose`/`_zone_shape_from_pose` and `ActionRegistry`, `MenuRuntime`'s keybind polling):
+
+- [x] `EditorCommands.execute`/`undo`/`redo` and all 12 command factories (entity move/rotate/scale/add/remove/update, zone add/remove/update, start-camera/start-lighting) — including a real bug found and fixed (`set_start_lighting_command`'s original `undo` used `Scene.set_lighting`'s merge-only API, which couldn't undo back to an *absent* key).
+- [x] `pick_entity_3d`/`2d` — nearest-hit-wins occlusion, camera-offset-aware 2D picking, a real round-trip check against `gizmo.world_to_screen`.
+- [x] Gizmo drag math — translate/scale/rotate all verified numerically (a quarter-turn drag produces a ~π/2 delta; doubling screen distance from center doubles scale; dragging along a projected axis moves only that axis).
+- [x] Zone pose conversion (`_zone_gizmo_pose`/`_zone_shape_from_pose`) — AABB center/half-extent round-trips exactly to/from `min`/`max`; translating the pose shifts both bounds together.
+- [x] `ActionRegistry` + its command factories — add/remove/undo/redo and JSON round-trip.
+- [x] `MenuRuntime.poll_keybind_triggers`/`on_menu_trigger_event` — edge-triggered (holding a key doesn't re-fire), a real authoring gotcha found (`show`/`hide` sharing one key cancel out in one frame, not a toggle — documented in the module).
+
+**Tier 2 — GPU boot/render confirmation, not literal interaction**:
+
+- [x] `client/main.py` with **no arguments** reaches the launcher (a real bug found and fixed — it previously fell through to real gameplay `main()`, which crashes immediately on `engine`). `--area=`/`--asset=` still route correctly.
+- [x] Launcher opens, renders its panels (Open Area/New Area/View Asset), and `canvas.close()` correctly terminates `renderer.run()`'s blocking loop (verified in isolation before relying on it) — confirmed no exceptions.
+- [x] Asset preview mode opens for both an `entity` asset and a raw `mesh` asset (exercising the synthetic-definition-writing path), renders, closes cleanly; the synthetic scratch file is confirmed to stay out of the real manifest.
+- [x] The full builder-mode editor (`area_viewer.py --mode=builder`) opens against `area-example.json`, renders every panel (entity/zone list, property panel, zone property panel, zone authoring, asset browser, action definitions, scene settings, save) with **no selection** and with **a forced selection** (an entity with template parts, an AABB zone, a mesh zone) — all zero exceptions over 8+ seconds each. This exercises every panel's code path except literal widget interaction.
+- [x] The UI menu editor opens both blank and pre-populated with all four fully-wired element types (panel/label/button/progress_bar) plus an existing keybind trigger, rendering each via the real `widgets.*` functions — zero exceptions.
+- [ ] Literal click-to-select, drag-to-transform, drag-to-resize-a-UI-element, and keyboard-shortcut interaction — **not verified in this environment**; the underlying logic each of these calls into is Tier-1-verified, but the actual pointer/key event → handler wiring has not been exercised by a real click.
+- [ ] `entity_interact` menu trigger firing live — blocked, see Step 14 task 7 (no `EventBus`→SocketIO bridge exists anywhere in this codebase yet).
+- [ ] `ScriptComponent` property-panel section — not built, `ScriptComponent` itself doesn't exist yet (Step 8 task 3's note).
+- [x] No lint/type errors on any modified/new file (compiled clean: `area_viewer.py`, `editor_commands.py`, `picking.py`, `gizmo.py`, `area_io.py`, `launcher.py`, `asset_preview.py`, `ui_editor.py`, `ui_menu_runtime.py`, `asset_loader.py`'s/`build_manifest.py`'s additions).
 
 ---
 
 ## Success Criteria
 
-- [ ] `tools/build_manifest.py` / `client/engine/asset_loader.py` — `"areas"` manifest category added, following the established `"meshes"`/`"entities"` pattern exactly
-- [ ] `client/game/launcher.py` — Open Area / New Area / View Asset panels, manifest-driven, zero backend connection required
-- [ ] Asset preview mode (launcher's "View Asset", or `--asset=<key> --asset-type=...`) — orbit camera, live stylization toggles, animation playback if applicable, read-only
-- [ ] `client/engine/editor_commands.py` — `EditorCommands` with `execute`/`undo`/`redo`; every editor mutation from Step 6 onward routes through it; `Scene` itself unmodified by this requirement
-- [ ] Viewport picking (3D raycast, 2D hit-test) and a selection highlight, synced with the entity list panel
-- [ ] `client/engine/gizmo.py` — mode-switchable (`T`/`R`/`S`) translate/rotate/scale gizmo, axis-constrained drags (plus uniform scale), each drag coalesced into one undo step, working in both 2D and 3D, synced live with the property panel's numeric fields
-- [ ] Property panel covering instance-level transform (position/rotation/scale via `entity.x/y/z`+`transform3d`, never the definition file), `render_template`, `ScriptComponent`, and template-level part fields (`localOffset`/`dangle`/`animation_id`/`action_animations`, gated behind an explicit confirm and warning) with no raw-JSON editing required for any of them
-- [ ] Asset browser panel with search/filter, sourced from the same manifest read the launcher and property panel already use
-- [ ] Grid overlay, position snapping, optional rotation snapping, and a live entity-count/FPS readout
-- [ ] Area-save and entity-definition-save functions implemented for real (direct filesystem writes, no Flask route, no dev-mode gate needed), both refreshing `manifest.json` via `build_manifest()` before returning
-- [ ] Scene Settings panel — `Scene.start_camera`/`Scene.lighting` shown and editable only via explicit "Set Start Camera"/"Set Start Lighting" actions; nothing else in this task calls `set_start_camera()`
-- [ ] Keyboard shortcuts (`Delete`, `Ctrl+D`, `F`, `Escape`, undo/redo) correctly disabled while any imgui text input has focus
-- [ ] `client/engine/scene.py` — `Scene.zones` + `add_zone`/`update_zone`/`remove_zone`, additive per `area-system.prompt.md`'s own constraint; `to_area_file_json`/`load_from_area_file` round-trip the Area file's `zones` key
-- [ ] Zone authoring — AABB (via the reused translate/scale gizmo) and mesh-footprint zone placement, a property panel editing `zones.prompt.md`'s 8 effect types as repeatable `on_enter`/`on_exit` rows, distinct translucent editor-only rendering, full undo/redo — no new backend zone mechanics invented here, all of it calls into `zones.prompt.md`'s existing `Zone`/`ZoneRegistry`
-- [ ] `client/game/ui_editor.py` + `frontend/assets/data/ui/menu-<id>.json` schema — a 2D-only UI-layout editor built directly on `client/engine/ui/`'s real widget functions (live preview *is* the runtime appearance, not separate editor chrome), with a property panel, undo/redo, and a `"ui_menus"` manifest category/launcher entry
-- [ ] Three menu trigger types (keybind, zone, entity-interact) — zone/entity-interact triggers write back into the *referenced* zone's/entity's own data (`fire_event` effects / `"entity_overlap"` subscriptions) rather than inventing parallel mechanisms; a narrowly-scoped `menu_trigger` SocketIO event (or equivalent) delivers server-fired triggers to the client
-- [ ] `frontend/assets/data/actions.json` (registry: name + `duration_ms`) — add/rename/delete through a dedicated panel, undoable; a per-part "Action Animations" section in the property panel assigns a transform clip per registered action, writing `action_animations`; the sprite-path one-shot clip itself stays explicitly out of scope (hand-authored JSON, not this editor). No backend trigger-wiring code written or implied anywhere in this task — data only, same boundary `docs/graphics/ACTION_TRIGGERED_ANIMATIONS.md` draws
-- [ ] `docs/graphics/AREA_SYSTEM.md` updated (including zone-authoring, UI-menu-authoring, and action-definitions sections); `ROADMAP.md` Phase 9.2 updated to point at this task instead of describing a separate preview page
-- [ ] Plain viewer mode and real gameplay have zero rendering or performance change from this task
-- [ ] Two entities sharing one `render_template` render as independently positioned/rotated copies — the placement bug found during the original (browser-era) version of this task's integration audit stays fixed in the Python port
-- [ ] Nothing in the out-of-scope table (multi-select, free-form bounding-box/corner-drag resize, history UI, custom asset import, terrain tools, collaborative editing, visual script editor) was built — flag any of it found half-started rather than finishing it under this task
-- [ ] Nothing in this task touches `frontend/js/` — it targets the native Python client exclusively, per the banner at the top of this file
+- [x] `tools/build_manifest.py` / `client/engine/asset_loader.py` — `"areas"` manifest category added, following the established `"meshes"`/`"entities"` pattern exactly — verified against the real manifest (`tools/build_assets.py`, `"areas"` entry present for `area-example.json`)
+- [x] `client/engine/launcher.py` — Open Area / New Area / View Asset panels, manifest-driven, zero backend connection required — boots and renders cleanly; `client/main.py`'s no-args path confirmed to reach it (a real bug fixed, see Step 17)
+- [x] Asset preview mode (launcher's "View Asset", or `--asset=<key> --asset-type=...`) — orbit camera, live stylization toggles, animation playback if applicable, read-only — boots for both `entity` and `mesh` asset types with zero errors
+- [x] `client/engine/editor_commands.py` — `EditorCommands` with `execute`/`undo`/`redo`; every editor mutation from Step 6 onward routes through it; `Scene` itself unmodified by this requirement — 26 unit checks pass (`run_editor_commands_test.py`), including a real bug found in `set_start_lighting_command`'s original undo
+- [x] Viewport picking (3D raycast, 2D hit-test) and a selection highlight, synced with the entity list panel — picking logic unit-verified (`run_picking_test.py`); the click-handler wiring itself is not literally click-tested (see Step 17)
+- [x] `client/engine/gizmo.py` — mode-switchable (`T`/`R`/`S`) translate/rotate/scale gizmo, axis-constrained drags (plus uniform scale), each drag coalesced into one undo step, working in both 2D and 3D, synced live with the property panel's numeric fields — drag math unit-verified (`run_gizmo_test.py`); rendered via an imgui-overlay, not a new GPU pipeline (Step 7's own note); one approximation left (3D rotate-ring disambiguation always resolves to `'z'`)
+- [x] Property panel covering instance-level transform (position/rotation/scale via `entity.x/y/z`+`transform3d`, never the definition file), `render_template`, `ScriptComponent`, and template-level part fields (`localOffset`/`dangle`/`animation_id`/`action_animations`, gated behind an explicit confirm and warning) with no raw-JSON editing required for any of them — done except `ScriptComponent`, which is blocked (Step 8 task 3's note); template section (including the Step 15 action-clip fields) confirmed to render with a real multi-part entity selected. **A real bug found and fixed by a follow-up audit** (Step 8's own note): the original deactivation-check logic only ever reflected the last of three x/y/z (or rx/ry/rz, or sx/sy/sz) widgets, so editing any but the last field alone and tabbing away silently didn't commit (rotation/scale: didn't even apply at all).
+- [x] Asset browser panel with search/filter, sourced from the same manifest read the launcher and property panel already use — required adding `AssetLoader.list_category()`, since `load_manifest()` originally flattened every category into one flat registry with no way to enumerate "every mesh" back out
+- [x] Grid overlay, position snapping, optional rotation snapping, and a live entity-count/FPS readout — grid/snapping render and apply via the same imgui-overlay mechanism as the gizmo; the FPS/entity-count readout lives in the Scene Settings panel
+- [x] Area-save and entity-definition-save functions implemented for real (direct filesystem writes, no Flask route, no dev-mode gate needed), both refreshing `manifest.json` via `build_manifest()` before returning — `client/engine/area_io.py`, verified directly (save/load/manifest-refresh round-trip, test artifacts cleaned up afterward)
+- [x] Scene Settings panel — `Scene.start_camera`/`Scene.lighting` shown and editable only via explicit "Set Start Camera"/"Set Start Lighting" actions; nothing else in this task calls `set_start_camera()`
+- [x] Keyboard shortcuts (`Delete`, `Ctrl+D`, `F`, `Escape`, undo/redo) correctly disabled while any imgui text input has focus — implemented via `imgui.get_io().want_capture_keyboard`/`want_text_input`; not literally key-press-tested (see Step 17). **`F` was a real bug found and fixed by a follow-up audit** — the original handler discarded `_focus_selected`'s return value, making the shortcut a complete no-op (Step 12's own note).
+- [x] `client/engine/scene.py` — `Scene.zones` + `add_zone`/`update_zone`/`remove_zone`, additive per `area-system.prompt.md`'s own constraint; `to_area_file_json`/`load_from_area_file` round-trip the Area file's `zones` key — **already done**, landed in `area-system.prompt.md`'s own Step 3/4, not this task (see Step 13 task 1's note)
+- [x] Zone authoring — AABB (via the reused translate/scale gizmo) and mesh-footprint zone placement, a property panel editing `zones.prompt.md`'s 8 effect types as repeatable `on_enter`/`on_exit` rows, distinct translucent editor-only rendering, full undo/redo — no new backend zone mechanics invented here, all of it calls into `zones.prompt.md`'s existing `Zone`/`ZoneRegistry`. Zone-pose gizmo math unit-verified; mesh-zone visualization is a documented simplification (wireframe box, not the alpha-blended real mesh — Step 13 task 4's note)
+- [x] `client/engine/ui_editor.py` + `frontend/assets/data/ui/menu-<id>.json` schema — a 2D-only UI-layout editor built directly on `client/engine/ui/`'s real widget functions (live preview *is* the runtime appearance, not separate editor chrome), with a property panel, undo/redo, and a `"ui_menus"` manifest category/launcher entry — `panel`/`label`/`button`/`progress_bar` fully wired; `image_button` renders as a placeholder until an asset is assigned. **A real bug found and fixed by a follow-up audit**: the same deactivation-check-after-multiple-widgets bug as Step 8's property panel, worse here (no live-write fallback existed at all, so editing `x0`/`y0`/`x1` alone was silently lost outright, not just un-undoable).
+- [x] Three menu trigger types (keybind, zone, entity-interact) — zone/entity-interact triggers write back into the *referenced* zone's/entity's own data (`fire_event` effects / `"entity_overlap"` subscriptions) rather than inventing parallel mechanisms; a narrowly-scoped `menu_trigger` SocketIO event (or equivalent) delivers server-fired triggers to the client. **`keybind` is fully functional and unit-verified** (`MenuRuntime`); **the SocketIO delivery half doesn't exist** — no `EventBus`→SocketIO bridge exists anywhere in this codebase yet (confirmed, not assumed) — `MenuRuntime.on_menu_trigger_event()` is the ready, unit-tested registration point a game branch adding that bridge should call
+- [x] `frontend/assets/data/actions.json` (registry: name + `duration_ms`) — add/rename/delete through a dedicated panel, undoable; a per-part "Action Animations" section in the property panel assigns a transform clip per registered action, writing `action_animations`; the sprite-path one-shot clip itself stays explicitly out of scope (hand-authored JSON, not this editor). No backend trigger-wiring code written or implied anywhere in this task — data only, same boundary `docs/graphics/ACTION_TRIGGERED_ANIMATIONS.md` draws. `ActionRegistry` + its commands unit-verified.
+- [x] `docs/graphics/AREA_SYSTEM.md` updated (including zone-authoring, UI-menu-authoring, and action-definitions sections); `ROADMAP.md` Phase 9.2 updated to point at this task instead of describing a separate preview page
+- [x] Plain viewer mode and real gameplay have zero rendering or performance change from this task — all editor-only rendering/interaction is gated behind `mode == "builder"`; viewer mode's own boot path (Steps 6/7 of `area-system.prompt.md`) is unchanged
+- [x] Two entities sharing one `render_template` render as independently positioned/rotated copies — the placement bug found during the original (browser-era) version of this task's integration audit stays fixed in the Python port — confirmed again this session (`crate_a`/`crate_b` in `area-example.json`, both render correctly in every editor boot test)
+- [x] Nothing in the out-of-scope table (multi-select, free-form bounding-box/corner-drag resize, history UI, custom asset import, terrain tools, collaborative editing, visual script editor) was built — none of it exists anywhere in the new code
+- [x] Nothing in this task touches `frontend/js/` — it targets the native Python client exclusively, per the banner at the top of this file

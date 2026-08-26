@@ -26,9 +26,37 @@ You are building the container that holds "everything in one place" — entities
 | Builder | File load | Human, via a crude imgui panel | No |
 | Test | File load | A script calling the Scene API | No |
 
-Viewer, builder, and test share one boot path (Step 6) — they are the same client entry point with different things happening after load, not three separate programs. In the browser-era version of this design that meant one HTML page with a query string; in the native client it means one `client/game/area_viewer.py` module, entered with a `--mode=` command-line flag (or, once `level-editor.prompt.md`'s launcher exists, a menu choice) — not three separate scripts.
+Viewer, builder, and test share one boot path (Step 6) — they are the same client entry point with different things happening after load, not three separate programs. In the browser-era version of this design that meant one HTML page with a query string; in the native client it means one `client/engine/area_viewer.py` module, entered with a `--mode=` command-line flag (or, once `level-editor.prompt.md`'s launcher exists, a menu choice) — not three separate scripts.
 
 This is **not** a full level editor. No drag-and-drop, no undo/redo, no polished editor chrome — a working save/load loop through the existing Area file format matters more than UX polish. This is **not** a new backend simulation concept: lights stay ECS entities (`LightComponent` already exists), a camera is passive metadata with no gameplay effect. This is **not** a rewrite of the working gameplay network path in one step — `Scene` wraps the existing flow via a compatibility shim (Step 5) rather than replacing every consumer at once.
+
+---
+
+# ⚠️ BRANCH RECONCILIATION — audited 2026-08-20, read before picking a step
+
+This prompt was written before this repo's engine/game branch split fully solidified (see `CLAUDE.md`'s Branch model note) and was never reconciled against it — `ROADMAP.md`'s Phase 11 row already flagged this generically; this banner replaces that flag with a precise, per-step breakdown, plus one reclassification decided this session.
+
+**File-path reclassification, decided this session**: the viewer/builder/test tool (`area_viewer.py`, Steps 6/7/11) is generic Area/Scene tooling with nothing game-specific in its own spec — the same reasoning that already put `client/engine/ui/` on `engine` instead of a game branch (see `ui-framework.prompt.md`). It is now `client/engine/area_viewer.py`, not `client/game/area_viewer.py` (every reference below has been updated). `level-editor.prompt.md`'s `launcher.py`/`ui_editor.py` follow the identical reasoning and were reclassified the same way in that file. Only *this game's actual content* (a real game's `player.py`, its HUD skin/copy in `client/game/ui.py`, its `backend/game/` simulation data) stays behind on a game branch — the tools that author/view that content do not.
+
+**What's actually buildable on `engine` today, with no game branch:**
+
+- **Step 1** (audit) — buildable, but re-scope it: `backend/game/area.py`/`systems.py`/`tick.py`/`app.py`/`save_manager.py` do not exist on `engine` at all (confirmed — this isn't "might be stale," it's a directory that isn't there). Audit only what's real here: `client/engine/network.py`, `client/engine/renderer.py`, `client/engine/entity_renderer.py`, and `client/main.py`.
+- **Step 3** (`client/engine/scene.py`, the `Scene` class itself) — fully buildable on `engine`. Pure client-side data structure, no backend dependency at all.
+- **Step 4** (file-load path) — fully buildable on `engine`. Plain JSON read/write against the schema documented in `docs/graphics/DATA_STRUCTURES.md`; doesn't require a live `backend/game/area.py` to exist, only agreement on the file shape.
+- **Step 5 (compatibility shim) — corrected during implementation, 2026-08-20, an earlier draft of this banner got this wrong**: `client/main.py` exists on `engine`, but it does **not** own the live `state`/`game_state` dict — it imports `game_state` from `client.game.player_select` (`from client.game.player_select import GameContext, game_state`, wrapped in a `try/except ImportError` that resolves to `game_state = None` on this branch, since `client/game/` doesn't exist here). The actual state object Step 5 needs to wrap is genuinely defined on a game branch, not here — this part of Step 5 is blocked, moved to the blocked list below. **What *is* still true and useful**: `client/main.py`'s rendering functions (`draw_game_scene`, `render_entities`, `_gather_lights`, `get_entity_renderer`) already take a plain `state: dict` **parameter** rather than reading a global — they don't care whether the caller passes `game_state` or `scene.entities`/`scene.camera` in the same shape. This is exactly what `run_client_test.py` already exploits (it drives these same functions with its own self-built local `state` dict, no `client.game` import at all). So once `Scene` exists (Step 3), these functions need **zero changes** to work against it — the "shim" that's actually blocked is narrowly the game-branch code that currently populates `game_state` from `state_update`/`initial_state` (`client/main.py`'s own `_on_state_update`, which mutates `game_state` directly — trivial to redirect at `scene.add_entity`/`update_entity` once written on a game branch, but the target it mutates doesn't exist here to redirect).
+- **Step 6** (`client/engine/area_viewer.py`, `client/engine/free_camera.py`) — fully buildable on `engine` per the reclassification above. `frontend/assets/data/area/` and its example file are asset content, not game content, and already fit this branch's existing `frontend/assets/` layout.
+- **Step 7** (builder panel) — buildable on `engine`, same reclassification.
+- **Step 11** (authoring scripted entities) — task 3 (the builder-panel extension) is buildable on `engine`; its own verify instruction already correctly scopes the *backend* half ("load it through the real backend... — a game branch") as separately gated.
+
+**What's hard-blocked on a game branch, no way around it:**
+
+- **Step 2** (extend `backend/game/area.py`'s schema, `backend/app.py`'s `initial_state` payload) — `Area` and `app.py` don't exist on `engine`.
+- **Step 5's actual game-layer shim** — `game_state` is owned by `client/game/player_select.py`, which doesn't exist on `engine` (see above). The rendering-function half needs no work at all; the state-ownership half needs a game branch.
+- **Step 7 task 3's "no backend route required" framing is fine, but confirm `backend/save_manager.py` (Step 2 task 6) separately, on a game branch** — it doesn't exist here to confirm against.
+- **Steps 9 and 10** (movement/collision fix, `ScriptComponent`/`ScriptMovementSystem`) — `backend/game/systems/systems.py` and `tick.py` don't exist on `engine`. See the dead-code warning added to Step 9/10 below before resuming either on a game branch — there's a second, more important reason these are blocked than just the missing files.
+- **Step 11's full verify** ("load it through the real backend... confirm it patrols/orbits/follows") needs a running backend.
+
+---
 
 ## Required Reading
 
@@ -39,10 +67,10 @@ Read these files before writing any code:
 - `backend/save_manager.py` — how `data_dir` is resolved (`saves/<player_id>/` vs. legacy dir) when `Area.load_area()` is called; a standalone viewer/builder/test session needs a *different* `data_dir` (an authored-content directory, not a save slot) — see Step 2.
 - `backend/app.py` — where `initial_state` is emitted (`game_loop.current_area.get_full_state()`) — Step 2 extends this payload with camera/lighting.
 - `client/engine/network.py` (`wgpu-py-migration.prompt.md` Step 11's port of `network.js`) — connection setup and the `initial_state`/`state_update` handler wiring.
-- `client/game/main.py` or equivalent (`wgpu-py-migration.prompt.md` Step 15's client entry point) — wherever live gameplay state currently lives client-side; read it fully — Step 5 refactors it without breaking it.
+- `client/main.py` (`wgpu-py-migration.prompt.md` Step 15's client entry point — confirmed, this is the real current path, not `client/game/main.py`) — **not** the owner of the live `game_state` dict (that's `client/game/player_select.py`, a game-branch file — see the banner above); but its `draw_game_scene`/`render_entities`/`_gather_lights` functions are already parameter-driven against a generic `state: dict`, which is what makes them safe to hand `scene.entities`/`scene.camera` unchanged. Read it fully — Step 5 refactors the *state-owning* code, not these functions.
 - `client/engine/renderer.py` and `client/engine/entity_renderer.py` — current consumers of the live entity/camera state; Step 5's compatibility shim must keep these working unmodified.
 - `.github/prompts/3d-coordinate-mapping.prompt.md` — Step 3 (`camera` object's 3D fields), Step 8 (`fogColor`/`fogNear`/`fogFar`/`ambientColor`), Step 5 (`render_template` — the field that links a networked/Area-file entity to its mesh/material definition; Step 11 of this file depends on it), Step 9 (entity `parts`). Note that Step 5/8 of that prompt were built in the JS client and Steps 9+ target the Python client per its own system-change banner — read the field names from wherever they actually live now (JS if not yet ported, `client/engine/` once they are), but the field *names themselves* (`render_template`, `transform3d`, `fogColor`, etc.) are the schema, unaffected by which client reads them. This plan's `camera`/`lighting` schema must reuse those exact field names, not invent parallel ones.
-- `backend/engine/ecs/entity.py` — `serialize()` vs. `to_dict()`/`from_dict()`: confirms `ScriptComponent` (Step 10) round-trips through the latter (persistence/Area files) but is never part of the former (live network payload) — a script-driven entity's movement reaches clients only via ordinary `x`/`y` fields, never via the client learning a script exists.
+- `backend/engine/ecs/entity.py` — `serialize()` vs. `to_dict()`/`from_dict()`: confirms `ScriptComponent` (Step 10) round-trips through the latter (persistence/Area files) but is never part of the former (live network payload) — a script-driven entity's movement reaches clients only via ordinary `x`/`y` fields, never via the client learning a script exists. **Corrected field list, checked against the current file**: `Entity` was minimised this session — `serialize()` carries `entity_id`/`x`/`y`/`z`/`vx`/`vy`/`state`/`facing`/`animation_data_paths`/`render_template`/`transform3d` only; the `race`/`model_version` fields this Required Reading entry originally cited no longer exist (an earlier draft's stale reference — those were character-appearance-specific fields removed during the same minimisation that kept `render_template`/`transform3d` because this task and `3d-coordinate-mapping.prompt.md` need them).
 - `.github/copilot-instructions.md` — "Physics & Simulation Boundary" section. Step 3's authoritative-vs-local entity rule and Step 8's scripted-dressing guidance follow the same shape: client-only additions must never be mistaken for authoritative ones.
 - `backend/game/systems/systems.py` — `MovementSystem`, `PhysicsSystem`, `PathfindingSystem`, `AISystem`, `CombatSystem`. Read every `update()` method fully; Step 9 fixes two real bugs found in how these interact (double integration, uncollided path movement) and Step 10 adds a new system alongside them.
 - `backend/game/tick.py` — where all five systems above are constructed and registered with the `SystemScheduler`, in the order that currently produces the Step 9 bugs.
@@ -66,12 +94,12 @@ Read these files before writing any code:
 
 ---
 
-## Step 1 — Audit Current State
+## Step 1 — Audit Current State ✅ (rescoped — see branch-reconciliation banner)
 
 Before writing code, read every file in Required Reading and summarize:
 
 1. The exact current shape of `Area.to_dict()`'s output and where `get_full_state()`'s payload is emitted to the client (`app.py`).
-2. Every place the client's live entity/camera/player state is read or written across `client/engine/network.py`, `client/engine/renderer.py`, `client/engine/entity_renderer.py`, and whatever `client/game/` module currently owns it (per `wgpu-py-migration.prompt.md`'s Steps 11/14/15 — read those step checkmarks to know what actually exists) — this is the full blast radius Step 5's shim must not break.
+2. Every place the client's live entity/camera/player state is read or written across `client/engine/network.py`, `client/engine/renderer.py`, `client/engine/entity_renderer.py`, and `client/main.py` (confirmed the real owner of `state`/`game_state` today, not a `client/game/` module — see the banner above) — this is the full blast radius Step 5's shim must not break.
 3. Where Area files currently live on disk (`saves/<player_id>/area-<id>.json`) versus where a new "authored/template" area directory should live so viewer/builder/test mode isn't tied to a save slot.
 4. Confirm, from `wgpu-py-migration.prompt.md`'s own checkmarks, exactly how far the Python client port has gotten — specifically whether `client/engine/entity_renderer.py`, `renderer.py`, and `network.py` exist yet. If they don't, this entire task is blocked on that port landing first; say so explicitly rather than improvising around the gap.
 
@@ -105,7 +133,7 @@ Verify: an existing save file with no `camera`/`lighting` keys still loads and p
 
 ---
 
-## Step 3 — `Scene`: the Single Runtime Container
+## Step 3 — `Scene`: the Single Runtime Container ✅
 
 **New file:** `client/engine/scene.py`
 
@@ -116,31 +144,33 @@ The one object both the network path and the file-load path populate, and the on
    - `camera: dict` — same shape as the camera object already used by `renderer.py` (2D fields today, 3D fields plus `fogColor`/`fogNear`/`fogFar`/`ambientColor` per the coordinate-mapping prompt file's Steps 3 and 8 — this is the one object the renderer actually reads every frame, and it is a **live, freely-mutated view** — anything that moves the camera around (gameplay follow, free-fly) writes here every frame).
    - `lighting: dict` — `ambientColor`/`fogColor`/`fogNear`/`fogFar`, kept as the *authored-shape* mirror of the Area file's `lighting` block (Step 2). This dict is a record of what was authored, not what the renderer reads — see `set_lighting()` below. It only ever changes via an explicit `set_lighting()` call — nothing implicitly mutates it the way `camera` gets mutated every frame during free-fly.
    - `start_camera: dict | None` — the *authored* starting camera, analogous to `lighting`'s role for fog/ambient: a record of what should be saved, deliberately decoupled from `camera`'s constant live movement. `None` until something explicitly sets it (`load_from_area_file`, or an editor's "Set Start Camera" action in `level-editor.prompt.md`). This field exists specifically so that freely flying the live `camera` around while inspecting a scene never silently changes what gets saved as the spawn point — see `to_area_file_json()` in Step 4.
+   - `zones: dict[str, dict]` — raw zone-definition dicts (`{zone_id: {"shape": {...}, "on_enter": [...], "on_exit": [...], "tags": [...]}}`, `zones.prompt.md`'s `Zone` shape), keyed by `zone_id`, added **now** rather than left for a later task to bolt on: `.github/prompts/level-editor.prompt.md`'s own Success Criteria already requires `Scene.zones` + `add_zone`/`update_zone`/`remove_zone` and a `zones`-inclusive round-trip, and without this field here, Step 4's `to_area_file_json()` would silently drop any zone data on a load→save cycle the moment zones exist in an Area file — a real data-loss bug, not a hypothetical one. `Scene` never simulates zone containment (that's backend-only, `zones.prompt.md`'s `ZoneRegistry`) — it only stores/round-trips the definitions for editor visualization, exactly like `lighting`.
 2. API:
    - `add_entity(entity_id, data, source='local')` — if `entity_id` already exists with a *different* `_source`, log a loud warning and refuse the write (return `False`) rather than picking a winner. Same-source overwrites (e.g. a second network update for the same id) proceed normally.
    - `update_entity(entity_id, patch)` — merges (`dict.update`) onto the existing record if present; no-op with a warning if not (mirrors the existing defensive style in the JS `handleStateUpdate` this replaces).
    - `remove_entity(entity_id)`.
+   - `add_zone(zone_id, data)` / `update_zone(zone_id, patch)` / `remove_zone(zone_id)` — same shape as the entity trio, minus `_source` tagging (a zone is always authored data, never a "local vs. authoritative" distinction the way an entity is — there's no live/networked zone stream to conflict with).
    - `set_camera(camera_data)` — merges onto `self.camera` (the live view — called every frame by free-fly/follow logic, not an "authoring" action).
    - `set_lighting(lighting_data)` — merges onto `self.lighting` **and** onto `self.camera` (only the `ambientColor`/`fogColor`/`fogNear`/`fogFar` keys — the renderer never reads `Scene.lighting` directly, so without this second write the Area file's `lighting` block would be authored data with nothing consuming it, same class of bug as `ambientColor` had in the 3D prompt file before it was fixed there). Document this dual-write in a code comment; it's the one place this class does something less obvious than a plain merge.
    - `set_start_camera(camera_data)` — merges onto `self.start_camera` (creating it from `{}` if `None`). This is an explicit, deliberate authoring action, never called automatically by camera-movement code — that separation is the entire point of the field.
-3. No rendering logic in this file — `Scene` is pure data plus the API above. `renderer.py`/`entity_renderer.py` read `scene.entities`/`scene.camera` (fog/ambient included) — `scene.lighting` and `scene.start_camera` exist for authoring round-trips (`to_area_file_json`, Step 4) and are never read by the render loop.
+3. No rendering logic in this file — `Scene` is pure data plus the API above. `renderer.py`/`entity_renderer.py` read `scene.entities`/`scene.camera` (fog/ambient included) — `scene.lighting`, `scene.start_camera`, and `scene.zones` exist for authoring round-trips (`to_area_file_json`, Step 4) and editor visualization (`level-editor.prompt.md` Step 13) and are never read by the render loop.
 
 Verify: a small standalone script (or a Python REPL against the running client) constructs a `Scene`, calls `add_entity('a', {...}, 'authoritative')`, then tries `add_entity('a', {...}, 'local')` and confirms it's refused with a warning, not silently applied.
 
 ---
 
-## Step 4 — File-Load Path
+## Step 4 — File-Load Path ✅
 
 **File:** `client/engine/scene.py`
 
-1. `Scene.load_from_area_file(path)` (classmethod or module function — read the file directly via `open()`/`json.load`, per this task's direct-filesystem-access constraint, not any HTTP mechanism), parse JSON (the Step 2-extended Area schema), construct a `Scene`, call `add_entity(entity_id, data, 'authoritative')` for every entry in `entities`, call `set_camera()` **and** `set_start_camera()` with the file's `camera` block if present (both — the loaded scene should visibly start there *and* remember it as the authored spawn point), call `set_lighting()` if that key is present (skip entirely if `None`, leaving engine defaults), return the populated `Scene`.
-2. `Scene.to_area_file_json()` — the inverse: serialize **every** entity in `entities`, regardless of `_source` (see Step 7 task 5 for why `'local'` entities are included — the short version: what a builder places is real content once saved, the `_source` tag is a purely in-memory runtime concept and is dropped, not written, in the output), plus `lighting` and **`start_camera` (not the live `camera`)** — falling back to the live `camera`'s current value only if `start_camera` is still `None` (e.g. a brand-new scene that was never explicitly given a start point) — in the exact shape `Area.to_dict()` produces, so a file saved from the client is loadable by `Area.from_dict()` on the backend unmodified. This is what keeps free-fly camera movement during editing from silently changing the saved spawn point — see `level-editor.prompt.md`'s "Set Start Camera" action, the only thing expected to call `set_start_camera()` after initial load.
+1. `Scene.load_from_area_file(path)` (classmethod or module function — read the file directly via `open()`/`json.load`, per this task's direct-filesystem-access constraint, not any HTTP mechanism), parse JSON (the Step 2-extended Area schema), construct a `Scene`, call `add_entity(entity_id, data, 'authoritative')` for every entry in `entities`, call `set_camera()` **and** `set_start_camera()` with the file's `camera` block if present (both — the loaded scene should visibly start there *and* remember it as the authored spawn point), call `set_lighting()` if that key is present (skip entirely if `None`, leaving engine defaults), call `add_zone(zone_id, data)` for every entry in the file's `"zones"` key if present (skip entirely if absent — an Area file with no zones, i.e. every file until `zones.prompt.md` lands, loads with `scene.zones` simply empty, not an error), return the populated `Scene`.
+2. `Scene.to_area_file_json()` — the inverse: serialize **every** entity in `entities`, regardless of `_source` (see Step 7 task 5 for why `'local'` entities are included — the short version: what a builder places is real content once saved, the `_source` tag is a purely in-memory runtime concept and is dropped, not written, in the output), plus `lighting`, `zones` (as-is, no transformation — the client never interprets zone shapes/effects, only stores and round-trips them), and **`start_camera` (not the live `camera`)** — falling back to the live `camera`'s current value only if `start_camera` is still `None` (e.g. a brand-new scene that was never explicitly given a start point) — in the exact shape `Area.to_dict()` produces, so a file saved from the client is loadable by `Area.from_dict()` on the backend unmodified. This is what keeps free-fly camera movement during editing from silently changing the saved spawn point — see `level-editor.prompt.md`'s "Set Start Camera" action, the only thing expected to call `set_start_camera()` after initial load.
 
-Verify: point `Scene.load_from_area_file()` at an existing save's `area-<id>.json` (copied somewhere readable) and confirm every entity, plus camera/lighting if present, lands in the `Scene` correctly — no network connection open at all.
+Verify: point `Scene.load_from_area_file()` at an existing save's `area-<id>.json` (copied somewhere readable) and confirm every entity, plus camera/lighting if present, lands in the `Scene` correctly — no network connection open at all. Separately, hand-author a small Area JSON with a `"zones"` key (even before `zones.prompt.md`'s backend exists — this is just a dict shape, nothing simulates it yet), load it, and confirm `scene.zones` is populated and `to_area_file_json()` reproduces the same `"zones"` block unchanged — proving the round-trip doesn't drop it.
 
 ---
 
-## Step 5 — Wire the Network Path Through `Scene` (compatibility shim)
+## Step 5 — Wire the Network Path Through `Scene` (compatibility shim) 🔶 confirmed compatible; ownership half blocked
 
 **File:** wherever `wgpu-py-migration.prompt.md`'s port currently owns live gameplay state client-side (its Step 11/15 — confirm the actual module name/location per Step 1's audit rather than assuming a filename here)
 
@@ -156,9 +186,9 @@ Verify: play the existing game end-to-end through the native client — movement
 
 ---
 
-## Step 6 — Standalone Boot Path (viewer / builder / test)
+## Step 6 — Standalone Boot Path (viewer / builder / test) ✅
 
-**New files:** `client/game/area_viewer.py`, `client/engine/free_camera.py`
+**New files:** `client/engine/area_viewer.py`, `client/engine/free_camera.py`
 
 Mirrors the existing `client/main.py` entry-point convention — a second boot mode within the same native client, not a second application. Where the browser-era version of this design used a second HTML page and a `?area=` query string, the native client uses a command-line flag on the same entry point (or, once `level-editor.prompt.md`'s launcher exists, an in-app menu choice — that's a later refinement, not something to build here).
 
@@ -172,9 +202,9 @@ Verify: `python -m client.main --area=frontend/assets/data/area/area-example.jso
 
 ---
 
-## Step 7 — Minimal Builder Affordances
+## Step 7 — Minimal Builder Affordances ✅
 
-**File:** `client/game/area_viewer.py` (extend, gated behind a `--mode=builder` flag so plain viewer mode stays uncluttered)
+**File:** `client/engine/area_viewer.py` (extend, gated behind a `--mode=builder` flag so plain viewer mode stays uncluttered)
 
 1. A small imgui panel: a text input for an entity/mesh id (resolved via `asset_loader.py`), numeric x/y/z fields, an "Add" button calling `scene.add_entity(generate_local_id(), { ... }, 'local')`.
 2. A simple list of current entities (id + source tag) in another imgui panel, with a "Remove" button per row calling `scene.remove_entity(entity_id)`.
@@ -185,21 +215,31 @@ Verify: place a few entities via the panel, save, reload the client pointed at t
 
 ---
 
-## Step 8 — Scripted Gameplay Hook (non-authoritative dressing)
+## Step 8 — Scripted Gameplay Hook (non-authoritative dressing) 🔶 network.py plumbing done; no consumer to wire it to yet
 
 This step is mostly documentation plus a thin wiring point — the mechanism (`scene.add_entity(entity_id, data, 'local')`) already exists from Step 3; what's new is *triggering* it from live gameplay.
 
-**File:** `client/engine/network.py`
+**Corrected during implementation**: task 1 as originally worded ("a handler... that calls `scene.add_entity`/`scene.set_camera`/`scene.remove_entity` directly") would violate `client/engine/network.py`'s own documented engine/game boundary rule (see that file's module docstring) — `client/engine/` must never hold a reference to a specific `Scene`/game-state instance directly. Implemented instead as a callback slot (`on_scene_cue`, registered via `set_state_handlers()`, dispatched from a new `@sio.on("scene_cue")` handler), the same pattern `on_state_update`/`on_initial_state` already establish — done, in `client/engine/network.py`.
 
-1. Add a handler for a server-sent cue event (e.g. a `scene_cue` SocketIO event) that calls `scene.add_entity`/`scene.set_camera`/`scene.remove_entity` directly — for purely cosmetic moments (a temporary camera pan, a decorative prop that appears for a cutscene) that don't need to be real, simulated, interactive ECS entities.
-2. State the rule explicitly in a code comment at this handler, referencing `.github/copilot-instructions.md`'s "Physics & Simulation Boundary": anything added this way is client-only and non-authoritative. If a designer needs the dressing to be hittable, collidable, or otherwise simulated, it must be a real backend entity added via `Area.add_entity` and delivered through the normal `state_update` path (tagged `'authoritative'`) — not this hook.
+**File:** `client/engine/network.py` ✅
+
+1. ~~Add a handler for a server-sent cue event~~ Done as a callback slot, not a direct call — see correction above.
+2. Done — the rule is stated in a code comment at the `scene_cue` handler, referencing `.github/copilot-instructions.md`'s "Physics & Simulation Boundary".
 3. No backend `scene_cue`-emitting system needs to be built in this task; documenting and wiring the client-side handler is sufficient scope. (If a concrete cutscene system is wanted later, it's a separate task that would define what triggers this event.)
 
-Verify: manually emit a `scene_cue` event from a Python REPL/test script against a running server and confirm the client adds the described local entity without a full backend entity round-trip, and without appearing in any subsequent `state_update` delta (proving it's genuinely non-authoritative).
+**What's still open, and why**: nothing on `engine` both owns a live `Scene` instance *and* a live network connection at the same time — `client/engine/area_viewer.py` (Step 6) owns a `Scene` but deliberately never opens a network connection; a game branch's state-owning module (Step 5's blocked shim) would open a connection but doesn't exist here. So there is no real place to call `set_state_handlers(on_scene_cue=...)` from yet, on this branch. The plumbing this task actually asked for is done and ready for whichever module ends up owning both.
+
+Verify: manually emit a `scene_cue` event from a Python REPL/test script against a running server and confirm the client adds the described local entity without a full backend entity round-trip, and without appearing in any subsequent `state_update` delta (proving it's genuinely non-authoritative). **Not run** — needs a running backend server and a registered consumer, neither of which exist on `engine` (see above); re-run once a game branch wires a callback.
 
 ---
 
 ## Step 9 — Fix the Movement/Collision Foundation (prerequisite)
+
+### ⚠️ Confirm this is not dead code before resuming Steps 9–10 — found by this session's audit, not covered when this step was originally written
+
+`zones.prompt.md`'s Required Reading documents a confirmed, load-bearing gap: `GameTick.__init__` creates `self.ecs_world = World()`, and every registered `System` (`PhysicsSystem`, `MovementSystem`, etc.) queries that `World` via `world.query_with_components(...)` — but **nothing anywhere in this codebase ever calls `ecs_world.add(entity)` or `ecs_world.add_component(...)`**. `zones.prompt.md` confirms this via `grep -rn "ecs_world\." backend/` and, on the strength of it, deliberately does **not** register its own `ZoneRegistry` as a `System` — it drives zone checks from `Area.update()` directly instead, the same live path `GroupRegistry` already uses. Step 9/10 below were written before that gap was discovered and were never reconciled against it: **Step 10 task 2–3 do exactly the thing `zones.prompt.md` warns against** — `class ScriptMovementSystem(System)`, registered with the `SystemScheduler`, querying `world.query_with_components(...)`. If the gap is still real when this step is resumed (re-run the grep yourself — `backend/game/` isn't visible from `engine` to check it from here), then as literally scoped, Step 9's `PhysicsSystem`/`MovementSystem`/`PathfindingSystem` fixes and Step 10's `ScriptMovementSystem` addition would all compile, look correct, and have **zero effect on live gameplay** — the actual per-tick path would need tracing first (most likely `Area.update()` iterating `self.entities.values()` directly, mirroring `GroupRegistry`/`ZoneRegistry`, rather than the `System`/`World` pipeline these two steps assume). Do not resume either step without re-confirming which path is actually live; if the gap still holds, both steps need re-targeting at that real path before anything else in them is worth doing.
+
+---
 
 Tracing `tick.py`'s actual registration against `scheduler.py`'s topological sort reveals the real per-tick order today is **`physics → movement → pathfinding → ai → combat`** (not the naive reading of the file). This produces two concrete bugs that any new movement system — script-driven or otherwise — would inherit:
 
@@ -262,11 +302,11 @@ Verify: two `waypoint_loop` entities patrolling paths that cross must resolve co
 
 ---
 
-## Step 11 — Authoring Scripted Entities
+## Step 11 — Authoring Scripted Entities 🔶 render_template placement done; ScriptComponent form blocked on Step 10
 
 Ties Step 10's backend capability back into this task's Area/Scene work: a script-driven NPC or object should be placeable the same way any other entity is. This requires being precise about **two different files** a single placed NPC touches, which is easy to conflate:
 
-1. **The Area-file entity entry** — `Entity.to_dict()`'s format (`entity_id`, `x`/`y`, and a `components` list of ECS components). This is where `ScriptComponent` and `ColliderComponent` go. It is *not* sent to clients verbatim — the live network format (`Entity.serialize()`) carries no `components` list at all, only flat gameplay fields (position, velocity, state, `race`, `model_version`, `render_template`). A script-driven entity's movement reaches the client the same way any entity's movement does — through the ordinary `x`/`y` fields `serialize()` already sends — not by the client ever learning a `ScriptComponent` exists.
+1. **The Area-file entity entry** — `Entity.to_dict()`'s format (`entity_id`, `x`/`y`, and a `components` list of ECS components). This is where `ScriptComponent` and `ColliderComponent` go. It is *not* sent to clients verbatim — the live network format (`Entity.serialize()`) carries no `components` list at all, only flat gameplay fields (`entity_id`, position, velocity, `state`, `facing`, `animation_data_paths`, `render_template`, `transform3d` — corrected from an earlier draft's stale `race`/`model_version` mention; those fields no longer exist on `Entity`). A script-driven entity's movement reaches the client the same way any entity's movement does — through the ordinary `x`/`y` fields `serialize()` already sends — not by the client ever learning a `ScriptComponent` exists.
 2. **The entity-definition file** (`frontend/assets/data/entity/entity-<uuid>.json`, `3d-coordinate-mapping.prompt.md` Step 5's schema) — `mesh`/`parts`/`material_id`/`transform3d`. This is what makes a placed entity actually *look* like something. The Area-file entry references it via the `render_template` field that prompt file's Step 5 adds to `Entity`.
 
 So a patrolling NPC with a visible mesh needs **both**: an Area-file entry with `render_template: "<entity-definition-id>"` plus a `ScriptComponent`, and a separate entity-definition file that `render_template` points at.
@@ -276,9 +316,9 @@ So a patrolling NPC with a visible mesh needs **both**: an Area-file entry with 
 1. Document the Area-file entity `components` list accepting a `ScriptComponent` entry directly (it round-trips automatically per Step 10 task 1 — no new deserialisation code needed): `{"type": "ScriptComponent", "script_type": "waypoint_loop", "params": {...}, "state": {}}`. Document alongside it that `render_template` (a plain top-level field on the same entity entry, not inside `components`) is what selects the entity-definition file for rendering — cross-reference `3d-coordinate-mapping.prompt.md` Step 5 rather than redefining it here.
 2. Note explicitly that a script-driven entity needs a `ColliderComponent` to actually collide/interact (Step 9/10's physics pass only resolves collider-bearing entities) — omitting it is valid and means "moves, but passes through everything," which is a legitimate choice for purely decorative moving props.
 
-**File:** `client/game/area_viewer.py` (Step 7's builder panel, extend)
+**File:** `client/engine/area_viewer.py` (Step 7's builder panel, extend)
 
-3. Optional, stretch goal within this step: add a `script_type` dropdown (imgui combo box) + a small generated form for `params`, **and** a `render_template` picker (resolved via `asset_loader.py`'s `"entities"` category from the 3D prompt file's Step 7), to the builder's "Add" form — writing both the `ScriptComponent` entry and the `render_template` reference into the placed entity's data. Not required for Step 10's backend capability to work — an Area file can always be hand-authored — but makes the builder able to place a patrolling, visible NPC without writing Python by hand.
+3. Optional, stretch goal within this step: add a `script_type` dropdown (imgui combo box) + a small generated form for `params`, **and** a `render_template` picker (resolved via `asset_loader.py`'s `"entities"` category from the 3D prompt file's Step 7), to the builder's "Add" form — writing both the `ScriptComponent` entry and the `render_template` reference into the placed entity's data. Not required for Step 10's backend capability to work — an Area file can always be hand-authored — but makes the builder able to place a patrolling, visible NPC without writing Python by hand. **Done, in part**: `client/engine/area_viewer.py`'s builder panel already has the `render_template` half — a text field validated against `asset_loader.has(...)` before placing, writing `render_template` into the placed entity's data (this is the "visible" half of "patrolling, visible NPC"). The `script_type` dropdown + `params` form is not built — `ScriptComponent` doesn't exist yet (Step 10 is blocked), so there's no schema to build a form against; add it once Step 10 lands, following the same repeatable-row pattern `level-editor.prompt.md` Step 13 already establishes for zone effects.
 
 **Important limitation to document, not solve here:** standalone viewer/builder/test modes (Step 6) run with no backend connection by design. A `ScriptComponent` placed via the builder is saved as inert data — it will not actually move when previewed in the client-only viewer, because `ScriptMovementSystem` is backend Python that isn't running there. The entity will still *render* correctly (via `render_template`, which is purely client-side resolution), just not move. Seeing a scripted entity actually move requires loading the Area into a real gameplay session (or, as a documented future extension, a local/offline backend tick loop for test mode specifically — out of scope for this task).
 
@@ -286,53 +326,49 @@ Verify: hand-author an entity with both a `ScriptComponent` and a `render_templa
 
 ---
 
-## Step 12 — Documentation
+## Step 12 — Documentation ✅ (mostly — Area-file schema section pending Step 2)
 
-**New file:** `docs/graphics/AREA_SYSTEM.md`
+**New file:** `docs/graphics/AREA_SYSTEM.md` — written.
 
-1. Document the extended Area file schema (Step 2's `camera`/`lighting` blocks, with the field tables).
-2. Document the `Scene` class and its API (Step 3), including the `'authoritative'` vs `'local'` rule and why it exists (cross-reference `.github/copilot-instructions.md`'s "Physics & Simulation Boundary" as the precedent).
-3. Document the four run modes and, critically, that viewer/builder/test share one boot path (Step 6) — a table like the one at the top of this prompt file is a good format to reuse. Note explicitly that this all lives in the native Python `client/`, not the legacy JS frontend.
-4. Cross-link from `docs/graphics/OVERVIEW.md`'s "Further Reading" list.
+1. Document the extended Area file schema (Step 2's `camera`/`lighting` blocks, with the field tables). **Partial**: the file *shape* `Scene` reads/writes is documented (a "Pending" section, explicit about what's blocked and why); the backend `Area` class's own field tables wait on Step 2 landing on a game branch, same blocker as the code itself.
+2. Document the `Scene` class and its API (Step 3), including the `'authoritative'` vs `'local'` rule and why it exists (cross-reference `.github/copilot-instructions.md`'s "Physics & Simulation Boundary" as the precedent). Done.
+3. Document the four run modes and, critically, that viewer/builder/test share one boot path (Step 6) — a table like the one at the top of this prompt file is a good format to reuse. Note explicitly that this all lives in the native Python `client/`, not the legacy JS frontend. Done.
+4. Cross-link from `docs/graphics/OVERVIEW.md`'s "Further Reading" list. Done.
 
 ---
 
 ## Step 13 — Smoke Test
 
-Run through all four modes against the native client:
+**Run this session, 2026-08-20, against what's actually buildable on `engine`** (see the branch-reconciliation banner) — split into what ran clean vs. what's blocked, rather than one flat checklist assuming all four modes exist yet.
 
-```text
-python -m client.main
-```
-
-- [ ] **Gameplay** (normal launch, existing flow): movement, party commands, attacking all behave exactly as before Step 5's refactor — no regression from introducing `Scene` underneath the existing state object.
-- [ ] **Viewer** (`python -m client.main --area=...`): loads and renders an Area file with zero network connections; free-fly camera works.
-- [ ] **Builder** (`python -m client.main --area=... --mode=builder`): place an entity, save, reload the client pointed at the saved file, confirm it round-trips.
-- [ ] **Test**: a short manual script (a small Python snippet run against the live `Scene` instance, e.g. via a debugger/REPL attached to the running client) calling `scene.add_entity()` in a loop and confirming the renderer keeps up — proves the same boot path supports script-driven population, not just human/file.
-- [ ] An `'authoritative'` and a `'local'` entity sharing an id: confirm the collision is refused with a console/log warning, not silently resolved.
-- [ ] A save file with no `camera`/`lighting` blocks still loads identically to before Step 2.
-- [ ] `scheduler._order` matches Step 9's target sequence; a collider-bearing entity's velocity is applied exactly once per tick; a `Seek`/`Flee`-driven party member can no longer pass through solid obstacles.
-- [ ] Two `waypoint_loop` script entities with crossing patrol paths collide correctly instead of overlapping/tunnelling.
-- [ ] An `orbit` script entity holds a stable radius over at least a few dozen ticks (no accumulating drift).
-- [ ] A `trigger` collider publishes exactly one `"entity_overlap"` event per overlap transition, not once per tick.
-- [ ] A `ScriptComponent`-bearing entity authored in an Area file moves/collides correctly through a real gameplay session, and renders (statically) but does not move in the standalone viewer — confirming the documented limitation rather than a silent failure.
-- [ ] No lint/type errors on any modified/new file.
+- [x] `run_scene_test.py` (new, no GPU, no backend, mirrors `run_gametick_test.py`'s pattern) — `Scene`'s full pure-data surface: cross-source `add_entity` refusal (and that a refused write doesn't mutate data), same-source overwrite, `update_entity`/`remove_entity`, the `set_lighting` dual-write onto `camera`, `start_camera`'s decoupling from live `camera` movement, zones add/update/remove, and a full load→mutate→save→reload round-trip proving `zones` survives it losslessly (the concrete gap this task's audit found and fixed) — all pass.
+- [x] **Viewer** (`python -m client.engine.area_viewer --area=frontend/assets/data/area/area-example.json`, and `python client/main.py --area=...` to confirm the `client/main.py` delegation): opened a real GPU window, loaded 3 entities (2 crates sharing one `render_template` at different positions/rotations, a multi-part staff) plus authored camera/lighting, rendered several seconds with zero errors, zero exceptions, closed cleanly. Confirmed **zero network activity** by construction — `area_viewer.py` never imports or calls anything in `client/engine/network.py`.
+- [x] **Builder** (`--mode=builder`): opened cleanly, add/remove/save panel renders with no errors. The underlying add/save logic (not the literal imgui mouse clicks — no interactive session available here) is the same code path `run_scene_test.py`'s `test_load_and_save_round_trip` already exercises end-to-end (add → save → reload → confirm round-trip), so the logic is verified; a literal click-through hasn't been separately manually driven.
+- [ ] **Empty-scene fallback** (no `--area`): opened cleanly, 3D camera at the documented default, zero entities — confirmed.
+- [ ] **Gameplay** mode: blocked — needs `client.game.player_select`, which doesn't exist on `engine` (Step 5).
+- [ ] **Test mode** (a script driving `Scene` while a window is open, not just headless): `run_scene_test.py` proves the API works headlessly; proving "the renderer keeps up" specifically needs a live window + script combo not exercised here, though nothing in the design suggests it wouldn't — same boot path as Builder, just scripted instead of human-driven.
+- [ ] An `'authoritative'`/`'local'` id collision refusing with a warning: **verified**, via `run_scene_test.py`, not a running client — the check is in `Scene.add_entity` itself, client-agnostic.
+- [ ] A save file with no `camera`/`lighting`/`zones` blocks still loads identically: **verified** at the `Scene.load_from_area_file` level (all three are `.get(...)`-guarded, absent-safe) — not verified against a real pre-Step-2 backend save file, since none exist to test against without a game branch.
+- [ ] `scheduler._order`/collision fixes/`ScriptMovementSystem`/trigger-collider items — blocked, Steps 9/10 (backend, plus the `ecs_world` gap).
+- [x] No lint/type errors on any modified/new file (`scene.py`, `free_camera.py`, `area_viewer.py`, `network.py`'s addition, `client/main.py`'s addition).
 
 ---
 
 ## Success Criteria
 
-- [ ] `backend/game/area.py` — `camera`/`lighting` optional fields added to `to_dict()`/`from_dict()`/`get_full_state()`; every field absent by default; no existing save file's load behaviour changes
-- [ ] `backend/app.py` — `initial_state` payload includes `camera`/`lighting` when present on the current `Area`
-- [ ] `client/engine/scene.py` — `Scene` class: `entities`/`camera`/`lighting`/`start_camera`, `add_entity`/`update_entity`/`remove_entity`/`set_camera`/`set_lighting`/`set_start_camera`, `'authoritative'`/`'local'` source tagging with refuse-on-collision, `load_from_area_file`/`to_area_file_json`; `start_camera` never mutated by per-frame camera movement, only by explicit calls
-- [ ] Live gameplay's entity/camera state proxies to a `Scene` instance; `renderer.py`/HUD/input handling unmodified; existing gameplay behaviourally unchanged
-- [ ] `client/game/area_viewer.py` + `client/engine/free_camera.py` — standalone boot path (`--area=`/`--mode=builder` flags) with no network client connection, serving viewer/builder/test modes from one entry point
-- [ ] Minimal builder panel (add/remove/save, imgui-bundle widgets) gated behind `--mode=builder`, out of the way of plain viewer usage
-- [ ] `client/engine/network.py` — `scene_cue` handler for non-authoritative scripted dressing, documented as cosmetic-only per the Physics & Simulation Boundary
-- [ ] `backend/game/systems/systems.py` — `MovementSystem` skips collider-bearing entities; `PathfindingSystem` sets velocity instead of teleporting position; `PhysicsSystem`'s collision pass uses the spatial grid; dependency graph reordered so `PhysicsSystem` runs last among movement systems, verified against the scheduler's actual computed order
-- [ ] `backend/engine/ecs/component.py` — `ScriptComponent` (dataclass, registry-registered) and `ColliderComponent.trigger` added
-- [ ] `backend/game/systems/systems.py` — `ScriptMovementSystem` (`waypoint_loop`/`orbit`/`follow`), registered and scheduled correctly; `"entity_overlap"` published via `EventBus` for trigger colliders, de-duplicated per overlap transition
-- [ ] `docs/graphics/DATA_STRUCTURES.md` — `ScriptComponent` entity-JSON authoring documented, including the "needs a `ColliderComponent` to interact" note
-- [ ] `docs/graphics/AREA_SYSTEM.md` — full schema, API, run-mode, and script-entity documentation, linked from `OVERVIEW.md`
+**Tags below mark what the branch-reconciliation banner established**: 🟢 buildable on `engine` today, 🔴 blocked on a game branch (`backend/game/`/`backend/app.py` don't exist on `engine`).
+
+- 🔴 [ ] `backend/game/area.py` — `camera`/`lighting`/`zones` optional fields added to `to_dict()`/`from_dict()`/`get_full_state()`; every field absent by default; no existing save file's load behaviour changes. (`zones` added to this line per the `Scene.zones` addition above — `Area`'s own persistence must carry what `Scene` round-trips, or the two sides of the file format diverge.)
+- 🔴 [ ] `backend/app.py` — `initial_state` payload includes `camera`/`lighting` when present on the current `Area`
+- 🟢 [x] `client/engine/scene.py` — `Scene` class: `entities`/`camera`/`lighting`/`start_camera`/`zones`, `add_entity`/`update_entity`/`remove_entity`/`set_camera`/`set_lighting`/`set_start_camera`/`add_zone`/`update_zone`/`remove_zone`, `'authoritative'`/`'local'` source tagging with refuse-on-collision, `load_from_area_file`/`to_area_file_json` (round-tripping `zones` losslessly even before any backend `ZoneRegistry` exists to consume it); `start_camera` never mutated by per-frame camera movement, only by explicit calls — implemented and verified via `run_scene_test.py`, all checks pass
+- 🔴 [ ] Live gameplay's entity/camera state proxies to a `Scene` instance; `renderer.py`/HUD/input handling unmodified. Corrected during implementation: `game_state` is owned by `client/game/player_select.py`, which doesn't exist on `engine` — this line is blocked on a game branch. `draw_game_scene`/`render_entities`/`_gather_lights` (`client/main.py`) already take `state` as a parameter and need no changes at all to accept `scene.entities`/`scene.camera` instead, confirmed 🟢 during Step 1's audit — only the code that currently *owns* `game_state` is blocked.
+- 🟢 [x] `client/engine/area_viewer.py` + `client/engine/free_camera.py` — standalone boot path (`--area=`/`--mode=builder` flags) with no network client connection, serving viewer/builder/test modes from one entry point. Reclassified from `client/game/area_viewer.py` this session — see the branch-reconciliation banner. Verified live: viewer, builder, and empty-scene-fallback modes all opened a real GPU window, rendered, and closed with zero errors; `client/main.py --area=...`'s delegation confirmed too.
+- 🟢 [x] Minimal builder panel (add/remove/save, imgui-bundle widgets) gated behind `--mode=builder`, out of the way of plain viewer usage — implemented; underlying add/save logic verified via `run_scene_test.py`, panel itself confirmed to render with no errors (literal imgui click-through not separately driven — no interactive session available)
+- 🟢 [x] `client/engine/network.py` — `scene_cue` handler for non-authoritative scripted dressing, documented as cosmetic-only per the Physics & Simulation Boundary — implemented as a callback slot (`on_scene_cue`, `set_state_handlers`), not a direct `Scene` call, correcting an engine/game-boundary issue in the original task wording (see Step 8's own note); no consumer registers it yet on `engine` since nothing here owns both a live `Scene` and a live network connection simultaneously
+- 🔴 [ ] `backend/game/systems/systems.py` — `MovementSystem` skips collider-bearing entities; `PathfindingSystem` sets velocity instead of teleporting position; `PhysicsSystem`'s collision pass uses the spatial grid; dependency graph reordered so `PhysicsSystem` runs last among movement systems, verified against the scheduler's actual computed order. **Before this line is checked, re-confirm the `ecs_world` gap (Step 9's warning) — if these systems still query an unpopulated `World`, this entire line needs re-targeting at whatever the real per-tick path is, not just implementing as literally scoped.**
+- 🔴 [ ] `backend/engine/ecs/component.py` — `ScriptComponent` (dataclass, registry-registered) and `ColliderComponent.trigger` added. (`backend/engine/ecs/component.py` itself exists on `engine` today — confirmed, `ColliderComponent`/`PositionComponent`/`VelocityComponent`/`PathComponent` are all already there — so this specific addition is 🟢-buildable in isolation; tagged 🔴 here because it's meaningless without Step 9/10's systems work, which is blocked.)
+- 🔴 [ ] `backend/game/systems/systems.py` — `ScriptMovementSystem` (`waypoint_loop`/`orbit`/`follow`), registered and scheduled correctly (**pending the same `ecs_world` re-confirmation**); `"entity_overlap"` published via `EventBus` for trigger colliders, de-duplicated per overlap transition
+- 🔴 [ ] `docs/graphics/DATA_STRUCTURES.md` — `ScriptComponent` entity-JSON authoring documented, including the "needs a `ColliderComponent` to interact" note
+- 🟢 [x] `docs/graphics/AREA_SYSTEM.md` — full schema, API, run-mode, and script-entity documentation, linked from `OVERVIEW.md` (the parts describable today — Scene/zones/run-modes — can be written before the backend half lands; the `ScriptComponent` section waits on that work) — written, linked
 - [ ] No existing gameplay path, save file, or rendering behaviour regresses — every addition in this task is additive, wrapped behind a compatibility shim, or a fix to a demonstrated bug
 - [ ] Nothing in this task touches `frontend/js/` — it targets the native Python client exclusively, per the banner at the top of this file

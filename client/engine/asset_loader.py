@@ -54,15 +54,19 @@ FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
 # Manifest categories currently scanned by tools/build_manifest.py and
 # read here -- matches assetLoader.js's categories list exactly as of
 # this port, plus "fonts"/"ui_skins" (client/engine/ui/theme.py, this
-# session's custom-drawn UI framework). "areas" (level-editor.prompt.md's
-# Python-targeted Step 2) is not in this list yet because that step
-# hasn't landed; add it there when it does, not here speculatively.
+# session's custom-drawn UI framework), "areas" (level-editor.prompt.md
+# Step 2 -- lets the launcher list Area files the same way it already
+# lists meshes/entities, no filesystem scanning of its own), and
+# "ui_menus" (level-editor.prompt.md Step 14 -- the UI-menu editor's
+# saved menu-<id>.json files).
 MANIFEST_CATEGORIES = [
     "images",
     "animations",
     "materials",
     "meshes",
     "entities",
+    "areas",
+    "ui_menus",
     "audio",
     "fonts",
     "ui_skins",
@@ -72,6 +76,23 @@ MANIFEST_CATEGORIES = [
 class AssetLoader:
     def __init__(self):
         self._registry: dict[str, str] = {}
+        # category -> {asset_id: path}, populated only by load_manifest()
+        # (register()/register_all() have no category, by design -- a
+        # dev-test fixture registered directly, like
+        # area_viewer.py's _register_dev_fixtures(), is deliberately
+        # resolvable but not browsable). Lets category-grouped UI
+        # (level-editor.prompt.md's asset browser/launcher) list "every
+        # mesh" without re-parsing manifest.json itself.
+        self._by_category: dict[str, dict[str, str]] = {}
+        # category -> {asset_id: full manifest entry dict}, populated
+        # alongside _by_category by load_manifest() -- audio.prompt.md
+        # Step 3's playback engine needs an audio entry's "type"/"loop"/
+        # "loop_start_s"/"loop_end_s" fields, which resolve()/
+        # list_category() (path-only, by design) don't expose. Same
+        # "found a real gap, added a narrowly-scoped method" precedent
+        # list_category() itself was added under (see ROADMAP.md's
+        # Phase 14 row).
+        self._entries: dict[str, dict[str, dict]] = {}
 
     def register(self, key: str, path: str) -> None:
         """Register an asset key with its path. Re-registering the same
@@ -146,12 +167,35 @@ class AssetLoader:
             entries = manifest.get(category)
             if not isinstance(entries, dict):
                 continue
+            category_map = self._by_category.setdefault(category, {})
+            entry_map = self._entries.setdefault(category, {})
             for asset_id, entry in entries.items():
+                if isinstance(entry, dict) and isinstance(entry.get("path"), str):
+                    category_map[asset_id] = entry["path"]
+                    entry_map[asset_id] = entry
                 if asset_id in self._registry:
                     continue
                 if isinstance(entry, dict) and isinstance(entry.get("path"), str):
                     self.register(asset_id, entry["path"])
                     registered += 1
+
+    def list_category(self, category: str) -> dict[str, str]:
+        """Return `{asset_id: path}` for every manifest entry under
+        *category* (e.g. `"meshes"`, `"entities"`, `"areas"`) --
+        populated only by `load_manifest()`. Empty dict if the
+        manifest hasn't been loaded yet or the category has no
+        entries.
+        """
+        return dict(self._by_category.get(category, {}))
+
+    def get_entry(self, category: str, asset_id: str) -> "dict | None":
+        """Return the full manifest entry dict for *asset_id* under
+        *category* -- e.g. an audio entry's "type"/"loop"/
+        "loop_start_s"/"loop_end_s" fields, which resolve()/
+        list_category() don't expose (path-only, by design). None if
+        the manifest hasn't been loaded yet or has no such entry.
+        """
+        return self._entries.get(category, {}).get(asset_id)
 
 
 # ----------------------------------------------------------------------

@@ -77,6 +77,13 @@ class Entity:
         """Return the attached component of *component_type*, or None."""
         return self._components.get(component_type.type_id)
 
+    def remove_component(self, component_type: Type[Component]) -> None:
+        """Detach the component of *component_type*, if present.
+        No-op if not attached. Mirrors add_component/get_component's
+        shape.
+        """
+        self._components.pop(component_type.type_id, None)
+
     def get_data(self, key: str, default: Any = None) -> Any:
         """Read *key* from this entity's tag data bag, or *default*."""
         comp = self.get_component(DataComponent)
@@ -90,6 +97,16 @@ class Entity:
             comp = DataComponent()
             self.add_component(comp)
         comp.data[key] = value
+
+    def clear_data(self, key: str) -> None:
+        """Remove *key* from this entity's tag data bag, if present.
+        No-op (not an error) if the key or the backing DataComponent
+        doesn't exist -- matches get_data/set_data's lazy-get-or-create
+        style.
+        """
+        comp = self.get_component(DataComponent)
+        if comp is not None:
+            comp.data.pop(key, None)
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialise the entity and all attached ECS components.

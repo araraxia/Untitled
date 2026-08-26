@@ -494,4 +494,27 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # Step 6 task 2 of area-system.prompt.md (--area=) extended by Step
+    # 3 task 0 of level-editor.prompt.md, found by audit: the original
+    # --area=-only check left no path to the launcher (or even the
+    # empty-scene viewer fallback) through this entry point at all --
+    # zero arguments fell straight through to real gameplay main(),
+    # which needs backend.app/client.game (neither present on `engine`)
+    # and fails immediately. Real gameplay now needs an explicit
+    # --play, so "no recognized editor argument" unambiguously means
+    # "show the launcher," never an accidental gameplay-boot attempt.
+    _args = sys.argv[1:]
+    if any(a.startswith("--area") for a in _args):
+        from client.engine import area_viewer
+
+        area_viewer.main()
+    elif any(a.startswith("--asset") for a in _args):
+        from client.engine import asset_preview
+
+        asset_preview.main()
+    elif "--play" in _args:
+        main()
+    else:
+        from client.engine import launcher
+
+        launcher.main()
