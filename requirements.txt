@@ -49,3 +49,18 @@ websocket-client==1.9.0
 # package not installed, only polling transport is available"), which
 # defeats the low-latency point of a real-time client (CLAUDE.md targets
 # <50ms localhost latency). Same client-only scope as `requests` above.
+miniaudio==1.71
+# client/engine/audio.py's fallback playback engine (decode + device
+# output; Phase 8, .github/prompts/audio.prompt.md Step 3) -- confirmed
+# installing from a prebuilt wheel (no compilation) and successfully
+# opening a real output device on Windows during that step's own
+# "confirm the dependency" checkpoint. Linux installation is still
+# unconfirmed -- see docs/DEBIAN_SETUP.md, which has no audio-related
+# system package listed yet pending that check.
+python-osc==1.10.2
+# backend/engine/osc.py's generic OSC sender to SuperCollider (Phase 8
+# Step 6) -- a pure-Python wheel (py3-none-any), no compilation, no
+# system dependency on either platform. Only `pythonosc.udp_client.
+# SimpleUDPClient` is used; UDP send is fire-and-forget by design (no
+# exception even with nothing listening on the other end -- confirmed),
+# which is exactly the no-op-safe behavior Step 6 requires.
