@@ -130,6 +130,33 @@ def init_renderer() -> None:
     init_lighting_pass()
 
 
+def set_cursor_locked(locked: bool) -> None:
+    """Hide and confine the cursor to the window (GLFW's
+    `CURSOR_DISABLED` mode) for always-on mouse-look, or restore normal
+    cursor behavior. `rendercanvas`'s public `RenderCanvas` constructor
+    has no cursor-mode option -- reach into the underlying GLFW window
+    handle directly, same precedent as `init_renderer()`'s own
+    `glfw.set_window_size_limits(canvas._window, ...)` call above.
+    `_window` is a private `GlfwRenderCanvas` attribute, not public
+    API; if a future rendercanvas version renames/removes it, this
+    call fails loudly (AttributeError) rather than silently doing
+    nothing.
+
+    While disabled, GLFW reports an unbounded *virtual* cursor position
+    through the same `pointer_move` events as normal -- diffing
+    consecutive positions (as `ThirdPersonCamera._on_pointer_move`
+    does) yields true relative mouse motion even though the real
+    cursor never moves. Also enables GLFW's raw mouse motion when the
+    platform supports it (bypasses OS pointer acceleration/ballistics
+    for a truer look-sensitivity feel); harmless no-op where it's
+    unsupported.
+    """
+    mode = glfw.CURSOR_DISABLED if locked else glfw.CURSOR_NORMAL
+    glfw.set_input_mode(canvas._window, glfw.CURSOR, mode)
+    if glfw.raw_mouse_motion_supported():
+        glfw.set_input_mode(canvas._window, glfw.RAW_MOUSE_MOTION, locked)
+
+
 def init_lighting_pass() -> None:
     """(Re-)initialize the LightingPass and allocate the scene texture
     it composites from. Safe to call multiple times -- re-creates

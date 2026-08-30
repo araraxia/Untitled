@@ -60,6 +60,7 @@ both DOM's convention and raw GLFW's own (left=0, right=1, middle=2).
 version.
 """
 
+import math
 import time
 from typing import Callable, Optional
 
@@ -88,7 +89,7 @@ _DEFAULT_KEY_CONFIG = {
         "menu": ["escape"],
     },
     "mouse": {"select": 0, "contextMenu": 2},
-    "settings": {"inputPollingRate": 16},
+    "settings": {"inputPollingRate": 16, "movement_style": "area_relative"},
 }
 
 keys: dict[str, bool] = {}
@@ -176,12 +177,25 @@ def is_action_pressed(action: str, category: str = "movement") -> bool:
     return any(keys.get(key.lower(), False) for key in action_keys)
 
 
-def process_gameplay_input() -> None:
-    """Process keyboard input for player movement and send the result
-    to the server. Direct port of processGameplayInput() -- this stays
-    in the engine layer (not a callback) because it touches no
-    game-layer concept beyond `network.send_player_action`, a peer
-    engine module.
+def get_movement_style() -> str:
+    """Return the configured movement style ("area_relative" or
+    "camera_relative") from `input_config.json`'s `settings` block --
+    not hardcoded, same reasoning every other keybind lives in that
+    file. Reuses the already-loaded `key_config`, no extra file I/O.
+    """
+    if not key_config:
+        return "area_relative"
+    settings = key_config.get("settings", {})
+    return settings.get("movement_style", "area_relative")
+
+
+def get_movement_input() -> "tuple[float, float, str | None]":
+    """Read WASD/arrow key state into a raw, diagonal-normalized
+    `(dx, dy)` movement vector plus a facing label (`None` if idle) --
+    the shared first step both movement-style senders below build on.
+    `dy < 0` is the "up"/forward key, `dx > 0` is the "right" key
+    (`input_config.json`'s own convention, unchanged from the original
+    single-style version of this function).
     """
     dx = 0.0
     dy = 0.0
@@ -209,10 +223,67 @@ def process_gameplay_input() -> None:
     elif dx > 0:
         facing = "right"
 
+    return dx, dy, facing
+
+
+def process_gameplay_input_area_relative() -> None:
+    """"Area relative" movement style (renamed from this project's
+    original, only movement style -- `process_gameplay_input()`; same
+    behavior, unchanged): W/S/A/D map directly to fixed world axes
+    (forward is always world +Z, right is always world -X, confirmed
+    against a real hands-on test), regardless of which way the camera
+    is currently facing. This stays in the engine layer (not a
+    callback) because it touches no game-layer concept beyond
+    `network.send_player_action`, a peer engine module.
+    """
+    dx, dy, facing = get_movement_input()
     if dx != 0 or dy != 0:
         network.send_player_action("move", direction={"x": dx, "y": dy}, facing=facing)
     else:
         network.send_player_action("move", direction={"x": 0, "y": 0})
+
+
+def process_gameplay_input_camera_relative(camera_yaw: float) -> None:
+    """"Camera relative" movement style: forward is whichever direction
+    the camera is currently looking (ground-projected, ignoring pitch),
+    left/right are tangent to that. Takes `camera_yaw` (radians, same
+    convention as `ThirdPersonCamera.yaw`: yaw=0 -> camera offset
+    faces +Z, so the camera itself *looks* -Z at yaw=0) as a plain
+    float parameter rather than importing a camera object directly --
+    a camera is a game-layer concept this engine-layer module must not
+    reach for itself; the caller (game-layer glue code, e.g.
+    `client/game/game_client.py`) is responsible for reading
+    `camera.yaw` and passing it in.
+
+    The rotation math sends `direction` pre-negated to match
+    `Area.process_player_action`'s existing, already-verified
+    "-direction.x -> world x, -direction.y -> world z" convention --
+    this function must never change what a receiving server does with
+    `direction`, only what values it computes for it, so area-relative
+    movement's already-tested behavior can't regress. Derivation: the
+    camera's ground-projected forward is `(-sin(yaw), -cos(yaw))` and
+    its right is `(cos(yaw), -sin(yaw))` (matching `ThirdPersonCamera`/
+    `FreeCamera`'s shared convention); composing
+    `forward_amount=-dy, right_amount=dx` against those two vectors and
+    then negating for the server's convention simplifies to the two
+    lines below. Verified: at the default camera yaw (directly behind
+    the target), this produces bit-identical output to area-relative
+    for the same keys, since the camera starts facing the same way
+    area-relative always assumes.
+    """
+    dx, dy, facing = get_movement_input()
+    if dx == 0 and dy == 0:
+        network.send_player_action("move", direction={"x": 0, "y": 0})
+        return
+
+    sin_yaw = math.sin(camera_yaw)
+    cos_yaw = math.cos(camera_yaw)
+    direction_x = -dy * sin_yaw - dx * cos_yaw
+    direction_y = -dy * cos_yaw + dx * sin_yaw
+
+    network.send_player_action(
+        "move", direction={"x": direction_x, "y": direction_y}, facing=facing
+    )
 
 
 def process_input() -> None:

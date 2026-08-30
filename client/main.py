@@ -377,7 +377,7 @@ def _on_process_input() -> None:
         return
 
     if game_state["context"] == GameContext.IN_GAME:
-        input_engine.process_gameplay_input()
+        input_engine.process_gameplay_input_area_relative()
 
 
 def _on_resize(event: dict) -> None:
@@ -493,6 +493,74 @@ def main() -> None:
     logger.info("Game window closed. Exiting...")
 
 
+def play_milestone1() -> None:
+    """Milestone-1 boot path -- no player-select/character-creation,
+    one hardcoded player entity, straight into gameplay. Deliberately
+    separate from main() (which needs client.game.player_select/
+    character_creation/ui, none of which this milestone builds) and
+    from --play (reserved for that real flow once it exists), so the
+    two can coexist without collision. Reuses everything above the
+    client.game import boundary that main() also reuses: server
+    bootstrap, renderer/imgui setup, the input/network engine modules,
+    draw_game_scene().
+    """
+    logger.info("=" * 50)
+    logger.info("Milestone 1: playable character boot path")
+    logger.info("=" * 50)
+
+    server_thread = threading.Thread(target=start_server, daemon=True)
+    server_thread.start()
+
+    logger.info("Waiting for server to start...")
+    if not is_server_ready():
+        logger.error("ERROR: Server failed to start within timeout period!")
+        return
+
+    logger.info("Opening game window...")
+    renderer.init_renderer()
+
+    global imgui_renderer
+    imgui_renderer = ImguiRenderer(renderer.device, renderer.canvas)
+    imgui_renderer.set_gui(lambda: None)  # no HUD this milestone
+
+    from client.game import game_client
+
+    input_engine.init_input(renderer.canvas)
+    input_engine.set_input_handlers(
+        on_process=game_client.process_movement_input
+    )
+    renderer.canvas.add_event_handler(_on_resize, "resize")
+
+    game_client.init()
+    network.set_state_handlers(
+        on_initial_state=game_client.on_initial_state,
+        on_state_update=game_client.on_state_update,
+    )
+    network.init_network()
+
+    def _milestone1_draw() -> None:
+        global _last_frame_time
+        now = time.perf_counter()
+        if _last_frame_time is None:
+            delta_time_ms = 0.0
+        else:
+            delta_time_ms = (now - _last_frame_time) * 1000.0
+        _last_frame_time = now
+
+        game_client.frame(delta_time_ms)
+        input_engine.process_input()
+        state = {
+            "entities": game_client.scene.entities,
+            "camera": game_client.scene.camera,
+        }
+        draw_game_scene(state, delta_time_ms)
+        imgui_renderer.render()
+
+    renderer.run(_milestone1_draw)
+
+    logger.info("Game window closed. Exiting...")
+
+
 if __name__ == "__main__":
     # Step 6 task 2 of area-system.prompt.md (--area=) extended by Step
     # 3 task 0 of level-editor.prompt.md, found by audit: the original
@@ -514,6 +582,8 @@ if __name__ == "__main__":
         asset_preview.main()
     elif "--play" in _args:
         main()
+    elif "--play-mvp" in _args:
+        play_milestone1()
     else:
         from client.engine import launcher
 

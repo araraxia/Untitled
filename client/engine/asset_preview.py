@@ -32,68 +32,13 @@ from wgpu.utils.imgui import ImguiRenderer
 from client.engine import imgui_wgpu_compat  # noqa: F401
 from client.engine import interpolation, renderer
 from client.engine.asset_loader import asset_loader
+from client.engine.orbit_camera import OrbitCamera
 from client.engine.scene import Scene
 
 import client.main as client_main
 
 _PREVIEW_ENTITY_DIR = REPO_ROOT / "frontend" / "assets" / "data" / "entity"
 _PREVIEW_TEMPLATE_KEY = "_preview_tmp"
-
-
-class OrbitCamera:
-    """Drag to orbit, scroll to zoom -- same shape as
-    run_client_test.py's own OrbitCamera (dev-tool-only, independent of
-    client/engine/input.py's game input system).
-    """
-
-    def __init__(self, target=(0.0, 0.0, 0.0), radius: float = 200.0) -> None:
-        self.yaw = 0.4
-        self.pitch = 0.3
-        self.radius = radius
-        self.target = list(target)
-        self._dragging = False
-        self._last_x = 0.0
-        self._last_y = 0.0
-
-    def bind(self, canvas) -> None:
-        canvas.add_event_handler(self._on_pointer_button, "pointer_down", "pointer_up")
-        canvas.add_event_handler(self._on_pointer_move, "pointer_move")
-        canvas.add_event_handler(self._on_wheel, "wheel")
-
-    def _on_pointer_button(self, event: dict) -> None:
-        if event.get("button") != 1:
-            return
-        if event["event_type"] == "pointer_down":
-            self._dragging = True
-            self._last_x = event["x"]
-            self._last_y = event["y"]
-        elif event["event_type"] == "pointer_up":
-            self._dragging = False
-
-    def _on_pointer_move(self, event: dict) -> None:
-        if not self._dragging:
-            return
-        dx = event["x"] - self._last_x
-        dy = event["y"] - self._last_y
-        self._last_x = event["x"]
-        self._last_y = event["y"]
-        self.yaw -= dx * 0.008
-        self.pitch = max(-1.4, min(1.4, self.pitch - dy * 0.008))
-
-    def _on_wheel(self, event: dict) -> None:
-        self.radius = max(20.0, min(2000.0, self.radius + event["dy"] * 0.5))
-
-    def apply(self, camera: dict) -> None:
-        x = self.target[0] + self.radius * math.cos(self.pitch) * math.sin(self.yaw)
-        y = self.target[1] + self.radius * math.sin(self.pitch)
-        z = self.target[2] + self.radius * math.cos(self.pitch) * math.cos(self.yaw)
-        camera["mode"] = "3d"
-        camera["position"] = [x, y, z]
-        camera["target"] = list(self.target)
-        camera.setdefault("up", [0, 1, 0])
-        camera.setdefault("fov", math.pi / 4)
-        camera.setdefault("near", 1)
-        camera.setdefault("far", 2000)
 
 
 def _write_synthetic_definition(asset_id: str, asset_type: str) -> str:

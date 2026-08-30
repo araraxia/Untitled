@@ -75,6 +75,7 @@ class MaterialLoader:
         self._bind_group_layout = self._create_bind_group_layout()
         self._sampler = self._create_sampler()
         self._fallback_param_texture = self._create_1x1_black_texture()
+        self._fallback_material_handle: "dict | None" = None
 
     @property
     def bind_group_layout(self):
@@ -210,6 +211,54 @@ class MaterialLoader:
         """Return a previously loaded handle by material id, or None."""
         return self._handles.get(material_id)
 
+    def get_fallback_handle(self) -> dict:
+        """Shared placeholder material -- a solid magenta albedo, the
+        conventional "missing texture" signal games use -- for a mesh
+        part with no `material_id` at all, or one whose material file
+        failed to load.
+
+        Real bug this fixes: `entity_renderer.py`'s `_draw_mesh_part`
+        used to skip the draw call entirely whenever no material
+        handle was available, so any part with an unassigned
+        `material_id` (every part `entity_builder.py`'s "+ Add Part"/
+        "Scaffold Parts from Sockets" create, which never set one)
+        rendered as nothing -- no error, no placeholder, just an empty
+        viewport, indistinguishable from "the mesh itself failed to
+        load." Built once, lazily, and reused for every part that
+        needs it -- cheap, since it's a single 1x1 texture + one bind
+        group shared across the whole session.
+        """
+        if self._fallback_material_handle is not None:
+            return self._fallback_material_handle
+
+        magenta_tex = self._create_1x1_texture((255, 0, 255, 255))
+        uniform_buffer = self._device.create_buffer(
+            size=MATERIAL_UNIFORM_ALIGNED,
+            usage=wgpu.BufferUsage.UNIFORM | wgpu.BufferUsage.COPY_DST,
+        )
+        bind_group = self._device.create_bind_group(
+            layout=self._bind_group_layout,
+            entries=[
+                {"binding": 0, "resource": {"buffer": uniform_buffer}},
+                {"binding": 1, "resource": magenta_tex.create_view()},
+                {"binding": 2, "resource": self._fallback_param_texture.create_view()},
+                {"binding": 3, "resource": self._sampler},
+            ],
+        )
+        self._fallback_material_handle = {
+            "id": "__fallback_missing_material__",
+            "bind_group": bind_group,
+            "uniform_buffer": uniform_buffer,
+            "flags": {"has_param_map": False, "has_overlay": False, "has_color_ramp": False},
+            "overlays": [],
+            "color_ramp_type": None,
+            "cosine_params": None,
+            "vertex_color": False,
+            "affine_uv": False,
+            "color_levels": 0,
+        }
+        return self._fallback_material_handle
+
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
@@ -242,13 +291,30 @@ class MaterialLoader:
         )
 
     def _create_sampler(self):
-        """Shared sampler used across all material bind groups."""
-        return self._device.create_sampler(min_filter="linear", mag_filter="nearest")
+        """Shared sampler used across all material bind groups.
 
-    def _create_1x1_black_texture(self):
-        """1x1 opaque black RGBA texture -- placeholder when no param
-        map is defined, ensuring the bind group slot is always
-        populated.
+        `address_mode_u`/`address_mode_v` explicitly set to `"repeat"`
+        -- wgpu's own default is `"clamp-to-edge"` (confirmed via
+        `inspect.signature(wgpu.GPUDevice.create_sampler)`), which
+        would smear the edge pixel outward instead of tiling for any
+        UV authored outside `[0,1]` (e.g. a large terrain chunk's
+        repeating ground texture). Safe for every material authored so
+        far: repeat and clamp-to-edge are identical for any UV that
+        never leaves `[0,1]`, which is everything existing so far --
+        this only changes behavior for the first mesh that actually
+        uses tiled UVs.
+        """
+        return self._device.create_sampler(
+            address_mode_u="repeat",
+            address_mode_v="repeat",
+            min_filter="linear",
+            mag_filter="nearest",
+        )
+
+    def _create_1x1_texture(self, color: "tuple[int, int, int, int]"):
+        """1x1 opaque RGBA texture of *color* -- shared by the missing-
+        param-map fallback (black) and the missing-material fallback
+        (magenta, see get_fallback_handle()).
         """
         tex = self._device.create_texture(
             size=(1, 1, 1),
@@ -257,11 +323,18 @@ class MaterialLoader:
         )
         self._device.queue.write_texture(
             {"texture": tex},
-            bytes([0, 0, 0, 255]),
+            bytes(color),
             {"bytes_per_row": 4},
             (1, 1, 1),
         )
         return tex
+
+    def _create_1x1_black_texture(self):
+        """1x1 opaque black RGBA texture -- placeholder when no param
+        map is defined, ensuring the bind group slot is always
+        populated.
+        """
+        return self._create_1x1_texture((0, 0, 0, 255))
 
     def _load_texture(self, path: str):
         """Read an image at *path* (relative to FRONTEND_DIR) and

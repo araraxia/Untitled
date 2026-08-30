@@ -146,6 +146,15 @@ class EntityRenderer:
         # by the particle emitter in draw_entity.
         self._last_delta_time = 0.0
 
+        # "View > Mesh > Wireframe" toggle (client/engine/entity_builder.py) --
+        # only affects the mesh-parts draw path (_draw_mesh_part); the
+        # 2D sprite/billboard path is unaffected. Off by default so
+        # every existing caller renders exactly as before.
+        self.wireframe = False
+
+    def set_wireframe(self, enabled: bool) -> None:
+        self.wireframe = enabled
+
     def load_all_animation_data(self) -> None:
         """Read all animation data files and sort by z-index."""
         try:
@@ -852,7 +861,11 @@ class EntityRenderer:
         3d-coordinate-mapping.prompt.md. Empty dict if the clip hasn't
         loaded yet (or failed to) -- caller falls back to the part's
         static localOffset fields in that case, same graceful
-        degradation as a still-loading mesh/material.
+        degradation as a still-loading mesh/material. `part_id` is
+        forwarded to sample_transform_clip() so a multi-part rig clip
+        (entity_builder.py's Animation Editor) samples this part's own
+        per-keyframe track rather than another part's -- a no-op for a
+        plain single-part clip, which ignores part_id entirely.
         """
         clip = self._get_transform_clip(animation_id)
         if clip is None:
@@ -862,7 +875,7 @@ class EntityRenderer:
         elapsed = self._anim_clip_clocks.get(key, 0.0) + self._last_delta_time
         self._anim_clip_clocks[key] = elapsed
 
-        return transform_clip.sample_transform_clip(clip, elapsed)
+        return transform_clip.sample_transform_clip(clip, elapsed, part_id=part_id)
 
     def _sample_part_action_animation(
         self,
@@ -896,7 +909,7 @@ class EntityRenderer:
         if clip is None:
             return None
 
-        return transform_clip.sample_transform_clip({**clip, "loop": False}, elapsed)
+        return transform_clip.sample_transform_clip({**clip, "loop": False}, elapsed, part_id=part_id)
 
     def _get_transform_clip(self, animation_id: str) -> "dict | None":
         """Resolve and cache one transform clip JSON, same in-flight-
@@ -966,19 +979,30 @@ class EntityRenderer:
         # material path. Sourced from the part's own material_id, not
         # entity['material'] (that field belongs to the legacy
         # 2D-only path).
+        #
+        # A missing/unset material_id, or one whose file fails to
+        # load, falls back to MaterialLoader.get_fallback_handle() (a
+        # solid magenta placeholder) rather than skipping the draw
+        # entirely -- a real bug this fixes: this used to `return
+        # False` here, so a part with no material_id (every part
+        # entity_builder.py's "+ Add Part"/"Scaffold Parts from
+        # Sockets" create, which never set one) rendered as nothing,
+        # with zero error, indistinguishable from the mesh itself
+        # having failed to load.
         handle_key = entity_id if part_id is None else f"{entity_id}:{part_id}"
-        if material_id and handle_key not in self._material_handles:
-            mat_path = "assets/data/" + material_id
-            try:
-                handle = self._material_loader.load(mat_path)
-                self._material_handles[handle_key] = handle
-            except Exception as err:  # noqa: BLE001
-                print(f"[entity_renderer] Mesh material load failed: {err}")
-                self._material_handles[handle_key] = None
+        if handle_key not in self._material_handles:
+            handle = None
+            if material_id:
+                mat_path = "assets/data/" + material_id
+                try:
+                    handle = self._material_loader.load(mat_path)
+                except Exception as err:  # noqa: BLE001
+                    print(f"[entity_renderer] Mesh material load failed: {err}")
+            if handle is None:
+                handle = self._material_loader.get_fallback_handle()
+            self._material_handles[handle_key] = handle
 
-        handle = self._material_handles.get(handle_key)
-        if not handle:
-            return False  # no material loaded yet -- required for the mesh path
+        handle = self._material_handles[handle_key]
 
         mvp = mat4.multiply(view_projection, world_matrix)
 
@@ -989,9 +1013,22 @@ class EntityRenderer:
         # Affine UV is a compile-time pipeline choice (see
         # shader_cache.py's build_mesh_wgsl_common), so it's part of
         # which pipeline gets requested, not a uniform written below.
-        pipeline = self._shader_cache.get_mesh_pipeline(
-            variant_key, self._material_loader.bind_group_layout, handle["affine_uv"]
-        )
+        #
+        # Wireframe (self.wireframe, set via set_wireframe()) swaps both
+        # the pipeline and the index buffer/count together -- the
+        # wireframe pipeline expects a line-list index buffer
+        # (Mesh.wireframe_index_buffer), not the regular triangle-list
+        # one, so these two must always change as a pair.
+        if self.wireframe:
+            pipeline = self._shader_cache.get_mesh_wireframe_pipeline(self._material_loader.bind_group_layout)
+            index_buffer = loaded_mesh.wireframe_index_buffer
+            index_count = loaded_mesh.wireframe_index_count
+        else:
+            pipeline = self._shader_cache.get_mesh_pipeline(
+                variant_key, self._material_loader.bind_group_layout, handle["affine_uv"]
+            )
+            index_buffer = loaded_mesh.index_buffer
+            index_count = loaded_mesh.index_count
 
         # Stylization inputs, each defaulting to a true no-op so a
         # material/camera that sets none of them renders identically to
@@ -1038,8 +1075,8 @@ class EntityRenderer:
         pass_encoder.set_pipeline(pipeline)
         pass_encoder.set_bind_group(0, handle["bind_group"])
         pass_encoder.set_vertex_buffer(0, loaded_mesh.vertex_buffer)
-        pass_encoder.set_index_buffer(loaded_mesh.index_buffer, loaded_mesh.index_format)
-        pass_encoder.draw_indexed(loaded_mesh.index_count)
+        pass_encoder.set_index_buffer(index_buffer, loaded_mesh.index_format)
+        pass_encoder.draw_indexed(index_count)
         return True
 
     def set_entity_runtime(self, entity_id: str, key: str, value) -> None:

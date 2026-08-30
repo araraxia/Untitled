@@ -197,6 +197,32 @@ class AssetLoader:
         """
         return self._entries.get(category, {}).get(asset_id)
 
+    def remove_entry(self, category: str, asset_id: str) -> None:
+        """Drop *asset_id* from *category*'s in-memory manifest state
+        (`_by_category`/`_entries`) and the resolve() registry, so it
+        stops showing up in `list_category()` immediately. Purely
+        in-memory -- callers that also want the underlying file and
+        its manifest.json entry gone (e.g. the launcher's asset Delete
+        button) handle that separately, since this loader only ever
+        reads manifest.json, never writes it.
+        """
+        self._by_category.get(category, {}).pop(asset_id, None)
+        self._entries.get(category, {}).pop(asset_id, None)
+        self.unregister(asset_id)
+
+    def add_entry(self, category: str, asset_id: str, entry: dict) -> None:
+        """Counterpart to `remove_entry()` -- register *asset_id* under
+        *category* with a full manifest entry dict (must have a
+        "path" key), the same shape `load_manifest()` populates from
+        manifest.json. Purely in-memory, same division of
+        responsibility as `remove_entry()`: callers that also want
+        manifest.json itself updated on disk (e.g. the launcher's
+        asset Rename button) do that separately.
+        """
+        self._by_category.setdefault(category, {})[asset_id] = entry["path"]
+        self._entries.setdefault(category, {})[asset_id] = entry
+        self.register(asset_id, entry["path"])
+
 
 # ----------------------------------------------------------------------
 # Shared instance + built-in asset registrations

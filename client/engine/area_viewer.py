@@ -66,6 +66,7 @@ from client.engine.editor_commands import (
     update_entity_command,
     update_zone_command,
 )
+from client.engine.entity_template_editing import default_part_buffer, draw_part_fields
 from client.engine.free_camera import FreeCamera
 from client.engine.gizmo import Gizmo
 from client.engine.picking import pick_entity
@@ -735,55 +736,10 @@ def _draw_template_section(scene: Scene, state: EditorState, entity_id: str, ren
             continue
 
         buffer_key = f"{render_template}:{part_id}"
-        buffer = state.template_edit_buffers.setdefault(
-            buffer_key,
-            {
-                "dangle": dict(part.get("dangle") or {}),
-                "local_offset_position": list((part.get("localOffset") or {}).get("position") or [0, 0, 0]),
-                "action_animations": dict(part.get("action_animations") or {}),
-            },
-        )
-
-        imgui.text("dangle (secondary motion)")
-        for key, default in (("stiffness", 6.0), ("damping", 0.25), ("maxOffset", 6.0)):
-            value = buffer["dangle"].get(key, default)
-            _, buffer["dangle"][key] = imgui.input_float(f"dangle.{key}##{buffer_key}", value)
-
-        imgui.text("localOffset.position")
-        for i, axis_name in enumerate(("ox", "oy", "oz")):
-            _, buffer["local_offset_position"][i] = imgui.input_float(
-                f"{axis_name}##{buffer_key}", buffer["local_offset_position"][i]
-            )
-
-        # Step 15 task 3: per-part action-clip assignment -- one
-        # transform-clip-id text field per registered action (from
-        # Step 15's Action Definitions panel), writing/clearing
-        # part.action_animations[action_name]. Data only, exactly like
-        # the dangle/localOffset fields above -- deciding *when* an
-        # action fires is real gameplay code, never authored here.
-        imgui.text("action_animations (per registered action)")
-        if not state.action_registry.actions:
-            imgui.text_wrapped("No actions registered yet -- add some in the Action Definitions panel.")
-        for action_name in sorted(state.action_registry.actions.keys()):
-            clip_id = buffer["action_animations"].get(action_name, "")
-            _, buffer["action_animations"][action_name] = imgui.input_text(
-                f"{action_name}##{buffer_key}-actionclip", clip_id
-            )
-            if not buffer["action_animations"][action_name]:
-                buffer["action_animations"].pop(action_name, None)
-
-        if imgui.button(f"Confirm & Save Template##{buffer_key}"):
-            new_part = dict(part)
-            new_part["dangle"] = dict(buffer["dangle"])
-            local_offset = dict(part.get("localOffset") or {})
-            local_offset["position"] = list(buffer["local_offset_position"])
-            new_part["localOffset"] = local_offset
-            if buffer["action_animations"]:
-                new_part["action_animations"] = dict(buffer["action_animations"])
-            elif "action_animations" in new_part:
-                del new_part["action_animations"]
-
-            new_parts = [new_part if p.get("id") == part_id else p for p in parts]
+        buffer = state.template_edit_buffers.setdefault(buffer_key, default_part_buffer(part))
+        edited = draw_part_fields(part, buffer, state.action_registry, buffer_key)
+        if edited is not None:
+            new_parts = [edited if p.get("id") == part_id else p for p in parts]
             new_definition = dict(definition)
             new_definition["parts"] = new_parts
             save_entity_definition(new_definition, render_template)

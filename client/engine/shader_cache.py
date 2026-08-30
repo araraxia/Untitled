@@ -157,6 +157,7 @@ class ShaderCache:
         self._material_pipelines: dict[str, object] = {}
         self._material_bgl = None
         self._mesh_pipelines: dict[str, object] = {}
+        self._mesh_wireframe_pipeline = None
 
     def get_sprite_pipeline(self):
         """Return the cached sprite pipeline, creating it on first call."""
@@ -273,6 +274,23 @@ class ShaderCache:
                 self._device, self._format, bgl, variant, affine_uv
             )
         return self._mesh_pipelines[key]
+
+    def get_mesh_wireframe_pipeline(self, bind_group_layout=None):
+        """Return the cached mesh-wireframe pipeline, creating it on
+        first call -- the "View > Mesh > Wireframe" toggle's renderer,
+        drawn as a line-list over Mesh.wireframe_index_buffer (see that
+        property's own docstring: WebGPU has no native polygon
+        wireframe fill mode, unlike OpenGL/Vulkan/D3D). One pipeline
+        total, unlike get_mesh_pipeline's per-variant/per-affine_uv
+        cache -- a flat-color line draw has no material variant or UV
+        interpolation mode to key on.
+        """
+        if self._mesh_wireframe_pipeline is None:
+            bgl = bind_group_layout or self.get_material_bind_group_layout()
+            self._mesh_wireframe_pipeline = create_mesh_wireframe_pipeline(
+                self._device, self._format, bgl
+            )
+        return self._mesh_wireframe_pipeline
 
 
 # ======================================================================
@@ -874,6 +892,67 @@ def create_mesh_pipeline(device, format, bind_group_layout, variant_key: str, af
         # the base 2D sprite pipeline (never depth-tested, see
         # get_sprite_pipeline), there's no "existing 2D behaviour" to
         # preserve here.
+        depth_stencil={
+            "format": DEPTH_FORMAT,
+            "depth_write_enabled": True,
+            "depth_compare": "less",
+        },
+    )
+
+
+def create_mesh_wireframe_pipeline(device, format, bind_group_layout):
+    """Compile the mesh pipeline's wireframe variant: the exact same
+    vertex stage as the solid mesh pipeline (build_mesh_wgsl_common's
+    vs_main -- an unmodified mvp transform, no reason to duplicate it),
+    but a trivial flat-white fragment shader and `line-list` topology
+    in place of the solid pipeline's textured fragment shader and
+    `triangle-list`. Paired at draw time with
+    Mesh.wireframe_index_buffer (see that property's docstring: WebGPU
+    has no native polygon/wireframe fill mode, so an actual line-list
+    over the mesh's triangle edges is the standard workaround).
+
+    Reuses the real material bind group layout (and, at draw time, a
+    part's real material bind group) purely so the same MatUniforms.mvp
+    field is available at binding 0 -- the fragment shader never reads
+    the albedo/param_map/sampler bindings it's paired with, no second,
+    smaller bind group layout needed just for this.
+    """
+    wgsl = (
+        build_mesh_wgsl_common(affine_uv=False)
+        + """
+@fragment
+fn fs_wireframe() -> @location(0) vec4<f32> {
+  return vec4<f32>(1.0, 1.0, 1.0, 1.0);
+}
+"""
+    )
+    shader_module = device.create_shader_module(code=wgsl)
+
+    pipeline_layout = device.create_pipeline_layout(bind_group_layouts=[bind_group_layout])
+
+    return device.create_render_pipeline(
+        layout=pipeline_layout,
+        vertex={
+            "module": shader_module,
+            "entry_point": "vs_main",
+            "buffers": [
+                {
+                    "array_stride": 48,
+                    "attributes": [
+                        {"shader_location": 0, "offset": 0, "format": "float32x3"},  # pos
+                        {"shader_location": 1, "offset": 12, "format": "float32x3"},  # normal
+                        {"shader_location": 2, "offset": 24, "format": "float32x2"},  # uv
+                        {"shader_location": 3, "offset": 32, "format": "float32x4"},  # color
+                    ],
+                }
+            ],
+        },
+        fragment={
+            "module": shader_module,
+            "entry_point": "fs_wireframe",
+            "targets": [{"format": format}],
+        },
+        primitive={"topology": "line-list"},
         depth_stencil={
             "format": DEPTH_FORMAT,
             "depth_write_enabled": True,

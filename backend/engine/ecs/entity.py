@@ -25,6 +25,9 @@ class Entity:
         y (Optional[float]): Y position of the entity.
         vx (float): Velocity in the X direction.
         vy (float): Velocity in the Y direction.
+        vz (float): Velocity in the Z direction (world-space forward
+            axis on a Y-up ground plane -- see FreeCamera/
+            ThirdPersonCamera/mat4.py's shared convention).
         state (str): Current state of the entity (e.g., "idle", "moving").
         facing (str): Direction the entity is facing ("up", "down", "left", "right").
         animation_data_paths (List[str]): List of paths to animation data files.
@@ -47,6 +50,7 @@ class Entity:
         self.z = z if z is not None else 0.0
         self.vx = 0.0  # velocity x
         self.vy = 0.0  # velocity y
+        self.vz = 0.0  # velocity z (world-space forward axis, Y-up)
         self.state = state  # e.g., idle, moving, attacking
         self.facing = facing  # direction entity is facing: up, down, left, right
         self.is_dirty = True
@@ -124,6 +128,7 @@ class Entity:
             "z": self.z,
             "vx": self.vx,
             "vy": self.vy,
+            "vz": self.vz,
             "state": self.state,
             "facing": self.facing,
             "animation_data_paths": self.animation_data_paths,
@@ -155,6 +160,7 @@ class Entity:
         entity.current_area_id = data.get("current_area_id")
         entity.vx = data.get("vx", 0.0)
         entity.vy = data.get("vy", 0.0)
+        entity.vz = data.get("vz", 0.0)
         entity.render_template = data.get("render_template")
         entity.transform3d = data.get("transform3d")
         for comp_data in data.get("components", []):
@@ -187,9 +193,10 @@ class Entity:
     def update(self, delta_time: float):
         """Update entity state."""
         # Update position based on velocity
-        if self.vx != 0 or self.vy != 0:
+        if self.vx != 0 or self.vy != 0 or self.vz != 0:
             self.x += self.vx * delta_time
             self.y += self.vy * delta_time
+            self.z += self.vz * delta_time
             self.is_dirty = True
 
     def serialize(self) -> Dict[str, Any]:
@@ -201,6 +208,7 @@ class Entity:
             "z": self.z,
             "vx": self.vx,
             "vy": self.vy,
+            "vz": self.vz,
             "state": self.state,
             "facing": self.facing,
             "animation_data_paths": self.animation_data_paths,

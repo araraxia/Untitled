@@ -54,9 +54,11 @@ class Mesh:
         self._device = device
         self._vertex_buffer = None
         self._index_buffer = None
+        self._wireframe_index_buffer = None
         self._index_format = "uint16"
         self._vertex_count = 0
         self._index_count = 0
+        self._wireframe_index_count = 0
         # name -> {"position": [x,y,z], "rotation": [x,y,z]} (radians,
         # rotation_xyz convention). Step 9 of 3d-coordinate-mapping
         # .prompt.md -- named local-space attachment points, empty dict
@@ -84,12 +86,33 @@ class Mesh:
     def index_buffer(self):
         return self._index_buffer
 
+    @property
+    def wireframe_index_count(self) -> int:
+        return self._wireframe_index_count
+
+    @property
+    def wireframe_index_buffer(self):
+        """Line-list index buffer (2 indices per triangle edge, same
+        `index_format` as `index_buffer`) for wireframe rendering --
+        see `load()`'s own comment for why this exists at all (WebGPU
+        has no native polygon fill mode)."""
+        return self._wireframe_index_buffer
+
     def get_socket(self, name: str) -> "dict | None":
         """Return the named socket's {"position", "rotation"} dict, or
         None if this mesh has no socket by that name (or no sockets at
         all). Used by entity_renderer.py's attachment-chain composition
         (Step 9)."""
         return self._sockets.get(name)
+
+    def socket_names(self) -> "list[str]":
+        """All socket names this mesh defines, in file order. Used by
+        entity_builder.py's socket-scaffolding (Step 6 of
+        .github/prompts/entity-builder.prompt.md) to enumerate a root
+        part's attachment points -- get_socket() alone can't answer
+        "what sockets does this mesh have," only "does this one exist."
+        """
+        return list(self._sockets.keys())
 
     def load(self, mesh_json_path: str) -> None:
         """Read the mesh JSON, pack vertices into an interleaved
@@ -189,6 +212,34 @@ class Mesh:
         self._index_buffer.write_mapped(index_array)
         self._index_buffer.unmap()
 
+        # Wireframe companion index buffer -- WebGPU has no native
+        # polygon/wireframe fill mode (unlike OpenGL/Vulkan/D3D's
+        # PolygonMode::Line), so a wireframe view is drawn as an actual
+        # line-list over the same vertex buffer: each triangle
+        # contributes its 3 edges as line segments. Edges shared
+        # between adjacent triangles are duplicated rather than
+        # deduplicated via an edge-adjacency structure -- harmless
+        # overdraw of the same line twice for a debug view, much
+        # simpler to build. Same index format/typecode as the triangle
+        # buffer above (same vertex indices, just reordered/duplicated).
+        wireframe_indices = []
+        for i in range(0, len(indices) - 2, 3):
+            a, b, c = indices[i], indices[i + 1], indices[i + 2]
+            wireframe_indices.extend([a, b, b, c, c, a])
+        self._wireframe_index_count = len(wireframe_indices)
+
+        wireframe_array = array.array(typecode, wireframe_indices)
+        if use_u16 and (wireframe_array.itemsize * len(wireframe_array)) % 4 != 0:
+            wireframe_array = array.array(typecode, list(wireframe_array) + [0])
+
+        self._wireframe_index_buffer = self._device.create_buffer(
+            size=max(wireframe_array.itemsize * len(wireframe_array), 4),
+            usage=wgpu.BufferUsage.INDEX | wgpu.BufferUsage.COPY_DST,
+            mapped_at_creation=True,
+        )
+        self._wireframe_index_buffer.write_mapped(wireframe_array)
+        self._wireframe_index_buffer.unmap()
+
     def destroy(self) -> None:
         """Release the GPU buffers held by this mesh. Call when no
         longer needed.
@@ -199,6 +250,10 @@ class Mesh:
         if self._index_buffer:
             self._index_buffer.destroy()
             self._index_buffer = None
+        if self._wireframe_index_buffer:
+            self._wireframe_index_buffer.destroy()
+            self._wireframe_index_buffer = None
         self._vertex_count = 0
         self._index_count = 0
+        self._wireframe_index_count = 0
         self._sockets = {}
