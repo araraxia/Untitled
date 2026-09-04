@@ -184,3 +184,29 @@ def compose(position: Vec3, rotation_euler: Vec3, scale: Vec3) -> Mat4:
         rot[8] * sz, rot[9] * sz, rot[10] * sz, 0.0,
         position[0], position[1], position[2], 1.0,
     ]
+
+
+def compose_with_pivot(position: Vec3, rotation_euler: Vec3, scale: Vec3, pivot: Vec3) -> Mat4:
+    """Same TRS composition as `compose()`, except rotation and scale
+    pivot around *pivot* (a point in the same local space as
+    *position*, e.g. a socket's own local coordinates) instead of the
+    local origin -- `T(position) * T(pivot) * R * S * T(-pivot)`.
+
+    Built for animated parts whose mesh-space origin (wherever the
+    artist happened to set it in Blender) doesn't coincide with the
+    point the animation should actually rotate/scale around -- a wing
+    hinging at its shoulder socket rather than at the wing mesh's own
+    center, for example. `pivot = [0, 0, 0]` collapses the pivot
+    translate/untranslate pair to identity, making this exactly
+    `compose()`'s own result -- callers with no origin set can pass
+    `[0.0, 0.0, 0.0]` with zero behavior change.
+    """
+    if pivot[0] == 0.0 and pivot[1] == 0.0 and pivot[2] == 0.0:
+        return compose(position, rotation_euler, scale)
+
+    pre_pivot = translation_scale(-pivot[0], -pivot[1], -pivot[2], 1.0, 1.0, 1.0)
+    rotate_scale = compose([0.0, 0.0, 0.0], rotation_euler, scale)
+    post_pivot = translation_scale(
+        pivot[0] + position[0], pivot[1] + position[1], pivot[2] + position[2], 1.0, 1.0, 1.0
+    )
+    return multiply(post_pivot, multiply(rotate_scale, pre_pivot))

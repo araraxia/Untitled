@@ -99,11 +99,21 @@ def save_entity_definition(definition: dict, entity_definition_id: str) -> Path:
     there) -- so a manifest rebuild reads a real, correct id instead of
     falling back to the filename stem, per `normalize_entity_id()`'s
     own docstring.
+
+    Also defaults `"name"` to the bare id when *definition* doesn't
+    already carry one -- per direct request ("make it trivial to
+    rename parts, meshes or entities without it breaking relations"):
+    unlike `"id"` (always derived fresh from *entity_definition_id*,
+    never user-editable data), `"name"` is the caller's own freely-
+    renamable display field, so an existing value is preserved as-is,
+    never overwritten.
     """
     bare_id = normalize_entity_id(entity_definition_id)
     ENTITY_DIR.mkdir(parents=True, exist_ok=True)
     path = ENTITY_DIR / f"entity-{bare_id}.json"
     definition = {**definition, "id": f"entity-{bare_id}"}
+    if not definition.get("name"):
+        definition["name"] = bare_id
     path.write_text(
         json.dumps(definition, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",

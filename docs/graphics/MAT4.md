@@ -41,6 +41,7 @@ sync obligation.
 | `translation_scale(tx, ty, tz, sx, sy, sz)` | `Mat4` | Translate + non-uniform scale, no rotation — only for callers that genuinely never rotate |
 | `rotation_xyz(rx, ry, rz)` | `Mat4` | Rotation matrix from Euler angles, radians — see convention note below |
 | `compose(position, rotation_euler, scale)` | `Mat4` | Full TRS **M**odel matrix — what most 3D entities/sockets/keyframes actually use |
+| `compose_with_pivot(position, rotation_euler, scale, pivot)` | `Mat4` | Same TRS composition, but rotation/scale pivot around `pivot` (local-space point) instead of the origin — `pivot = [0,0,0]` is identical to `compose()`. Used by animated parts whose desired rotation origin doesn't match their mesh's own local (0,0,0), e.g. a wing hinging at its socket rather than its mesh center |
 | `multiply(a, b)` | `Mat4` | `a * b`, both column-major — used to chain P, V, M into an MVP |
 
 `Vec3` is any 3-element `Sequence[float]`; `Mat4` is a plain
@@ -97,7 +98,13 @@ every model matrix in this codebase goes through `compose()`.
 Socket/part-relative world transforms (mesh entities with attachment
 points, action-clip-driven animation) chain an extra `compose()` +
 `multiply()` per level of nesting: `world = multiply(parent_world,
-compose(local_position, local_rotation, local_scale))`.
+compose(local_position, local_rotation, local_scale))`. When a part
+(or the currently-sampled animation clip) defines a rotation/scale
+origin (`localOffset.origin`, or a transform clip's per-part `origins`
+map — see `transform_clip.py`'s own docstring), `entity_renderer.py`
+calls `compose_with_pivot(local_position, local_rotation, local_scale,
+local_origin)` instead of plain `compose()` for that one part; every
+other part in the same entity is unaffected.
 
 The 2D (non-`mode: "3d"`) camera path never touches this file at all —
 `renderer.get_view_projection_matrix` returns `None` for it, and 2D

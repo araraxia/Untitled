@@ -353,9 +353,22 @@ def convert(input_path: str, output_path: str) -> None:
     index_tuples = read_accessor(gltf, buffers, primitive["indices"])
     indices = [int(v[0]) for v in index_tuples]
 
-    name = in_path.stem
+    # Real bug fixed here: id/name used to derive from in_path (the
+    # *source* .glb's filename) instead of output_path (what the
+    # caller actually asked this mesh to be named) -- entity_builder
+    # .py's "Convert Mesh" button lets the user type an independent
+    # output id, but that choice was silently ignored for the JSON's
+    # own id/name fields, which were stamped from whatever the source
+    # file happened to be called. Confirmed as the exact cause of a
+    # real, live duplicate-id collision already in the asset tree
+    # (mesh-bird.json and mesh-body.json both converted from a source
+    # file literally named body.glb, at different times, into two
+    # different output filenames, but both stamped "id": "mesh-body").
+    out_path = Path(output_path)
+    out_stem = out_path.stem
+    name = out_stem[len("mesh-") :] if out_stem.startswith("mesh-") else out_stem
     mesh_json = {
-        "id": f"mesh-{name}",
+        "id": out_stem,
         "name": name,
         "vertices": vertices,
         "indices": indices,
@@ -365,7 +378,6 @@ def convert(input_path: str, output_path: str) -> None:
     if sockets:
         mesh_json["sockets"] = sockets
 
-    out_path = Path(output_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(
         json.dumps(mesh_json, indent=2) + "\n", encoding="utf-8"

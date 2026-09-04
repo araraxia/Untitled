@@ -137,6 +137,32 @@ class EntityRenderer:
         self._material_loader = material_loader.MaterialLoader(renderer.device, asset_loader)
         self._material_handles: dict[str, "dict | None"] = {}  # entity_id -> handle
         self._runtime_overrides: dict[str, dict] = {}  # entity_id -> {key: value, ...}
+
+        # Per-mesh-part uniform buffer/bind group -- keyed the same as
+        # _material_handles (f"{entity_id}:{part_id}") but deliberately
+        # *not* stored inside the material handle itself. Real bug found
+        # and fixed: `_draw_mesh_part` used to write this draw's MVP
+        # straight into `handle["uniform_buffer"]` and bind
+        # `handle["bind_group"]` -- both shared across every part using
+        # that material (or, for any part with no material_id, the one
+        # shared fallback handle). Multiple parts sharing a handle each
+        # called `write_buffer` on the *same* buffer before any of that
+        # frame's draws were actually submitted to the GPU queue, so by
+        # the time the submitted command buffer executed, every draw
+        # sharing that buffer read back whichever part wrote it *last*
+        # -- confirmed live (`entity-bird.json`'s six parts all lack a
+        # material_id, so all six shared the fallback handle's one
+        # buffer; a keyframe transform edited on one part was silently
+        # overwritten by whichever other part rendered after it, every
+        # frame). See material_loader.py's own docstring for the same
+        # latent bug, unfixed, in the 2D sprite "material path". Each
+        # mesh part now gets its own dedicated buffer + bind group,
+        # built once here from the material handle's shared
+        # `albedo_view`/`binding2_view`/the loader's shared `sampler` --
+        # the textures stay correctly shared, only the per-draw uniform
+        # data no longer is.
+        self._mesh_part_uniform_buffers: dict[str, object] = {}
+        self._mesh_part_bind_groups: dict[str, object] = {}
         self._particle_system: "particle_system.ParticleSystem | None" = None
 
         # Runtime-registered light for this entity. Set via
@@ -762,6 +788,7 @@ class EntityRenderer:
             local_position = list(local_offset.get("position", [0.0, 0.0, 0.0]))
             local_rotation = list(local_offset.get("rotation", [0.0, 0.0, 0.0]))
             local_scale = list(local_offset.get("scale", [1.0, 1.0, 1.0]))
+            local_origin = list(local_offset.get("origin", [0.0, 0.0, 0.0]))
 
             # Step 12: an action clip (part.action_animations) takes
             # priority over the part's regular looping animation_id
@@ -787,6 +814,8 @@ class EntityRenderer:
                     local_rotation = sampled["rotation"]
                 if "scale" in sampled:
                     local_scale = sampled["scale"]
+                if "origin" in sampled:
+                    local_origin = sampled["origin"]
 
             dangle_config = part.get("dangle")
             if dangle_config:
@@ -794,7 +823,7 @@ class EntityRenderer:
                     entity_id, part_id, dangle_config, base_transform, local_position
                 )
 
-            offset_transform = mat4.compose(local_position, local_rotation, local_scale)
+            offset_transform = mat4.compose_with_pivot(local_position, local_rotation, local_scale, local_origin)
             world = mat4.multiply(base_transform, offset_transform)
             # Record the resolved transform as soon as it's computable
             # (needs only the parent chain, not this part's own mesh/
@@ -1004,6 +1033,30 @@ class EntityRenderer:
 
         handle = self._material_handles[handle_key]
 
+        # This part's own dedicated uniform buffer + bind group -- see
+        # this class's own docstring on why reusing handle["uniform_buffer"]/
+        # handle["bind_group"] directly (shared across every part using
+        # this same material, or the fallback) was a real bug: only
+        # textures are safe to share, since binding 0 also carries this
+        # draw's own MVP. Built once per (entity_id, part_id) and reused
+        # every frame after; the material's `handle` can keep being
+        # resolved from the shared per-material cache above.
+        if handle_key not in self._mesh_part_uniform_buffers:
+            part_uniform_buffer = gpu_buffers.create_uniform_buffer(
+                renderer.device, material_loader.MATERIAL_UNIFORM_BYTES
+            )
+            part_bind_group = renderer.device.create_bind_group(
+                layout=self._material_loader.bind_group_layout,
+                entries=[
+                    {"binding": 0, "resource": {"buffer": part_uniform_buffer}},
+                    {"binding": 1, "resource": handle["albedo_view"]},
+                    {"binding": 2, "resource": handle["binding2_view"]},
+                    {"binding": 3, "resource": self._material_loader.sampler},
+                ],
+            )
+            self._mesh_part_uniform_buffers[handle_key] = part_uniform_buffer
+            self._mesh_part_bind_groups[handle_key] = part_bind_group
+
         mvp = mat4.multiply(view_projection, world_matrix)
 
         # Combiner variant (base/ramp/hue/cosine) selection from
@@ -1070,10 +1123,12 @@ class EntityRenderer:
             + [ambient_color[0], ambient_color[1], ambient_color[2], 0]  # ambient_color
         )
 
-        gpu_buffers.write_uniform_buffer(renderer.device, handle["uniform_buffer"], mat_uniforms)
+        gpu_buffers.write_uniform_buffer(
+            renderer.device, self._mesh_part_uniform_buffers[handle_key], mat_uniforms
+        )
 
         pass_encoder.set_pipeline(pipeline)
-        pass_encoder.set_bind_group(0, handle["bind_group"])
+        pass_encoder.set_bind_group(0, self._mesh_part_bind_groups[handle_key])
         pass_encoder.set_vertex_buffer(0, loaded_mesh.vertex_buffer)
         pass_encoder.set_index_buffer(index_buffer, loaded_mesh.index_format)
         pass_encoder.draw_indexed(index_count)
@@ -1179,6 +1234,10 @@ class EntityRenderer:
         self._meshes.clear()
         self._render_templates.clear()
         self._material_handles.clear()
+        for buf in self._mesh_part_uniform_buffers.values():
+            buf.destroy()
+        self._mesh_part_uniform_buffers.clear()
+        self._mesh_part_bind_groups.clear()
         self._runtime_overrides.clear()
         self._dangle_states.clear()
         self._dangle_last_base_pos.clear()

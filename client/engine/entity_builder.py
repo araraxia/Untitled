@@ -28,6 +28,15 @@ are buffer-then-explicit-save, not undo-tracked (see entity-builder
 both live as tabs in the right-side sidebar, not their own windows --
 see `_SIDEBAR_TABS`.
 
+Animation editing splits across two windows, per direct request:
+`_draw_timeline_window` (full width, docked just above the bottom bar)
+owns the keyframe strip itself -- add/select/loop -- while
+`_draw_animation_editor_window` (a normal floating window) shows only
+whichever keyframe is currently selected there. Both share one
+visibility gate (`_timeline_visible`), so they always appear and
+disappear together; `_draw_sidebar` reads that same gate to shrink its
+own height and avoid sitting underneath the full-width Timeline.
+
 Forward-looking note, not built in this pass (Step 11 of the prompt
 file): a live in-editor param-map channel painter (paint roughness/
 emission/palette/alpha directly on the mesh preview) would remove the
@@ -75,7 +84,7 @@ from imgui_bundle import imgui
 from wgpu.utils.imgui import ImguiRenderer
 
 from client.engine import imgui_wgpu_compat  # noqa: F401
-from client.engine import interpolation, renderer
+from client.engine import interpolation, renderer, transform_clip
 from client.engine.area_io import (
     ENTITY_DIR,
     load_entity_definition,
@@ -144,6 +153,28 @@ def read_mesh_sockets(mesh_asset_id: "str | None") -> "list[str]":
     except (OSError, json.JSONDecodeError):
         return []
     return [s["name"] for s in data.get("sockets", []) if s.get("name")]
+
+
+def read_mesh_name(mesh_asset_id: "str | None") -> "str | None":
+    """A mesh asset's own `"name"` field, read straight off its JSON
+    file (same no-GPU-needed approach as `read_mesh_sockets`) -- `None`
+    if the mesh can't be resolved/read or has no `"name"` field (an
+    older mesh converted before `tools/convert_mesh.py`'s id/name
+    derivation bug was fixed). Used to give a freshly-auto-added part a
+    sensible display name matching its mesh's own, per direct request
+    ("make it trivial to rename parts... without it breaking relations").
+    """
+    if not mesh_asset_id or not asset_loader.has(mesh_asset_id):
+        return None
+    path = FRONTEND_DIR / asset_loader.resolve(mesh_asset_id)
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    name = data.get("name")
+    return name if isinstance(name, str) and name else None
 
 
 def mesh_bounding_radius(mesh_asset_id: "str | None") -> float:
@@ -319,13 +350,17 @@ def suggest_socket_match(socket_name: str, mesh_ids: "list[str]") -> "str | None
     return scored[0][1]
 
 
-def validate_new_part_id(new_id: str, existing_parts: "list[dict]") -> "str | None":
-    """Return an error message if *new_id* can't be used for a new
-    part, else None."""
-    if not new_id or not new_id.strip():
-        return "Part id can't be empty."
-    if any(p.get("id") == new_id for p in existing_parts):
-        return f"Part id '{new_id}' already exists."
+def validate_new_part_name(new_name: str) -> "str | None":
+    """Return an error message if *new_name* can't be used for a new
+    part's display name, else None. Only checks non-empty -- unlike
+    the old `validate_new_part_id` this replaces, a duplicate name is
+    no longer an error: names aren't unique by design (that's the
+    whole point of separating them from the id), and the actual `id`
+    a new part gets is independently deduped by `unique_part_id`,
+    which can never collide.
+    """
+    if not new_name or not new_name.strip():
+        return "Part name can't be empty."
     return None
 
 
@@ -505,6 +540,45 @@ def add_keyframe(keyframes: "list[dict]", gap_ms: float = 500.0) -> dict:
     return keyframe
 
 
+def duplicate_keyframe(keyframes: "list[dict]", index: int, gap_ms: float = 500.0) -> "dict | None":
+    """Clone keyframes[index]'s part transforms into a brand new
+    keyframe, per direct request ("duplicate the current selected
+    keyframe. This clones all part transformations"). Placed the same
+    way `add_keyframe` places any new keyframe -- appended at the end,
+    `gap_ms` after the current last keyframe's own time -- rather than
+    inserted mid-timeline, so duplicating never needs to renumber/shift
+    any other keyframe's time_ms (same reasoning `remove_keyframe`
+    already documents for deletion). Returns the new keyframe dict, or
+    None if *index* is out of range (nothing selected to duplicate).
+
+    Each assigned part's transform is a genuine deep copy -- fresh
+    position/rotation/scale lists, not shared references back to the
+    source keyframe's own lists -- so editing the duplicate afterward
+    (e.g. via the Animation Editor's drag_float3 fields) can never also
+    silently change the original keyframe it was cloned from. Also
+    carries over each part's own `"easing"` curve, if it has one --
+    real gap found and fixed while adding that field (Step 17): this
+    function used to hardcode exactly position/rotation/scale into the
+    rebuilt dict, which would have silently dropped any other per-part
+    field (a custom transition curve included) back to its default the
+    moment a keyframe was duplicated.
+    """
+    if not (0 <= index < len(keyframes)):
+        return None
+    source_parts = keyframes[index].get("parts") or {}
+    new_keyframe = add_keyframe(keyframes, gap_ms=gap_ms)
+    new_keyframe["parts"] = {
+        part_id: {
+            "position": list(transform.get("position", [0.0, 0.0, 0.0])),
+            "rotation": list(transform.get("rotation", [0.0, 0.0, 0.0])),
+            "scale": list(transform.get("scale", [1.0, 1.0, 1.0])),
+            **({"easing": list(transform["easing"])} if "easing" in transform else {}),
+        }
+        for part_id, transform in source_parts.items()
+    }
+    return new_keyframe
+
+
 def remove_keyframe(keyframes: "list[dict]", index: int) -> None:
     """Delete keyframe *index* in place. Does not renumber/shift any
     other keyframe's own time_ms -- gaps for keyframes after the
@@ -552,6 +626,62 @@ def remove_part_from_keyframe(keyframe: dict, part_id: str) -> None:
     keyframe.get("parts", {}).pop(part_id, None)
 
 
+def compute_group_transform_delta(
+    old_position: "list[float]",
+    new_position: "list[float]",
+    old_rotation: "list[float]",
+    new_rotation: "list[float]",
+    old_scale: "list[float]",
+    new_scale: "list[float]",
+) -> "tuple[list[float], list[float], list[float]]":
+    """Pure delta math behind the Animation Editor's "All Parts" rigid-
+    group transform control -- per direct request ("apply
+    transformations to every mesh/part in the entity as one"). The
+    group control's own fields are a running total since it was last
+    reset (see `_draw_animation_editor_window`'s per-keyframe reset),
+    so each widget edit is applied to every part as the *delta* between
+    the control's previous and new value: additive for position/
+    rotation, a per-component ratio for scale (guarding a near-zero old
+    value against a divide-by-zero -- dragging a scale field to exactly
+    0 is a legal, if unusual, widget state).
+    """
+    delta_position = [new_position[i] - old_position[i] for i in range(3)]
+    delta_rotation = [new_rotation[i] - old_rotation[i] for i in range(3)]
+    scale_ratio = [
+        (new_scale[i] / old_scale[i]) if abs(old_scale[i]) > 1e-6 else 1.0
+        for i in range(3)
+    ]
+    return delta_position, delta_rotation, scale_ratio
+
+
+def apply_rigid_group_delta(
+    keyframe: dict,
+    part_ids: "list[str]",
+    delta_position: "list[float]",
+    delta_rotation: "list[float]",
+    scale_ratio: "list[float]",
+) -> None:
+    """Applies *delta_position*/*delta_rotation* additively and
+    *scale_ratio* multiplicatively (component-wise) to every part in
+    *part_ids*' own transform inside *keyframe* -- the actual "move/
+    rotate/scale every part together, rigidly, preserving each part's
+    pose relative to the others" effect behind the "All Parts" group
+    control. Assumes every id in *part_ids* is already assigned to
+    *keyframe* (see `assign_part_to_keyframe`) -- callers must assign
+    any missing part first, since "every mesh/part in the entity" per
+    the direct request means literally every part, not just whichever
+    ones happened to already be in this keyframe.
+    """
+    for part_id in part_ids:
+        transform = keyframe["parts"][part_id]
+        position = transform.get("position", [0.0, 0.0, 0.0])
+        rotation = transform.get("rotation", [0.0, 0.0, 0.0])
+        scale = transform.get("scale", [1.0, 1.0, 1.0])
+        transform["position"] = [position[i] + delta_position[i] for i in range(3)]
+        transform["rotation"] = [rotation[i] + delta_rotation[i] for i in range(3)]
+        transform["scale"] = [scale[i] * scale_ratio[i] for i in range(3)]
+
+
 def parts_assigned_in_clip(clip: dict) -> "list[str]":
     """Distinct part ids referenced by any keyframe's "parts" map, in
     first-seen order -- used on Save to decide which of this entity's
@@ -589,7 +719,9 @@ def stamp_animation_id_for_assigned_parts(
     return stamped
 
 
-def apply_keyframe_preview(parts: "list[dict]", keyframe: "dict | None") -> "list[dict]":
+def apply_keyframe_preview(
+    parts: "list[dict]", keyframe: "dict | None", origins: "dict | None" = None
+) -> "list[dict]":
     """Live "watch the mesh follow the values you're editing" feedback
     for the Animation Editor's selected keyframe, per direct request.
     Returns *parts* completely unchanged (same list, not a copy) when
@@ -611,16 +743,31 @@ def apply_keyframe_preview(parts: "list[dict]", keyframe: "dict | None") -> "lis
     keyframe are returned unchanged (same dict, not copied) -- their
     ordinary animation/localOffset keeps rendering normally alongside
     the part(s) being previewed.
+
+    *origins* -- the open clip's own top-level `"origins"` map (`{part_id:
+    [x,y,z]}`, see transform_clip.py's own docstring) -- is per direct
+    request ("allow setting an origin point to apply the animation
+    transformation from"): when a previewed part has an entry there, it's
+    written into the override's `localOffset.origin` alongside
+    position/rotation/scale, so `entity_renderer.py` pivots that part's
+    rotation/scale around it instead of the mesh's own local origin,
+    exactly matching what real playback would do (see
+    `_update_playback_pose`/`sample_part_pose` for the same lookup on
+    the playing side).
     """
     assigned = (keyframe or {}).get("parts") or {}
     if not assigned:
         return parts
+    origins = origins or {}
     result = []
     for part in parts:
         part_id = part.get("id")
         if part_id in assigned:
             overridden = dict(part)
-            overridden["localOffset"] = dict(assigned[part_id])
+            local_offset = dict(assigned[part_id])
+            if part_id in origins:
+                local_offset["origin"] = origins[part_id]
+            overridden["localOffset"] = local_offset
             overridden.pop("animation_id", None)
             overridden.pop("action_animations", None)
             result.append(overridden)
@@ -629,16 +776,102 @@ def apply_keyframe_preview(parts: "list[dict]", keyframe: "dict | None") -> "lis
     return result
 
 
+def strip_live_animation_fields(parts: "list[dict]") -> "list[dict]":
+    """Default-state preview, per direct request ("return the entity
+    model state to default when an animation is not selected -- such as
+    when deselecting or the default state when loading/opening an
+    entity"). Returns a shallow copy of *parts* with every part's own
+    `animation_id`/`action_animations` removed, so nothing keeps playing
+    in the background -- each part renders at its plain, authored
+    `localOffset` rest pose (untouched here, unlike apply_keyframe_preview,
+    which actively overrides it with a specific keyframe's transform).
+
+    Used by `_sync_preview_definition` exactly when no clip is currently
+    open in the Animation Editor (`state.animation_editor_clip is None`)
+    -- true both the moment an entity is first loaded (before anything's
+    ever been selected) and right after deselecting/closing whatever was
+    open, per the direct request's own two examples. Once a clip *is*
+    open, `apply_keyframe_preview` takes back over as before -- this
+    function only governs the "nothing selected at all" state.
+    """
+    return [
+        {k: v for k, v in part.items() if k not in ("animation_id", "action_animations")}
+        for part in parts
+    ]
+
+
+def advance_timeline_playback_ms(current_ms: float, delta_ms: float, duration_ms: float, loop: bool) -> float:
+    """Advance the Timeline's playback clock by *delta_ms* -- real
+    playback for the Play/Pause button (see _toggle_timeline_playback/
+    _update_playback_pose), fixing the reported "unpausing does not
+    start the playback" bug: nothing previously advanced any clock at
+    all while a clip was open, since `state.paused` only ever gated the
+    unrelated runtime animation_id clock.
+
+    Wraps modulo *duration_ms* when *loop* is true (matching
+    transform_clip.sample_transform_clip's own loop-wrap rule, so the
+    displayed pose and the wrapped clock never disagree); otherwise
+    clamps to *duration_ms* so a one-shot clip holds its final pose
+    instead of running past the end forever. *duration_ms* <= 0 (no
+    keyframes yet, or a single keyframe at time_ms 0) has nothing to
+    wrap or clamp against -- returns the unwrapped advance.
+    """
+    new_ms = current_ms + delta_ms
+    if duration_ms <= 0:
+        return new_ms
+    if loop:
+        return new_ms % duration_ms
+    return min(new_ms, duration_ms)
+
+
+def sample_part_pose(clip: dict, part_id: str, elapsed_ms: float, fallback_local_offset: "dict | None" = None) -> dict:
+    """Sample *clip* for *part_id* at *elapsed_ms*, filling in whichever
+    of position/rotation/scale the clip doesn't define at this moment
+    (see transform_clip.sample_transform_clip's own "omitted fields
+    hold the part's rest value" rule) from *fallback_local_offset* --
+    the part's own currently-authored localOffset, or identity if not
+    given -- so `_update_playback_pose` always has a complete transform
+    to write, never a partial one that would leave a stale value from
+    a previous pose sitting in an untouched field.
+
+    Also carries "origin" through unchanged when the clip's own
+    `"origins"` map (transform_clip.py's own docstring) names *part_id*
+    -- a rotation/scale pivot point, per direct request ("allow setting
+    an origin point to apply the animation transformation from"),
+    falling back to *fallback_local_offset*'s own origin (or `[0,0,0]`)
+    when the clip doesn't define one, same fallback shape as the other
+    three fields.
+    """
+    sampled = transform_clip.sample_transform_clip(clip, elapsed_ms, part_id=part_id)
+    fallback = fallback_local_offset or {}
+    return {
+        "position": sampled.get("position", fallback.get("position", [0.0, 0.0, 0.0])),
+        "rotation": sampled.get("rotation", fallback.get("rotation", [0.0, 0.0, 0.0])),
+        "scale": sampled.get("scale", fallback.get("scale", [1.0, 1.0, 1.0])),
+        "origin": sampled.get("origin", fallback.get("origin", [0.0, 0.0, 0.0])),
+    }
+
+
 # ---------------------------------------------------------------------
 # Builder state
 # ---------------------------------------------------------------------
 
 
 class BuilderState:
-    def __init__(self, entity_id: "str | None", parts: "list[dict]") -> None:
+    def __init__(self, entity_id: "str | None", parts: "list[dict]", entity_name: "str | None" = None) -> None:
         self.entity_id = entity_id
         self.parts = parts
         self.status_message = ""
+
+        # Per direct request ("make it trivial to rename parts, meshes
+        # or entities without it breaking relations"): entity_id is the
+        # frozen reference every render_template/launcher lookup is
+        # keyed on; entity_name is the freely-editable display label
+        # (see _draw_entity_info_window). Defaults to entity_id so a
+        # never-renamed entity shows the same string everywhere, same
+        # "id and name start identical, diverge only once explicitly
+        # renamed" pattern parts already use.
+        self.entity_name = entity_name or entity_id or ""
 
         # Bottom-left toast -- transient, timed feedback for whatever
         # action just ran (see _show_toast()/_draw_toast()). Separate
@@ -654,7 +887,7 @@ class BuilderState:
         # entity_bounding_radius()) instead of assuming a fixed scale.
         self.orbit: "OrbitCamera | None" = None
 
-        self.new_part_id = ""
+        self.new_part_name = ""
         self.template_edit_buffers: dict = {}  # part_id -> draw_part_fields() buffer
 
         # Step 6 -- scaffold-from-sockets. socket_name -> {"mesh_id": str|None, "include": bool}.
@@ -679,8 +912,12 @@ class BuilderState:
         self.material_a_selected: "str | None" = None
         self.material_error = ""
 
-        # Step 8 -- playback.
-        self.paused = False
+        # Step 8 -- playback, folded into the Timeline window per direct
+        # request (see _draw_timeline_window) -- no standalone Playback
+        # window/state.show_playback_panel anymore. Defaults to paused,
+        # per direct request -- a freshly-opened entity no longer starts
+        # animating immediately.
+        self.paused = True
 
         # Step 9 -- save. Save/Save As live in the File menu (_draw_menu_bar),
         # mirroring area_viewer.py's own fold of its standalone Save
@@ -701,14 +938,9 @@ class BuilderState:
         self.want_exit = False
         self.want_back_to_launcher = False
         self.show_entity_info = False  # hidden by default, like area_viewer.py's "Area Information"
-        self.show_playback_panel = True
 
-        # Sidebar (Parts, Materials, and whatever else gets folded in later) --
-        # width tracks the Playback window's own current width, captured
-        # each frame Playback renders; this default only matters for the
-        # sidebar's very first frame, before Playback has ever drawn.
+        # Sidebar (Parts, Materials, and whatever else gets folded in later).
         self.show_sidebar = True
-        self.playback_window_width = 400.0
 
         # View > Mesh -- wireframe vs. solid (EntityRenderer.set_wireframe(),
         # applied to the live preview renderer each frame in run()'s
@@ -731,6 +963,33 @@ class BuilderState:
         self.animation_editor_path: "Path | None" = None
         self.animation_editor_selected_kf = -1
         self.animation_editor_assign_part = ""
+
+        # "All Parts" rigid-group transform control, per direct request
+        # ("apply transformations to every mesh/part in the entity as
+        # one") -- these three fields are a running total *since the
+        # control was last reset*, not a real transform read from any
+        # part; each widget edit is applied to every part as the delta
+        # from the previous value (see compute_group_transform_delta/
+        # apply_rigid_group_delta), so the control must reset back to
+        # identity whenever the selected keyframe changes (tracked via
+        # animation_editor_group_kf_index -- an already-reset value
+        # never matches the initial -2 sentinel, so the first draw
+        # always resets once before use).
+        self.animation_editor_group_position = [0.0, 0.0, 0.0]
+        self.animation_editor_group_rotation = [0.0, 0.0, 0.0]
+        self.animation_editor_group_scale = [1.0, 1.0, 1.0]
+        self.animation_editor_group_kf_index = -2
+
+        # Timeline playback clock -- real bug fixed, reported directly
+        # as "unpausing does not start the playback": state.paused used
+        # to only gate the real runtime animation_id/action_animations
+        # clock (entity_renderer.py's own sampling), which has nothing
+        # to do with the Animation Editor's static per-keyframe preview
+        # override (apply_keyframe_preview) -- so toggling it never did
+        # anything while a clip was open. This clock (elapsed ms within
+        # the open clip) drives actual playback instead -- see
+        # _toggle_timeline_playback/_update_playback_pose.
+        self.timeline_playback_ms = 0.0
 
 
 def _pending_files(directory: Path) -> "list[str]":
@@ -852,6 +1111,43 @@ def _sync_preview_definition(scene: Scene, state: BuilderState) -> None:
     mesh right away. This only ever affects the *scratch preview copy*
     written below, never `state.parts` itself, so it can't leak into a
     real Save.
+
+    No keyframe actually selected/previewable -- either no clip open at
+    all (`state.animation_editor_clip is None`, true both the moment an
+    entity is first loaded and right after deselecting/closing whatever
+    was open), or a clip *is* open but nothing in it is currently
+    selected (a brand-new clip with zero keyframes yet, per
+    `_draw_animations_tab`'s "New Animation" -- `_open_animation_editor`
+    leaves `animation_editor_selected_kf` at `-1` until a first keyframe
+    exists to auto-select) -- is its own case, per direct request
+    ("return the entity model state to default when an animation is not
+    selected"): every part's `animation_id`/`action_animations` is
+    stripped from the preview copy (see strip_live_animation_fields) so
+    nothing keeps playing in the background, leaving every part at its
+    plain authored localOffset rest pose.
+
+    **Real bug found and fixed here**, reported directly ("Creating
+    another new animation for the bird entity ... instead starts
+    playing the flap-test animation"): the original version of this
+    fix only checked `clip is None`, so opening the editor for a
+    brand-new *empty* clip (`clip` is a real dict, just with no
+    keyframes) fell into the `apply_keyframe_preview` branch below with
+    `preview_keyframe` already `None` -- and that function is a
+    documented no-op whenever its keyframe argument is `None`, so every
+    other part's own real, already-running `animation_id` (a bird's
+    wing flap, say) kept animating completely undisturbed, with nothing
+    in the visibly-empty Animation Editor window suggesting why. Keying
+    directly off `preview_keyframe is None` instead of `clip is None`
+    covers both "no clip open" and "clip open but nothing selected"
+    with the one same default-state rule.
+
+    This is the *paused* preview only -- while the Timeline is actively
+    playing (`state.paused` is False), `_update_playback_pose` takes
+    over on every frame instead, mutating the already-loaded render
+    template directly rather than rewriting this file and recreating
+    the renderer 60 times a second (see that function's own docstring
+    on why). Pressing Pause calls this function once to snap back to
+    the statically-selected keyframe.
     """
     preview_keyframe = None
     clip = state.animation_editor_clip
@@ -860,7 +1156,11 @@ def _sync_preview_definition(scene: Scene, state: BuilderState) -> None:
         index = state.animation_editor_selected_kf
         if 0 <= index < len(keyframes):
             preview_keyframe = keyframes[index]
-    render_parts = apply_keyframe_preview(state.parts, preview_keyframe)
+
+    if preview_keyframe is None:
+        render_parts = strip_live_animation_fields(state.parts)
+    else:
+        render_parts = apply_keyframe_preview(state.parts, preview_keyframe, clip.get("origins"))
 
     ENTITY_DIR.mkdir(parents=True, exist_ok=True)
     path = ENTITY_DIR / f"entity-{_BUILDER_SCRATCH_ID}.json"
@@ -914,9 +1214,105 @@ def _sync_preview_definition(scene: Scene, state: BuilderState) -> None:
     if state.orbit is not None:
         radius = entity_bounding_radius(state.parts)
         radius = max(radius, keyframe_preview_reach(preview_keyframe, radius))
-        state.orbit.radius = max(radius * 3.0, 0.5)
-        scene.camera["near"] = max(radius * 0.01, 0.001)
-        scene.camera["far"] = max(radius * 50.0, 100.0)
+        _fit_camera_to_radius(scene, state, radius)
+
+
+def _fit_camera_to_radius(scene: Scene, state: BuilderState, radius: float) -> None:
+    """Apply the same orbit-distance/near/far formula `_sync_preview_definition`
+    uses, factored out so `_toggle_timeline_playback` can fit the camera
+    once up front (to the whole clip's max reach) when playback starts,
+    without needing a full `_sync_preview_definition` call every frame
+    during playback (see `_update_playback_pose`'s own docstring for why
+    that would be too expensive to do 60 times a second).
+    """
+    if state.orbit is None:
+        return
+    state.orbit.radius = max(radius * 3.0, 0.5)
+    scene.camera["near"] = max(radius * 0.01, 0.001)
+    scene.camera["far"] = max(radius * 50.0, 100.0)
+
+
+def _update_playback_pose(state: BuilderState) -> None:
+    """Per-frame pose update while the Timeline is actively playing
+    (state.paused is False) -- called from run()'s draw() every frame,
+    unlike `_sync_preview_definition` (called only on discrete edits).
+
+    Deliberately does *not* call `_sync_preview_definition`: that
+    function rewrites the scratch entity JSON to disk and destroys/
+    recreates the whole preview `EntityRenderer` -- correct and cheap
+    enough for a single edit, but calling it 60 times a second during
+    smooth playback would mean disk I/O plus a full mesh/material
+    reload every frame, purely to advance a clock. Instead, this reaches
+    directly into the already-loaded, cached render_template
+    (`EntityRenderer._render_templates`, the same object `_draw_entity`
+    reads from every frame with no re-parsing) and mutates each
+    clip-assigned part's `localOffset` in place from
+    `transform_clip.sample_transform_clip` -- the same sampling
+    function `entity_renderer.py` uses at real gameplay time, just
+    driven by `state.timeline_playback_ms` instead of a live game clock.
+    A no-op if the preview renderer/definition hasn't loaded yet (e.g.
+    the very first frame after opening the editor).
+    """
+    clip = state.animation_editor_clip
+    if clip is None:
+        return
+    assigned_ids = parts_assigned_in_clip(clip)
+    if not assigned_ids:
+        return
+
+    renderer_ = client_main.entity_renderers.get(_PREVIEW_ENTITY_ID)
+    if renderer_ is None:
+        return
+    definition = renderer_._render_templates.get(_BUILDER_SCRATCH_ID)
+    if not definition:
+        return
+
+    parts_by_id = {p.get("id"): p for p in definition.get("parts", [])}
+    for part_id in assigned_ids:
+        part = parts_by_id.get(part_id)
+        if part is None:
+            continue
+        part["localOffset"] = sample_part_pose(
+            clip, part_id, state.timeline_playback_ms, part.get("localOffset")
+        )
+
+
+def _toggle_timeline_playback(scene: Scene, state: BuilderState) -> None:
+    """Play/Pause button handler (see _draw_timeline_window). Real bug
+    fixed here, reported directly as "unpausing does not start the
+    playback": `state.paused` used to only gate the real runtime
+    animation_id/action_animations clock (entity_renderer.py's own
+    sampling) -- but while the Animation Editor has a keyframe selected,
+    the preview is statically pinned to that one keyframe's pose
+    (apply_keyframe_preview), which has nothing to do with that clock,
+    so toggling Paused there never visibly did anything.
+
+    Pausing now explicitly snaps back to that static per-keyframe
+    preview (_sync_preview_definition). Starting playback resumes the
+    clip's own clock from wherever the currently selected keyframe sits
+    in time (or 0.0 if none is selected -- natural "scrub then play
+    from here" behavior), fits the camera once to the *whole* clip's
+    max reach across every keyframe (not just whichever one happens to
+    be selected right now, since playback will visit all of them) so
+    a dramatic pose later in the clip doesn't silently exceed the
+    frustum mid-playback the way the underlying rest-pose-only fit
+    already once did (see keyframe_preview_reach's own docstring), and
+    lets `_update_playback_pose` take over every frame after that.
+    """
+    state.paused = not state.paused
+    if state.paused:
+        _sync_preview_definition(scene, state)
+        return
+
+    clip = state.animation_editor_clip
+    keyframes = (clip or {}).get("keyframes", [])
+    index = state.animation_editor_selected_kf
+    state.timeline_playback_ms = keyframes[index]["time_ms"] if 0 <= index < len(keyframes) else 0.0
+
+    if state.orbit is not None:
+        radius = entity_bounding_radius(state.parts)
+        radius = max(radius, max((keyframe_preview_reach(kf, radius) for kf in keyframes), default=0.0))
+        _fit_camera_to_radius(scene, state, radius)
 
 
 def _add_part_for_converted_mesh(scene: Scene, state: BuilderState, mesh_id: str) -> "str | None":
@@ -930,7 +1326,8 @@ def _add_part_for_converted_mesh(scene: Scene, state: BuilderState, mesh_id: str
     if any(p.get("mesh") == mesh_id for p in state.parts):
         return None
     part_id = unique_part_id(mesh_id_to_part_id(mesh_id), state.parts)
-    state.parts.append({"id": part_id, "mesh": mesh_id})
+    name = read_mesh_name(mesh_id) or mesh_id_to_part_id(mesh_id)
+    state.parts.append({"id": part_id, "name": name, "mesh": mesh_id})
     _sync_preview_definition(scene, state)
     return part_id
 
@@ -1014,14 +1411,32 @@ def _draw_parts_tab(scene: Scene, state: BuilderState, action_registry) -> None:
     the right-side sidebar (per direct request) as its first tab,
     same "content-only function, chrome lives in the container" split
     _draw_materials_tab already established.
+
+    Per direct request ("make it trivial to rename parts, meshes or
+    entities without it breaking relations"): the header label and the
+    editable "name" field show/change a part's `"name"`, never its
+    `"id"` -- id is what `attachTo.part` and every animation clip's
+    `"parts"`/`"origins"` map keys actually reference, so it stays
+    frozen from creation onward, displayed read-only for grep/debug
+    visibility. The `##{part_id}` imgui-id suffix on the header and
+    every widget below it is deliberately keyed on the immutable id,
+    not the display label, so renaming a part never scrambles which
+    header is open or loses in-progress edits to its own fields.
     """
     mesh_ids = sorted(asset_loader.list_category("meshes").keys())
     material_asset_ids = sorted(asset_loader.list_category("materials").keys())
 
     for index, part in enumerate(state.parts):
         part_id = part.get("id") or "?"
-        if not imgui.collapsing_header(f"Part: {part_id}##{part_id}"):
+        display_name = part.get("name") or part_id
+        if not imgui.collapsing_header(f"Part: {display_name}##{part_id}"):
             continue
+
+        changed, new_name = imgui.input_text(f"name##{part_id}", part.get("name") or part_id)
+        if changed:
+            part["name"] = new_name
+            _show_toast(state, f"Renamed part to '{new_name}' (not yet saved to disk)")
+        imgui.text(f"id: {part_id}")
 
         # --- mesh picker ---
         current_mesh = part.get("mesh") or ""
@@ -1086,9 +1501,21 @@ def _draw_parts_tab(scene: Scene, state: BuilderState, action_registry) -> None:
         buffer = state.template_edit_buffers.setdefault(part_id, default_part_buffer(part))
         edited = draw_part_fields(part, buffer, action_registry, part_id)
         if edited is not None:
+            # Defense-in-depth tripwire, not expected to ever fire today
+            # (entity_template_editing.py's draw_part_fields never
+            # touches "id") -- per direct request that renaming must
+            # never break a reference, id has to stay frozen after
+            # creation forever, so a future change to that shared,
+            # cross-file editor accidentally starting to rewrite it
+            # should be loud immediately, not a silently corrupted save.
+            if edited.get("id") != part_id:
+                wrong_id = edited.get("id")
+                edited["id"] = part_id
+                _show_toast(state, f"BUG: part id changed from '{part_id}' to '{wrong_id}' -- ignoring")
+            else:
+                _show_toast(state, f"Updated part '{part_id}' (not yet saved to disk)")
             state.parts[index] = edited
             _sync_preview_definition(scene, state)
-            _show_toast(state, f"Updated part '{part_id}' (not yet saved to disk)")
 
         if imgui.button(f"Remove Part##{part_id}"):
             orphaned = remove_part(state.parts, part_id)
@@ -1103,17 +1530,26 @@ def _draw_parts_tab(scene: Scene, state: BuilderState, action_registry) -> None:
         imgui.separator()
 
     imgui.text("+ Add Part")
-    _, state.new_part_id = imgui.input_text("new part id", state.new_part_id)
+    _, state.new_part_name = imgui.input_text("new part name", state.new_part_name)
     if imgui.button("Add Part"):
-        error = validate_new_part_id(state.new_part_id, state.parts)
+        error = validate_new_part_name(state.new_part_name)
         if error:
             _show_toast(state, error)
         else:
-            new_id = state.new_part_id
-            state.parts.append({"id": new_id, "mesh": None})
-            state.new_part_id = ""
+            name = state.new_part_name.strip()
+            # id is derived from the typed name and frozen from here on
+            # -- per direct request ("make it trivial to rename parts...
+            # without it breaking relations"), id is what every
+            # attachTo.part / animation clip parts-/origins-map reference
+            # actually points at, so it must never change after creation;
+            # name is what the user is actually free to rename later (see
+            # the part header's own "name" field, below).
+            new_id = unique_part_id(name, state.parts)
+            state.parts.append({"id": new_id, "name": name, "mesh": None})
+            state.new_part_name = ""
             _sync_preview_definition(scene, state)
-            _show_toast(state, f"Added part '{new_id}'")
+            suffix = f" (id: {new_id})" if new_id != name else ""
+            _show_toast(state, f"Added part '{name}'{suffix}")
 
 
 def _draw_scaffold_content(scene: Scene, state: BuilderState) -> None:
@@ -1200,12 +1636,11 @@ def _draw_scaffold_content(scene: Scene, state: BuilderState) -> None:
                 added.append(existing.get("id"))
                 continue
 
-            new_id = unique_part_id(
-                socket_name[:-7] if socket_name.endswith("_socket") else socket_name,
-                state.parts,
-            )
+            name = socket_name[:-7] if socket_name.endswith("_socket") else socket_name
+            new_id = unique_part_id(name, state.parts)
             state.parts.append({
                 "id": new_id,
+                "name": name,
                 "mesh": row["mesh_id"],
                 "attachTo": {"part": root_id, "socket": socket_name},
             })
@@ -1407,6 +1842,29 @@ def _open_animation_editor(scene: Scene, state: BuilderState, animation_id: str)
     _sync_preview_definition(scene, state)
 
 
+def _close_animation_editor(scene: Scene, state: BuilderState) -> None:
+    """Deselect whatever animation is currently open, per direct request
+    ("make it possible to deselect a currently selected entity['s
+    animation]"). Shared by the Animation Editor window's own close (X)
+    button and the Animations tab's table (clicking the already-active
+    row toggles it off, see _draw_animations_tab) -- previously only the
+    window's own close button reached this, so deselecting from the
+    Animations tab itself wasn't possible without first finding and
+    closing that separate floating window.
+
+    Reverts the live preview back to every part's default rest pose
+    (see strip_live_animation_fields, called from _sync_preview_definition
+    whenever animation_editor_clip is None) -- otherwise the last-
+    previewed keyframe's pose, or whatever was mid-playback, would keep
+    overriding the assigned part(s) forever.
+    """
+    state.editing_animation_id = None
+    state.animation_editor_clip = None
+    state.animation_editor_path = None
+    state.animation_editor_selected_kf = -1
+    _sync_preview_definition(scene, state)
+
+
 def _save_animation_editor(scene: Scene, state: BuilderState) -> None:
     """Write the in-progress clip buffer back to
     state.animation_editor_path, then stamp animation_id onto any
@@ -1456,7 +1914,7 @@ def _save_animation_editor(scene: Scene, state: BuilderState) -> None:
     if stamped:
         _sync_preview_definition(scene, state)
         if state.entity_id is not None:
-            save_entity_definition({"parts": state.parts}, state.entity_id)
+            save_entity_definition({"parts": state.parts, "name": state.entity_name}, state.entity_id)
             entity_saved = True
 
     message = f"Saved animation '{animation_id}'"
@@ -1486,6 +1944,13 @@ def _draw_animations_tab(scene: Scene, state: BuilderState, action_registry) -> 
     won't itself appear in this table until Save actually assigns it
     to a part -- "New Animation" opens its editor immediately, which is
     the intended way to reach it before then.
+
+    Deselecting, per direct request ("make it possible to deselect a
+    currently selected entity['s animation]"): clicking the already-
+    active row, or the "Deselect Animation" button shown whenever one is
+    active, both call `_close_animation_editor` -- the same path the
+    Animation Editor window's own close (X) button uses -- which returns
+    every part to its default rest pose (see strip_live_animation_fields).
     """
     imgui.text("New Animation")
     _, state.new_animation_name = imgui.input_text("name##new-animation", state.new_animation_name)
@@ -1520,7 +1985,13 @@ def _draw_animations_tab(scene: Scene, state: BuilderState, action_registry) -> 
         )
         return
 
-    imgui.text_wrapped("Select a row to make it active (opens it in the Animation Editor):")
+    imgui.text_wrapped(
+        "Select a row to make it active (opens it in the Animation Editor); "
+        "click the active row again to deselect it and return every part "
+        "to its default rest pose."
+    )
+    if state.editing_animation_id is not None and imgui.button("Deselect Animation##anim-deselect"):
+        _close_animation_editor(scene, state)
     table_flags = imgui.TableFlags_.borders | imgui.TableFlags_.row_bg | imgui.TableFlags_.resizable
     if imgui.begin_table("AnimationsTable", 2, table_flags):
         imgui.table_setup_column("Animation")
@@ -1537,7 +2008,10 @@ def _draw_animations_tab(scene: Scene, state: BuilderState, action_registry) -> 
                 imgui.SelectableFlags_.span_all_columns,
             )
             if selected:
-                _open_animation_editor(scene, state, animation_id)
+                if is_active:
+                    _close_animation_editor(scene, state)
+                else:
+                    _open_animation_editor(scene, state, animation_id)
 
             imgui.table_next_column()
             usage_labels = []
@@ -1552,28 +2026,238 @@ def _draw_animations_tab(scene: Scene, state: BuilderState, action_registry) -> 
         imgui.end_table()
 
 
+_TIMELINE_HEIGHT = 130.0
+
+# Fixed sidebar width, per direct request -- used to track the
+# now-removed standalone Playback window's own current width (see
+# _draw_sidebar's own docstring); with that window gone (its controls
+# folded into the Timeline, below), there's nothing left to size
+# against, so this is just a plain constant now.
+_SIDEBAR_WIDTH = 400.0
+
+
+def _timeline_visible(state: BuilderState) -> bool:
+    """Whether the full-width Timeline window (see
+    _draw_timeline_window) is currently showing -- same visibility gate
+    as the Animation Editor window itself, since the timeline has
+    nothing to manage without an open clip. Also read by _draw_sidebar
+    to shrink its own height so the two never overlap, per direct
+    request -- a plain function (not inlined at both call sites) so the
+    two windows' visibility can never drift out of sync with each other.
+    """
+    return state.animation_editor_clip is not None
+
+
+def _draw_timeline_window(scene: Scene, state: BuilderState) -> None:
+    """Full-width window docked just above the always-on bottom bar,
+    per direct request ("make the timeline menu the full width of the
+    screen, slightly above the bottom menu bar"). Split out of the
+    Animation Editor window itself (which used to hold this same strip
+    in a cramped, fixed-size child region) so the timeline gets the
+    full screen width to lay out keyframes in -- a no-op when no clip
+    is open (`_timeline_visible`), the same gate `_draw_animation_editor_window`
+    uses, so the two windows always appear/disappear together.
+
+    Pinned to position/size every frame (`Cond_.always`, matching
+    `_draw_sidebar`'s own reasoning) rather than just on first use, so
+    it can't be dragged or resized away from where it belongs.
+    `_draw_sidebar` shrinks its own height to stop just above this
+    window whenever `_timeline_visible` is true, per direct request
+    ("make the sidebar window conform so it doesn't overlap") --  see
+    that function's own note.
+
+    Also houses every control that used to live in the now-removed
+    standalone Playback window, per direct request ("move the options
+    from the playback window to the timeline window") -- Play/Pause,
+    and the action_animations trigger/revert-to-idle buttons.
+    `state.paused` defaults to True now (per that same direct request),
+    so a freshly-opened entity doesn't start animating before anyone's
+    looked at it. `_TIMELINE_HEIGHT` was widened (90 -> 130) to fit the
+    extra row without cramming the keyframe strip below it.
+
+    Per direct follow-up request, the plain "Paused" checkbox is now a
+    single button that swaps its own label between "> Play" and
+    "|| Pause" (ASCII, not the Unicode ▶/⏸ glyphs -- this codebase loads
+    no custom/icon font, only Dear ImGui's default one, which doesn't
+    include those code points; they'd render as missing-glyph boxes)
+    depending on `state.paused`, always showing the action a click will
+    perform -- the standard media-player convention. See
+    `_toggle_timeline_playback` for the real playback-not-actually-
+    starting bug this click handler also fixes.
+    """
+    if not _timeline_visible(state):
+        return
+
+    from client.engine.gizmo import to_imvec2
+
+    viewport = imgui.get_main_viewport()
+    bottom_bar_height = imgui.get_frame_height()
+    pos_x = viewport.work_pos.x
+    pos_y = viewport.work_pos.y + viewport.work_size.y - bottom_bar_height - _TIMELINE_HEIGHT
+    width = viewport.work_size.x
+
+    imgui.set_next_window_pos(to_imvec2((pos_x, pos_y)), imgui.Cond_.always)
+    imgui.set_next_window_size(to_imvec2((width, _TIMELINE_HEIGHT)), imgui.Cond_.always)
+    imgui.begin(
+        f"Timeline - {state.editing_animation_id}###Timeline",
+        None,
+        imgui.WindowFlags_.no_move | imgui.WindowFlags_.no_resize,
+    )
+
+    clip = state.animation_editor_clip
+    keyframes = clip.setdefault("keyframes", [])
+
+    if imgui.button("Add Keyframe##timeline"):
+        add_keyframe(keyframes)
+        state.animation_editor_selected_kf = len(keyframes) - 1
+        _sync_preview_definition(scene, state)
+    imgui.same_line()
+    if imgui.button("Duplicate Keyframe##timeline"):
+        new_keyframe = duplicate_keyframe(keyframes, state.animation_editor_selected_kf)
+        if new_keyframe is None:
+            _show_toast(state, "No keyframe selected to duplicate.")
+        else:
+            state.animation_editor_selected_kf = len(keyframes) - 1
+            state.animation_editor_assign_part = ""
+            state.timeline_playback_ms = new_keyframe["time_ms"]
+            _sync_preview_definition(scene, state)
+            _show_toast(state, f"Duplicated keyframe to {new_keyframe['time_ms']:.0f}ms")
+    imgui.same_line()
+    _, clip["loop"] = imgui.checkbox("loop##timeline", clip.get("loop", True))
+    imgui.same_line()
+    play_pause_label = "> Play##timeline" if state.paused else "|| Pause##timeline"
+    if imgui.button(play_pause_label):
+        _toggle_timeline_playback(scene, state)
+
+    entity = scene.entities.get(_PREVIEW_ENTITY_ID)
+    action_names = sorted(
+        {name for part in state.parts for name in (part.get("action_animations") or {}).keys()}
+    )
+    if action_names:
+        imgui.text("Trigger action_animations (sets entity.state):")
+        imgui.same_line()
+        for name in action_names:
+            if imgui.button(f"Trigger '{name}'##timeline") and entity is not None:
+                entity["state"] = name
+                _show_toast(state, f"Triggered '{name}'")
+            imgui.same_line()
+        if imgui.button("Revert to idle##timeline") and entity is not None:
+            entity["state"] = "idle"
+            _show_toast(state, "Reverted to idle")
+
+    imgui.begin_child(
+        "TimelineKeyframeStrip",
+        imgui.ImVec2(0, 0),
+        imgui.ChildFlags_.borders,
+        imgui.WindowFlags_.horizontal_scrollbar,
+    )
+    for index, kf in enumerate(keyframes):
+        if index > 0:
+            imgui.same_line()
+        selected = index == state.animation_editor_selected_kf
+        if selected:
+            imgui.push_style_color(imgui.Col_.button, imgui.ImVec4(0.2, 0.5, 0.9, 1.0))
+        if imgui.button(f"{kf['time_ms']:.0f}ms##timeline-kf{index}"):
+            state.animation_editor_selected_kf = index
+            state.animation_editor_assign_part = ""
+            # Also seeks playback to this keyframe's own time, so
+            # clicking a keyframe acts as a scrubber whether paused
+            # (shows this exact pose, via _sync_preview_definition
+            # below) or already playing (_update_playback_pose picks
+            # up the new time_ms on the very next frame).
+            state.timeline_playback_ms = kf["time_ms"]
+            _sync_preview_definition(scene, state)
+        if selected:
+            imgui.pop_style_color()
+    if not keyframes:
+        imgui.text_wrapped("No keyframes yet -- Add Keyframe above.")
+    imgui.end_child()
+
+    imgui.end()
+
+
+_EASING_PREVIEW_SIZE = 90.0
+_EASING_PREVIEW_Y_MIN = -0.4
+_EASING_PREVIEW_Y_MAX = 1.4
+
+
+def _draw_easing_curve_preview(x1: float, y1: float, x2: float, y2: float) -> None:
+    """Small live-updating plot of the cubic-bezier easing curve
+    currently dialed in for a part's keyframe transition -- per direct
+    request ("[I'd rather expose a more flexible curve] ... same
+    numbers plus a live curve preview"), since four raw control-point
+    numbers with no visual feedback is a rough way to actually author a
+    curve's shape. Hand-samples the curve and draws it with plain
+    `ImDrawList.add_line` calls -- the same technique `client/engine/
+    gizmo.py`'s own overlay already uses -- rather than imgui's built-in
+    `plot_lines`, which needs a numpy `ndarray` and this codebase's own
+    "nothing should import numpy directly" rule (requirements.txt) rules
+    that out.
+
+    The plotted y-range is padded beyond [0, 1] (see
+    _EASING_PREVIEW_Y_MIN/_MAX) so an overshoot/"back"-style curve
+    (y1/y2 outside [0, 1], intentionally left unclamped -- see
+    transform_clip.py's own docstring) stays visible instead of
+    clipping flat against the box edges.
+    """
+    size = _EASING_PREVIEW_SIZE
+    origin = imgui.get_cursor_screen_pos()
+    draw_list = imgui.get_window_draw_list()
+    y_span = _EASING_PREVIEW_Y_MAX - _EASING_PREVIEW_Y_MIN
+
+    def to_screen(t: float, y: float):
+        screen_x = origin.x + t * size
+        screen_y = origin.y + size * (1.0 - (y - _EASING_PREVIEW_Y_MIN) / y_span)
+        return imgui.ImVec2(screen_x, screen_y)
+
+    top_left = imgui.ImVec2(origin.x, origin.y)
+    bottom_right = imgui.ImVec2(origin.x + size, origin.y + size)
+    draw_list.add_rect_filled(top_left, bottom_right, imgui.IM_COL32(30, 30, 30, 255))
+    draw_list.add_rect(top_left, bottom_right, imgui.IM_COL32(90, 90, 90, 255))
+    # Faint reference diagonal -- what this transition would look like
+    # with no easing at all (the pre-this-feature, always-linear behavior).
+    draw_list.add_line(to_screen(0.0, 0.0), to_screen(1.0, 1.0), imgui.IM_COL32(70, 70, 70, 255))
+
+    steps = 24
+    previous = to_screen(0.0, transform_clip.cubic_bezier_ease(0.0, x1, y1, x2, y2))
+    for i in range(1, steps + 1):
+        t = i / steps
+        point = to_screen(t, transform_clip.cubic_bezier_ease(t, x1, y1, x2, y2))
+        draw_list.add_line(previous, point, imgui.IM_COL32(255, 200, 60, 255), 2.0)
+        previous = point
+
+    # Control-point handles, so it's visible *why* the curve bends the
+    # way it does, not just the resulting shape.
+    draw_list.add_circle_filled(to_screen(x1, y1), 3.0, imgui.IM_COL32(90, 170, 255, 255))
+    draw_list.add_circle_filled(to_screen(x2, y2), 3.0, imgui.IM_COL32(90, 170, 255, 255))
+
+    imgui.dummy(imgui.ImVec2(size, size))
+
+
 def _draw_animation_editor_window(scene: Scene, state: BuilderState) -> None:
-    """Multi-part rig-clip authoring window, per direct request --
-    opened via the Animations tab's "New Animation"/"Edit". A no-op
-    (draws nothing) when no clip is currently open.
+    """Selected-keyframe detail editor, per direct request -- opened
+    via the Animations tab's "New Animation"/"Edit". A no-op (draws
+    nothing) when no clip is currently open. Keyframe selection/
+    creation itself lives in the separate, full-width `_draw_timeline_window`
+    (see that function's own docstring for why); this window shows only
+    whichever keyframe is currently selected there: its gap-from-
+    previous field, its assigned-parts list (each part editable via
+    drag_float3 position/rotation/scale), an "All Parts" rigid-group
+    transform control that applies a shared position/rotation/scale
+    delta to every part in the entity at once (per direct request --
+    see compute_group_transform_delta/apply_rigid_group_delta), a combo
+    to assign one more of this entity's parts into it, and Save. Nothing
+    here touches disk
+    until "Save" (_save_animation_editor) -- same buffer-then-explicit-
+    save shape as the Parts tab's own per-part fields, since this tool
+    has no undo stack (see the module docstring).
 
-    Layout: a horizontal, scrollable strip of keyframe buttons across
-    the top (see transform_clip.py's module docstring for the "parts"
-    keyframe field this authors) -- clicking one selects it; the
-    selected keyframe's own gap-from-previous field and assigned-parts
-    list are shown below, each part editable via drag_float3 position/
-    rotation/scale, plus a combo to assign one more of this entity's
-    parts into the keyframe. Nothing here touches disk until "Save"
-    (_save_animation_editor) -- same buffer-then-explicit-save shape as
-    the Parts tab's own per-part fields, since this tool has no undo
-    stack (see the module docstring).
-
-    Every action that changes the selected keyframe's identity or its
-    parts' transforms calls `_sync_preview_definition` (see
-    apply_keyframe_preview) so the real orbit-preview mesh visibly
-    tracks whatever's being edited, per direct request -- the same
-    "any edit re-syncs the live preview" convention every other panel
-    in this file already follows for its own fields.
+    Every action that changes a previewed part's transform calls
+    `_sync_preview_definition` (see apply_keyframe_preview) so the real
+    orbit-preview mesh visibly tracks whatever's being edited, per
+    direct request -- the same "any edit re-syncs the live preview"
+    convention every other panel in this file already follows for its
+    own fields.
     """
     if state.animation_editor_clip is None:
         return
@@ -1583,38 +2267,9 @@ def _draw_animation_editor_window(scene: Scene, state: BuilderState) -> None:
 
     expanded, keep_open = imgui.begin(f"Animation Editor - {state.editing_animation_id}###AnimationEditor", True)
     if expanded:
-        _, clip["loop"] = imgui.checkbox("loop", clip.get("loop", True))
-        imgui.same_line()
-        if imgui.button("Add Keyframe"):
-            add_keyframe(keyframes)
-            state.animation_editor_selected_kf = len(keyframes) - 1
-            _sync_preview_definition(scene, state)
-
-        imgui.separator()
-        imgui.text("Keyframes (time_ms) -- click to select")
-        imgui.begin_child(
-            "AnimationEditorKeyframeStrip",
-            imgui.ImVec2(0, 56),
-            imgui.ChildFlags_.borders,
-            imgui.WindowFlags_.horizontal_scrollbar,
-        )
-        for index, kf in enumerate(keyframes):
-            if index > 0:
-                imgui.same_line()
-            selected = index == state.animation_editor_selected_kf
-            if selected:
-                imgui.push_style_color(imgui.Col_.button, imgui.ImVec4(0.2, 0.5, 0.9, 1.0))
-            if imgui.button(f"{kf['time_ms']:.0f}ms##kf{index}"):
-                state.animation_editor_selected_kf = index
-                state.animation_editor_assign_part = ""
-                _sync_preview_definition(scene, state)
-            if selected:
-                imgui.pop_style_color()
-        if not keyframes:
-            imgui.text_wrapped("No keyframes yet -- Add Keyframe above.")
-        imgui.end_child()
-
         index = state.animation_editor_selected_kf
+        if not (0 <= index < len(keyframes)):
+            imgui.text_wrapped("No keyframe selected -- pick one in the Timeline below.")
         if 0 <= index < len(keyframes):
             keyframe = keyframes[index]
             imgui.separator()
@@ -1636,6 +2291,81 @@ def _draw_animation_editor_window(scene: Scene, state: BuilderState) -> None:
                 if not assigned_ids:
                     imgui.text_wrapped("No parts assigned to this keyframe yet.")
                 position_speed = position_drag_speed(entity_bounding_radius(state.parts))
+
+                # "All Parts" rigid-group transform, per direct request
+                # ("apply transformations to every mesh/part in the
+                # entity as one") -- moves/rotates/scales every part in
+                # the entity together, rigidly, preserving each part's
+                # pose relative to the others (not the same as setting
+                # every part to the same absolute transform, which would
+                # visually collapse them together). Any part not yet
+                # assigned to this keyframe is auto-assigned (identity
+                # transform) the moment this control is touched, since
+                # "every mesh/part in the entity" means literally every
+                # part, not just whichever ones happened to already be
+                # in this keyframe.
+                #
+                # The three fields below are a running total *since
+                # this control was last reset*, not a real transform
+                # read off any part -- each edit is applied to every
+                # part as the delta from the control's previous value
+                # (see compute_group_transform_delta). The control
+                # resets to identity whenever the selected keyframe
+                # changes, since a stale running total from a different
+                # keyframe would be meaningless here.
+                if state.animation_editor_group_kf_index != index:
+                    state.animation_editor_group_position = [0.0, 0.0, 0.0]
+                    state.animation_editor_group_rotation = [0.0, 0.0, 0.0]
+                    state.animation_editor_group_scale = [1.0, 1.0, 1.0]
+                    state.animation_editor_group_kf_index = index
+
+                if imgui.collapsing_header(f"All Parts (apply to every part together)##kf{index}group"):
+                    imgui.text_wrapped(
+                        "Moves/rotates/scales every part in the entity together, as one -- "
+                        "each part keeps its pose relative to the others."
+                    )
+                    group_changed = False
+
+                    changed, new_value = imgui.drag_float3(
+                        f"position##kf{index}-group", state.animation_editor_group_position, position_speed
+                    )
+                    new_group_position = list(new_value)
+                    group_changed = group_changed or changed
+
+                    changed, new_value = imgui.drag_float3(
+                        f"rotation##kf{index}-group", state.animation_editor_group_rotation, 0.01
+                    )
+                    new_group_rotation = list(new_value)
+                    group_changed = group_changed or changed
+
+                    changed, new_value = imgui.drag_float3(
+                        f"scale##kf{index}-group", state.animation_editor_group_scale, 0.01
+                    )
+                    new_group_scale = list(new_value)
+                    group_changed = group_changed or changed
+
+                    if group_changed:
+                        delta_position, delta_rotation, scale_ratio = compute_group_transform_delta(
+                            state.animation_editor_group_position,
+                            new_group_position,
+                            state.animation_editor_group_rotation,
+                            new_group_rotation,
+                            state.animation_editor_group_scale,
+                            new_group_scale,
+                        )
+                        for part in state.parts:
+                            part_id = part.get("id")
+                            if part_id and part_id not in (keyframe.get("parts") or {}):
+                                assign_part_to_keyframe(keyframe, part_id)
+                        all_part_ids = [p.get("id") for p in state.parts if p.get("id")]
+                        apply_rigid_group_delta(keyframe, all_part_ids, delta_position, delta_rotation, scale_ratio)
+
+                        state.animation_editor_group_position = new_group_position
+                        state.animation_editor_group_rotation = new_group_rotation
+                        state.animation_editor_group_scale = new_group_scale
+                        assigned_ids = sorted((keyframe.get("parts") or {}).keys())
+                        _sync_preview_definition(scene, state)
+
                 for part_id in assigned_ids:
                     transform = keyframe["parts"][part_id]
                     if imgui.collapsing_header(f"{part_id}##kf{index}part"):
@@ -1655,6 +2385,57 @@ def _draw_animation_editor_window(scene: Scene, state: BuilderState) -> None:
                         changed, new_value = imgui.drag_float3(f"scale##kf{index}-{part_id}", scale, 0.01)
                         if changed:
                             transform["scale"] = list(new_value)
+                            _sync_preview_definition(scene, state)
+
+                        # Transition curve into this keyframe, per direct
+                        # request ("edit the transition formula for each
+                        # part in a keyframe" / "I'd rather expose a more
+                        # flexible curve" than a fixed named-easing set) --
+                        # a cubic-bezier control-point pair, the same
+                        # cubic-bezier(x1,y1,x2,y2) convention CSS/After
+                        # Effects use (see transform_clip.py's own
+                        # docstring/cubic_bezier_ease). Governs the
+                        # segment from the *previous* keyframe up to this
+                        # one -- "ease into this pose" -- which is why
+                        # it's stored per-part on this keyframe's own
+                        # transform dict, right alongside position/
+                        # rotation/scale, not on the segment's other end.
+                        easing_changed = False
+                        x1, y1, x2, y2 = transform_clip.resolve_easing(transform)
+                        imgui.text_wrapped("Transition curve (cubic-bezier, eases into this pose):")
+                        changed, new_value = imgui.drag_float2(f"P1##kf{index}-{part_id}-easing", [x1, y1], 0.01, -2.0, 2.0)
+                        if changed:
+                            x1, y1 = new_value
+                            easing_changed = True
+                        changed, new_value = imgui.drag_float2(f"P2##kf{index}-{part_id}-easing", [x2, y2], 0.01, -2.0, 2.0)
+                        if changed:
+                            x2, y2 = new_value
+                            easing_changed = True
+                        if easing_changed:
+                            # x stays a valid function of time; y is
+                            # deliberately left unclamped so an overshoot/
+                            # "back"-style curve is still possible.
+                            x1 = min(1.0, max(0.0, x1))
+                            x2 = min(1.0, max(0.0, x2))
+                            transform["easing"] = [x1, y1, x2, y2]
+                            _sync_preview_definition(scene, state)
+                        _draw_easing_curve_preview(x1, y1, x2, y2)
+
+                        # Rotation/scale pivot, per direct request ("allow
+                        # setting an origin point to apply the animation
+                        # transformation from") -- clip-level, not
+                        # per-keyframe (shared across every keyframe this
+                        # part appears in, since a hinge/pivot point is a
+                        # property of how the part is rigged, not
+                        # something that would sensibly change keyframe to
+                        # keyframe within one clip -- see transform_clip
+                        # .py's own "origins" map docstring).
+                        origins = clip.setdefault("origins", {})
+                        origin = origins.get(part_id, [0.0, 0.0, 0.0])
+                        imgui.text_wrapped("Origin (pivot point, shared across every keyframe for this part):")
+                        changed, new_value = imgui.drag_float3(f"origin##kf{index}-{part_id}", origin, position_speed)
+                        if changed:
+                            origins[part_id] = list(new_value)
                             _sync_preview_definition(scene, state)
 
                         if imgui.button(f"Remove from keyframe##kf{index}-{part_id}"):
@@ -1682,16 +2463,7 @@ def _draw_animation_editor_window(scene: Scene, state: BuilderState) -> None:
 
     imgui.end()
     if not keep_open:
-        state.editing_animation_id = None
-        state.animation_editor_clip = None
-        state.animation_editor_path = None
-        state.animation_editor_selected_kf = -1
-        # Revert the preview back to its normal localOffset/live-
-        # animation pose -- otherwise the last-previewed keyframe's
-        # pose would keep overriding the assigned part(s) forever,
-        # since apply_keyframe_preview reads state.animation_editor_clip,
-        # which is now None and would otherwise skip this refresh.
-        _sync_preview_definition(scene, state)
+        _close_animation_editor(scene, state)
 
 
 def _draw_materials_tab(scene: Scene, state: BuilderState, action_registry) -> None:
@@ -1768,10 +2540,17 @@ def _draw_sidebar(scene: Scene, state: BuilderState, action_registry) -> None:
     Pinned to the right edge every frame (`Cond_.always`, not just on
     first use) so it can't drift or be resized away from where it
     belongs, same reasoning as launcher.py's fixed-size window. Width
-    matches the Playback window's own current width
-    (`state.playback_window_width`, captured by `_draw_playback_panel`
-    each frame it renders) rather than a hardcoded constant, per direct
-    request.
+    is a fixed constant (`_SIDEBAR_WIDTH`) -- it used to track the
+    now-removed standalone Playback window's own current width (per an
+    earlier direct request), but that window's controls folded into the
+    Timeline window (see _draw_timeline_window), leaving no other
+    window left to size against.
+
+    Height additionally shrinks by `_TIMELINE_HEIGHT` whenever the
+    Timeline window is showing (`_timeline_visible`), per direct
+    request ("make the sidebar window conform so it doesn't overlap")
+    -- the Timeline is full-width (see its own docstring), so without
+    this the sidebar's bottom-right corner would sit underneath it.
     """
     if not state.show_sidebar:
         return
@@ -1779,11 +2558,12 @@ def _draw_sidebar(scene: Scene, state: BuilderState, action_registry) -> None:
     from client.engine.gizmo import to_imvec2
 
     viewport = imgui.get_main_viewport()
-    width = max(state.playback_window_width, 200.0)
+    width = _SIDEBAR_WIDTH
     bottom_bar_height = imgui.get_frame_height()
+    timeline_height = _TIMELINE_HEIGHT if _timeline_visible(state) else 0.0
     pos_x = viewport.work_pos.x + viewport.work_size.x - width
     pos_y = viewport.work_pos.y
-    height = viewport.work_size.y - bottom_bar_height
+    height = viewport.work_size.y - bottom_bar_height - timeline_height
 
     imgui.set_next_window_pos(to_imvec2((pos_x, pos_y)), imgui.Cond_.always)
     imgui.set_next_window_size(to_imvec2((width, height)), imgui.Cond_.always)
@@ -1846,35 +2626,6 @@ def _save_material(
     return out_path
 
 
-def _draw_playback_panel(scene: Scene, state: BuilderState) -> None:
-    imgui.begin("Playback")
-    _, state.paused = imgui.checkbox("Paused", state.paused)
-
-    imgui.text("Preview action_animations trigger (sets entity.state)")
-    entity = scene.entities.get(_PREVIEW_ENTITY_ID)
-    action_names = sorted(
-        {name for part in state.parts for name in (part.get("action_animations") or {}).keys()}
-    )
-    if not action_names:
-        imgui.text_wrapped("No part has action_animations assigned yet.")
-    for name in action_names:
-        if imgui.button(f"Trigger '{name}'##playback") and entity is not None:
-            entity["state"] = name
-            _show_toast(state, f"Triggered '{name}'")
-    if imgui.button("Revert to idle##playback") and entity is not None:
-        entity["state"] = "idle"
-        _show_toast(state, "Reverted to idle")
-
-    # Captured for _draw_sidebar() to size itself against, per direct
-    # request ("make the side bar the width of the current playback
-    # window") -- read while this window is still the active imgui
-    # window, since get_window_size() only answers for whichever
-    # window is currently open between its own begin()/end().
-    state.playback_window_width = imgui.get_window_size().x
-
-    imgui.end()
-
-
 def _make_key_handler(state: BuilderState):
     """F11 toggles the top menu bar -- same key, same guard against
     stealing focus from an active imgui text field, as area_viewer.py's
@@ -1914,7 +2665,7 @@ def _draw_menu_bar(scene: Scene, state: BuilderState) -> None:
     if imgui.begin_menu("File"):
         if state.entity_id is not None:
             if imgui.menu_item_simple("Save", "Ctrl+S", False, True):
-                save_entity_definition({"parts": state.parts}, state.entity_id)
+                save_entity_definition({"parts": state.parts, "name": state.entity_name}, state.entity_id)
                 _show_toast(state, f"Saved entity '{state.entity_id}'")
         else:
             # No entity_id yet (brand-new, never-saved definition) --
@@ -1923,8 +2674,14 @@ def _draw_menu_bar(scene: Scene, state: BuilderState) -> None:
             if imgui.begin_menu("Save As"):
                 _, state.save_as_name = imgui.input_text("Name", state.save_as_name)
                 if imgui.button("Save") and state.save_as_name.strip():
+                    # id and name both start identical to the typed text
+                    # (same "diverge only once explicitly renamed" pattern
+                    # parts use) -- entity_name stays freely editable
+                    # afterward via the Entity Information window, entity_id
+                    # never changes again.
                     state.entity_id = state.save_as_name.strip()
-                    save_entity_definition({"parts": state.parts}, state.entity_id)
+                    state.entity_name = state.save_as_name.strip()
+                    save_entity_definition({"parts": state.parts, "name": state.entity_name}, state.entity_id)
                     _show_toast(state, f"Saved entity '{state.entity_id}'")
                     imgui.close_current_popup()
                 imgui.end_menu()
@@ -1960,7 +2717,6 @@ def _draw_menu_bar(scene: Scene, state: BuilderState) -> None:
 
     if imgui.begin_menu("View"):
         _, state.show_entity_info = imgui.menu_item("Entity Information", "", state.show_entity_info)
-        _, state.show_playback_panel = imgui.menu_item("Playback", "", state.show_playback_panel)
         _, state.show_sidebar = imgui.menu_item("Sidebar (Parts/Materials)", "", state.show_sidebar)
         # Solid/Wireframe as two mutually-exclusive items (each sets an
         # explicit value on click, not a toggle) rather than one
@@ -2038,10 +2794,23 @@ def _draw_entity_info_window(state: BuilderState) -> None:
     """Hidden by default (View > Entity Information) -- mirrors
     area_viewer.py's "Area Information" window, the status-message/
     last-action home left behind once Save moved into the menu bar.
+
+    Also this entity's one editable "Name" field, per direct request
+    ("make it trivial to rename parts, meshes or entities without it
+    breaking relations") -- `state.entity_id` (shown just below, read-
+    only) is the frozen reference `render_template`/the manifest/the
+    launcher's asset browser all key on; renaming here only ever
+    touches the separate, freely-editable display name, never that id,
+    so nothing referencing this entity can break. Buffer-then-explicit-
+    save like every other edit in this tool -- File > Save actually
+    persists it.
     """
     if not state.show_entity_info:
         return
     imgui.begin("Entity Information", None, imgui.WindowFlags_.always_auto_resize)
+    changed, state.entity_name = imgui.input_text("Name##entity-info", state.entity_name)
+    if changed:
+        _show_toast(state, f"Renamed entity to '{state.entity_name}' (not yet saved to disk)")
     imgui.text(f"Entity: {state.entity_id or '(new, unsaved)'}")
     imgui.text(f"Parts: {len(state.parts)}")
     if state.status_message:
@@ -2102,11 +2871,13 @@ def run(entity_id: "Optional[str]") -> bool:
     if entity_id:
         definition = load_entity_definition(entity_id)
         parts = list((definition or {}).get("parts") or [])
+        entity_name = (definition or {}).get("name")
     else:
         parts = []
+        entity_name = None
 
     scene = Scene()
-    state = BuilderState(entity_id, parts)
+    state = BuilderState(entity_id, parts, entity_name)
 
     renderer.init_renderer()
     # Launch maximized -- this tool's window is dense enough (menu bar,
@@ -2147,13 +2918,7 @@ def run(entity_id: "Optional[str]") -> bool:
         _draw_toast(state)
         _draw_entity_info_window(state)
         _draw_animation_editor_window(scene, state)
-
-        # Playback drawn before the sidebar so this frame's
-        # state.playback_window_width (captured inside it) is already
-        # up to date by the time _draw_sidebar() reads it -- otherwise
-        # the sidebar would always be one frame behind Playback's size.
-        if state.show_playback_panel:
-            _draw_playback_panel(scene, state)
+        _draw_timeline_window(scene, state)
         _draw_sidebar(scene, state, action_registry)
 
     imgui_renderer.set_gui(gui)
@@ -2168,6 +2933,24 @@ def run(entity_id: "Optional[str]") -> bool:
         orbit.apply(scene.camera)
         effective_delta_ms = 0.0 if state.paused else delta_ms
         interpolation.update_interpolation(scene.entities, effective_delta_ms / 1000.0)
+
+        # Advance the Timeline's own playback clock and re-pose every
+        # clip-assigned part from it -- see _update_playback_pose's own
+        # docstring for why this bypasses _sync_preview_definition
+        # (too expensive to call every frame). Real bug fixed: this is
+        # the actual "unpausing does not start the playback" fix --
+        # before this, nothing here ever advanced state.timeline_playback_ms
+        # or resampled the clip at all, regardless of state.paused.
+        if _timeline_visible(state) and not state.paused:
+            clip = state.animation_editor_clip
+            keyframes = clip.get("keyframes", [])
+            if keyframes:
+                duration = keyframes[-1]["time_ms"]
+                state.timeline_playback_ms = advance_timeline_playback_ms(
+                    state.timeline_playback_ms, delta_ms, duration, clip.get("loop", True)
+                )
+            _update_playback_pose(state)
+
         # Reapplied every frame, not just on toggle: _sync_preview_definition()
         # destroys/recreates the preview entity's EntityRenderer on every
         # parts-list edit (see that function's own docstring), which

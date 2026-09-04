@@ -29,6 +29,30 @@ Uniform buffer layout (MATERIAL_UNIFORM_BYTES = 192):
   mvp(64) + uv_rect(16) + uv_overlay(16) + tint(16)
   + intensity(4) + time(4) + ramp_steps(4) + _pad(4)
   + pal_a(16) + pal_b(16) + pal_c(16) + pal_d(16)
+
+**Known real limitation, not fixed here**: `load()`/`get_fallback_handle()`
+cache one handle -- one `uniform_buffer`/`bind_group` pair -- per
+material id (or the single shared fallback), reused by every caller
+that asks for that same material. That's correct for the *textures*
+(binding 1/2/3, genuinely shareable), but binding 0's uniform buffer
+also carries this draw's own per-instance data (the MVP matrix, plus
+tint/intensity/etc.) packed into the *same* struct -- so two draws
+sharing a handle and both calling `write_buffer` before either is
+actually submitted to the GPU queue will, by the time the submitted
+command buffer executes, both read back whichever value was written
+*last*, not their own. Confirmed live and fixed for the mesh path
+(`entity_renderer.py`'s `_draw_mesh_part` -- every mesh part now gets
+its own dedicated uniform buffer + bind group, built once from this
+handle's shared `albedo_view`/`binding2_view`/`EntityRenderer` still
+using `MaterialLoader.sampler`, not from `handle["bind_group"]`
+directly). The 2D sprite "material path" (Workflow B/C, `entity
+.get("material")` in `entity_renderer.py`'s non-3D branch) has the
+identical latent bug -- two sprite entities sharing the same
+`material` field would silently render at only the last-drawn one's
+transform -- but has not been fixed here since it was not the reported
+symptom and touching working, shipped code for an unreported issue
+adds regression risk for no immediate benefit; flagged here for
+whoever next touches that path.
 """
 
 import json
@@ -84,6 +108,16 @@ class MaterialLoader:
         guarantee object-level layout compatibility.
         """
         return self._bind_group_layout
+
+    @property
+    def sampler(self):
+        """The shared GPUSampler every material bind group uses (binding
+        3). Exposed so a caller building its own *additional* bind group
+        against the same textures (see `_draw_mesh_part`'s per-part
+        uniform buffer, and this class's own docstring note on why one
+        exists) doesn't need a second sampler.
+        """
+        return self._sampler
 
     # ------------------------------------------------------------------
     # Public API
@@ -156,12 +190,15 @@ class MaterialLoader:
             usage=wgpu.BufferUsage.UNIFORM | wgpu.BufferUsage.COPY_DST,
         )
 
+        albedo_view = albedo_tex.create_view()
+        binding2_view = binding2_tex.create_view()
+
         bind_group = self._device.create_bind_group(
             layout=self._bind_group_layout,
             entries=[
                 {"binding": 0, "resource": {"buffer": uniform_buffer}},
-                {"binding": 1, "resource": albedo_tex.create_view()},
-                {"binding": 2, "resource": binding2_tex.create_view()},
+                {"binding": 1, "resource": albedo_view},
+                {"binding": 2, "resource": binding2_view},
                 {"binding": 3, "resource": self._sampler},
             ],
         )
@@ -191,6 +228,15 @@ class MaterialLoader:
             "id": data["id"],
             "bind_group": bind_group,
             "uniform_buffer": uniform_buffer,
+            # Raw texture views, alongside the shared bind_group/
+            # uniform_buffer above -- lets a caller that needs its own
+            # per-draw uniform buffer (see this module's own docstring
+            # note on why: binding 0 also carries per-instance data, not
+            # just material constants) build an *additional* bind group
+            # against these same shared textures instead of duplicating
+            # texture uploads.
+            "albedo_view": albedo_view,
+            "binding2_view": binding2_view,
             "flags": {
                 "has_param_map": has_param_map,
                 "has_overlay": has_overlay,
@@ -236,12 +282,14 @@ class MaterialLoader:
             size=MATERIAL_UNIFORM_ALIGNED,
             usage=wgpu.BufferUsage.UNIFORM | wgpu.BufferUsage.COPY_DST,
         )
+        albedo_view = magenta_tex.create_view()
+        binding2_view = self._fallback_param_texture.create_view()
         bind_group = self._device.create_bind_group(
             layout=self._bind_group_layout,
             entries=[
                 {"binding": 0, "resource": {"buffer": uniform_buffer}},
-                {"binding": 1, "resource": magenta_tex.create_view()},
-                {"binding": 2, "resource": self._fallback_param_texture.create_view()},
+                {"binding": 1, "resource": albedo_view},
+                {"binding": 2, "resource": binding2_view},
                 {"binding": 3, "resource": self._sampler},
             ],
         )
@@ -249,6 +297,8 @@ class MaterialLoader:
             "id": "__fallback_missing_material__",
             "bind_group": bind_group,
             "uniform_buffer": uniform_buffer,
+            "albedo_view": albedo_view,
+            "binding2_view": binding2_view,
             "flags": {"has_param_map": False, "has_overlay": False, "has_color_ramp": False},
             "overlays": [],
             "color_ramp_type": None,

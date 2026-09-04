@@ -20,7 +20,6 @@ run-loop design doesn't support swapping what's being drawn into an
 already-open window mid-loop.
 """
 
-import hashlib
 import json
 import sys
 from pathlib import Path
@@ -84,24 +83,69 @@ def _delete_asset(category: str, asset_id: str) -> None:
     asset_loader.remove_entry(category, asset_id)
 
 
-def _rename_asset(category: str, asset_id: str, new_id: str) -> "str | None":
-    """Rename *asset_id* to *new_id*: rewrites the asset JSON's own
-    "id" field (`tools/build_manifest.py`'s `json_asset_id()` is what
-    later reads that field back as the manifest key), renames the
-    underlying file to match, and rewrites its manifest.json entry
-    under the new key. Only touches this one file -- does not scan
-    other entities/areas for references to the old id, same
-    proportional scope as `_delete_asset()` above.
+def _current_display_name(asset_id: str) -> str:
+    """*asset_id*'s own current `"name"` field, or the id itself if
+    unset/unreadable -- used to pre-fill the Rename modal with what's
+    actually being renamed (the display name), not the frozen id.
+    """
+    try:
+        rel_path = asset_loader.resolve(asset_id)
+        data = json.loads((FRONTEND_DIR / rel_path).read_text(encoding="utf-8"))
+        if isinstance(data, dict) and isinstance(data.get("name"), str) and data["name"]:
+            return data["name"]
+    except (ValueError, OSError, json.JSONDecodeError):
+        pass
+    return asset_id
+
+
+def filtered_sorted_entity_ids_by_name(entries: dict, filter_text: str) -> "list[tuple[str, str]]":
+    """Same shape as `run()`'s own local `_filtered_sorted_keys`, but
+    for the entity list specifically: returns `(asset_id, display_name)`
+    pairs sorted and filtered by `display_name` -- per direct request
+    ("have the entity list display the entities by their name, rather
+    than ID"). Sorting/filtering by name too, not just display, so a
+    renamed entity doesn't look out of order/unfindable relative to
+    what's actually shown (id is frozen at creation per the rename-
+    safety work above, so it no longer tracks a renamed entity's
+    alphabetical position at all). Also matches against the id, since
+    the id is still shown as a small hint next to the name in the list
+    and someone might search by it out of habit.
+
+    Module-level (unlike `_filtered_sorted_keys`, a closure inside
+    `run()`) specifically so this one's real filter/sort logic is
+    headlessly testable on its own.
+    """
+    needle = filter_text.lower()
+    pairs = [(asset_id, _current_display_name(asset_id)) for asset_id in entries.keys()]
+    pairs = [
+        (asset_id, name)
+        for asset_id, name in pairs
+        if not needle or needle in name.lower() or needle in asset_id.lower()
+    ]
+    return sorted(pairs, key=lambda pair: (pair[1].lower(), pair[0]))
+
+
+def _rename_asset(category: str, asset_id: str, new_name: str) -> "str | None":
+    """Rename *asset_id*'s **display name** to *new_name* -- rewrites
+    only the asset JSON's own `"name"` field. Per direct request ("make
+    it trivial to rename parts, meshes or entities without it breaking
+    relations"): *asset_id* itself, the file, and the manifest key
+    never change here at all -- every one of those is the frozen
+    reference other files actually point at (a part's `mesh` field, an
+    entity's `render_template`, `tools/build_manifest.py`'s own id
+    lookup), so this is safe by construction, not by successfully
+    scanning for every reference (the old version of this function's
+    own docstring admitted it didn't: "does not scan other entities/
+    areas for references to the old id" -- that whole caveat is gone
+    because there's no longer anything here that could break one).
+    Names also aren't unique, unlike the old id-rename this replaces --
+    no collision check needed.
 
     Returns an error message to show in the modal on failure, or None
     on success.
     """
-    if not new_id:
+    if not new_name:
         return "Name cannot be empty."
-    if new_id == asset_id:
-        return None
-    if new_id in asset_loader.list_category(category):
-        return f'"{new_id}" already exists.'
 
     try:
         rel_path = asset_loader.resolve(asset_id)
@@ -116,45 +160,14 @@ def _rename_asset(category: str, asset_id: str, new_id: str) -> "str | None":
     if not isinstance(data, dict):
         return f"{full_path.name} is not a JSON object."
 
-    new_path = full_path.with_name(f"{new_id}{full_path.suffix}")
-    if new_path.exists():
-        return f"A file named {new_path.name} already exists."
-
-    data["id"] = new_id
+    data["name"] = new_name
     try:
         full_path.write_text(
             json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
         )
-        full_path.rename(new_path)
     except OSError as exc:
         return f"Rename failed: {exc}"
 
-    new_rel_path = new_path.relative_to(FRONTEND_DIR).as_posix()
-    new_hash = hashlib.sha256(new_path.read_bytes()).hexdigest()[:16]
-
-    try:
-        manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        manifest = None
-    entry = None
-    if isinstance(manifest, dict) and isinstance(manifest.get(category), dict):
-        entry = manifest[category].pop(asset_id, None)
-        if entry is not None:
-            entry["path"] = new_rel_path
-            entry["hash"] = new_hash
-            manifest[category][new_id] = entry
-            try:
-                MANIFEST_PATH.write_text(
-                    json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
-                    encoding="utf-8",
-                )
-            except OSError:
-                pass
-
-    asset_loader.remove_entry(category, asset_id)
-    asset_loader.add_entry(
-        category, new_id, entry or {"path": new_rel_path, "hash": new_hash}
-    )
     return None
 
 
@@ -326,13 +339,27 @@ def run() -> LauncherResult:
                     entries = asset_loader.list_category(category)
                     _, filters[category] = imgui.input_text(f"Search##{category}-search", filters[category])
                     imgui.begin_child(f"{category}List", _LIST_SIZE, imgui.ChildFlags_.borders)
-                    for asset_id in _filtered_sorted_keys(entries, filters[category]):
-                        is_selected = selected_asset[category] == asset_id
-                        clicked, _ = imgui.selectable(
-                            f"{asset_id}##{category}-{asset_id}", is_selected
-                        )
-                        if clicked:
-                            selected_asset[category] = asset_id
+                    if category == "entities":
+                        # Per direct request: display (and sort/filter)
+                        # by name, not id -- id is the frozen, often-
+                        # less-readable reference (see the rename-safety
+                        # work above), name is what a person actually
+                        # recognizes an entity by. The id is still shown,
+                        # small, next to the name for anyone who needs it.
+                        for asset_id, display_name in filtered_sorted_entity_ids_by_name(entries, filters[category]):
+                            is_selected = selected_asset[category] == asset_id
+                            label = display_name if display_name == asset_id else f"{display_name}  ({asset_id})"
+                            clicked, _ = imgui.selectable(f"{label}##{category}-{asset_id}", is_selected)
+                            if clicked:
+                                selected_asset[category] = asset_id
+                    else:
+                        for asset_id in _filtered_sorted_keys(entries, filters[category]):
+                            is_selected = selected_asset[category] == asset_id
+                            clicked, _ = imgui.selectable(
+                                f"{asset_id}##{category}-{asset_id}", is_selected
+                            )
+                            if clicked:
+                                selected_asset[category] = asset_id
                     imgui.end_child()
 
                     current = selected_asset[category]
@@ -351,14 +378,19 @@ def run() -> LauncherResult:
                         if imgui.button(f"Edit##edit-{category}") and current is not None:
                             result.action = "build_entity"
                             result.asset_id = current
-                        # Rename (like Edit) is entities-only for now --
-                        # _rename_asset() itself works for any JSON-based
-                        # category, but meshes/materials weren't asked for.
+                    # Rename, per direct request ("make it trivial to
+                    # rename parts, meshes or entities without it
+                    # breaking relations") -- entities and meshes only
+                    # this round (not asked for materials); safe to wire
+                    # up for any category since _rename_asset() only
+                    # ever touches a "name" field now, never the id/
+                    # file/manifest key anything else references.
+                    if category in ("entities", "meshes"):
                         imgui.same_line()
                         if imgui.button(f"Rename##rename-{category}") and current is not None:
                             pending_rename["category"] = category
                             pending_rename["asset_id"] = current
-                            pending_rename["new_name"] = current
+                            pending_rename["new_name"] = _current_display_name(current)
                             pending_rename["error"] = ""
                             pending_rename["request_open"] = True
                     imgui.same_line()
@@ -404,13 +436,16 @@ def run() -> LauncherResult:
         # Rename modal -- same one-shot open pattern as the delete
         # modal above.
         if pending_rename["request_open"]:
-            imgui.open_popup("Rename Entity##asset")
+            imgui.open_popup("Rename Asset##asset")
             pending_rename["request_open"] = False
         rename_open, _ = imgui.begin_popup_modal(
-            "Rename Entity##asset", flags=imgui.WindowFlags_.always_auto_resize
+            "Rename Asset##asset", flags=imgui.WindowFlags_.always_auto_resize
         )
         if rename_open:
-            imgui.text(f"Rename \"{pending_rename['asset_id']}\" to:")
+            # Renames the display name only -- id (shown read-only,
+            # below) never changes, so this can never break a
+            # render_template/mesh-field/manifest reference anywhere.
+            imgui.text(f"Rename display name for id: {pending_rename['asset_id']} (permanent, unaffected)")
             _, pending_rename["new_name"] = imgui.input_text(
                 "##rename-new-name", pending_rename["new_name"]
             )
@@ -426,7 +461,9 @@ def run() -> LauncherResult:
                 if error:
                     pending_rename["error"] = error
                 else:
-                    selected_asset[pending_rename["category"]] = pending_rename["new_name"].strip()
+                    # selected_asset stays exactly as it was -- the id
+                    # this list is keyed on never changes, unlike the
+                    # old id-rewriting version of this flow.
                     pending_rename["category"] = None
                     pending_rename["asset_id"] = None
                     pending_rename["error"] = ""

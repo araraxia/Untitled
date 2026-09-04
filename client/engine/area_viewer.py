@@ -739,6 +739,17 @@ def _draw_template_section(scene: Scene, state: EditorState, entity_id: str, ren
         buffer = state.template_edit_buffers.setdefault(buffer_key, default_part_buffer(part))
         edited = draw_part_fields(part, buffer, state.action_registry, buffer_key)
         if edited is not None:
+            # Defense-in-depth tripwire, mirrored from entity_builder.py's
+            # own identical guard on this same shared draw_part_fields()
+            # call -- per direct request that renaming a part must never
+            # break a reference, id has to stay frozen after creation
+            # forever. Matters even more here than in entity_builder.py:
+            # the replacement below matches by the *old* part_id, so a
+            # silently-changed id would still land in the right list
+            # position but carry a value nothing else in this shared
+            # template actually points at.
+            if edited.get("id") != part_id:
+                edited["id"] = part_id
             new_parts = [edited if p.get("id") == part_id else p for p in parts]
             new_definition = dict(definition)
             new_definition["parts"] = new_parts
