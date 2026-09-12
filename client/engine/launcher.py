@@ -515,10 +515,14 @@ def main() -> None:
             return
 
         if result.action == "open_area":
-            area_viewer.run(area_path=result.area_path, mode="builder")
+            # maximized=True: per direct request, the area editor should
+            # open at maximum width/height when launched from here (the
+            # direct `--area=` boot path in area_viewer.main() is
+            # unaffected).
+            area_viewer.run(area_path=result.area_path, mode="builder", maximized=True)
             return
         elif result.action == "new_area":
-            area_viewer.run(area_path=None, mode="builder")
+            area_viewer.run(area_path=None, mode="builder", maximized=True)
             return
         elif result.action == "view_asset":
             back_to_launcher = asset_preview.run(

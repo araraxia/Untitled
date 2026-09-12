@@ -1104,11 +1104,15 @@ def _draw_zone_overlays(scene: Scene, state: EditorState, width: float, height: 
 # ---------------------------------------------------------------------
 
 
-def run(area_path: "str | None" = None, mode: str = "viewer") -> None:
+def run(area_path: "str | None" = None, mode: str = "viewer", maximized: bool = False) -> None:
     """The one entry function viewer/builder/test mode all share
     (Step 6 task 5: "this one entry mode *is* viewer mode as-is;
     builder mode is the same boot path with something additional
     layered on top"). No network client connection is ever opened here.
+
+    *maximized*: passed straight through to `renderer.init_renderer()`
+    -- per direct request, the launcher opens the area editor this way;
+    the direct `--area=` boot path (`main()` below) does not.
     """
     logger.info("=" * 50)
     logger.info(f"Area viewer -- mode={mode} area={area_path or '(empty scene)'}")
@@ -1130,7 +1134,7 @@ def run(area_path: "str | None" = None, mode: str = "viewer") -> None:
         resolved_path = None
 
     logger.info("Opening viewer window...")
-    renderer.init_renderer()
+    renderer.init_renderer(maximized=maximized)
 
     imgui_renderer = ImguiRenderer(renderer.device, renderer.canvas)
 

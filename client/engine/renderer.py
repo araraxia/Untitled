@@ -62,7 +62,7 @@ scene_texture: "wgpu.GPUTexture | None" = None
 lighting_pass: "LightingPass | None" = None
 
 
-def init_renderer() -> None:
+def init_renderer(maximized: bool = False) -> None:
     """Create the GLFW window, request the adapter/device, configure the
     canvas context, and allocate the depth/scene textures.
 
@@ -72,6 +72,10 @@ def init_renderer() -> None:
     (browser window already exists; initWebGPU() only acquires the GPU
     device) but collapse into one function here since this client owns
     window creation itself.
+
+    *maximized*: open the window taking up the full work area (per
+    direct request for the area editor, opened from the launcher, to
+    start maximized) instead of the fixed WINDOW_WIDTH/HEIGHT default.
     """
     global canvas, device, context, canvas_format, depth_texture, scene_texture
 
@@ -81,6 +85,54 @@ def init_renderer() -> None:
         update_mode="continuous",
         max_fps=60,
     )
+
+    if maximized:
+        # rendercanvas's public constructor has no maximized option, and
+        # a GLFW window hint set before construction wouldn't survive
+        # anyway (rendercanvas's own glfw backend calls glfw.init() --
+        # which resets all window hints -- as the first step of every
+        # RenderCanvas() call, after which it sets its own hints) -- so
+        # this reaches into the same private `_window` handle as
+        # set_window_size_limits() below to maximize post-construction
+        # instead. The window is already shown by the time the
+        # constructor above returns, so glfw.maximize_window() (which
+        # only affects windowed, non-hidden windows) applies immediately.
+        glfw.maximize_window(canvas._window)
+
+        # glfw.maximize_window() sends an async request the window
+        # manager applies on its own event turnaround (confirmed via
+        # live testing: querying the size synchronously right after the
+        # call above still reports the pre-maximize WINDOW_WIDTH x
+        # WINDOW_HEIGHT) -- one poll_events() gives the WM a chance to
+        # respond before this function moves on. Bounded retry (not a
+        # single poll) to also cover the no-WM case, where the size
+        # never changes at all and glfw.get_window_attrib(MAXIMIZED)
+        # never turns true; each of these 10 iterations is a fast local
+        # X round-trip, so 10 is a generous cap, not a real wait.
+        for _ in range(10):
+            glfw.poll_events()
+            if glfw.get_window_attrib(canvas._window, glfw.MAXIMIZED):
+                break
+        else:
+            # No window manager to honor the maximize request at all --
+            # fall back to explicitly sizing the window to the primary
+            # monitor's full video-mode resolution, positioned at the
+            # origin, so "opens at maximum width/height" still holds.
+            monitor = glfw.get_primary_monitor()
+            video_mode = glfw.get_video_mode(monitor)
+            glfw.set_window_pos(canvas._window, 0, 0)
+            glfw.set_window_size(
+                canvas._window, video_mode.size.width, video_mode.size.height
+            )
+            glfw.poll_events()
+
+        # canvas.get_physical_size() below reads a cached size that's
+        # only refreshed by GLFW's framebuffer-size callback (which the
+        # poll_events() calls above already pumped) -- explicitly
+        # refresh it here rather than relying on incidental timing,
+        # since the depth/scene textures a few lines down need the
+        # real, post-resize size.
+        canvas._determine_size()
 
     # rendercanvas's public constructor has no min-size option (only
     # `size`/`title`/`update_mode`/`min_fps`/`max_fps`/`vsync`/
